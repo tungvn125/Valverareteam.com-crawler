@@ -4,9 +4,6 @@
 Dự án **Web Novel Scraper** là một công cụ được viết bằng Python để tải và lưu các chương truyện từ trang web [Valvrare Team](https://valvrareteam.net) dưới dạng file PDF và/hoặc EPUB. Công cụ này sử dụng các thư viện như `playwright`, `BeautifulSoup`, `ebooklib`, và `reportlab` để thu thập nội dung (bao gồm văn bản và hình ảnh minh họa) từ các chương truyện, sau đó tạo file đầu ra theo định dạng người dùng chọn.
 
 ## Tính năng
-- **Thu thập URL chương truyện**: Lấy danh sách các URL chương từ sitemap của trang web.
-- **Xử lý tiếng Việt**: Chuyển đổi ký tự tiếng Việt có dấu sang không dấu để khớp với URL.
-- **Lựa chọn bỏ qua minh họa**: Cho phép người dùng chọn bỏ qua các chương chỉ chứa hình ảnh minh họa.
 - **Tải nội dung song song**: Hỗ trợ tải nhiều chương cùng lúc với số lượng tác vụ song song tùy chỉnh.
 - **Định dạng đầu ra**: Lưu nội dung dưới dạng PDF, EPUB, hoặc cả hai.
 - **Hỗ trợ font tiếng Việt**: Lựa chọn giữa font `NotoSerif` và `DejaVuSans` cho file PDF.
@@ -17,7 +14,7 @@ Dự án **Web Novel Scraper** là một công cụ được viết bằng Pytho
 
 -**Cách 1: cài gói thủ oông**
 ```bash
-pip install requests beautifulsoup4 ebooklib reportlab pillow playwright
+pip install -r requirement.txt
 ```
 
 Cài đặt trình duyệt Playwright:
