@@ -11,6 +11,7 @@ from reportlab.lib.units import inch
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from PIL import Image as PILImage
+from tao_so_do_cay import get_chapter_tree
 skipped_urls = []
 def scrape_chapter_urls():
     sitemap_url = "https://valvrareteam.net/sitemap.xml"
@@ -18,6 +19,8 @@ def scrape_chapter_urls():
     soup = BeautifulSoup(response.content, "lxml-xml")
     ten_truyen_raw = input("Nhập tên truyện bạn muốn tải: ")
     ten_truyen = ten_truyen_raw.lower().replace(" ", "-")
+    output_folder = ten_truyen_raw.strip()
+    os.makedirs(output_folder, exist_ok=True)
     vietnamese_map = {
         'à': 'a', 'á': 'a', 'ả': 'a', 'ã': 'a', 'ạ': 'a', 'ă': 'a', 'ằ': 'a',
         'ắ': 'a', 'ẳ': 'a', 'ẵ': 'a', 'ặ': 'a', 'â': 'a', 'ầ': 'a', 'ấ': 'a',
@@ -37,6 +40,10 @@ def scrape_chapter_urls():
         url = loc.text
         if ten_truyen in url and "/chuong/" in url:
             chapter_urls.append(url)
+        if ten_truyen in url and "/chuong" not in url:
+            trang_chinh = url
+            
+
     while True:
         try:
             minh_hoa_choice = input("Bạn có muốn bỏ qua các chương minh họa không? (Y/n): ").strip().lower()
@@ -56,7 +63,7 @@ def scrape_chapter_urls():
         except ValueError:
             print("Vui lòng nhập lại.")
     print(f"Đã tìm thấy {len(chapter_urls)} chương truyện")
-    return chapter_urls, ten_truyen_raw
+    return chapter_urls, output_folder, trang_chinh
 MAX_RETRIES = 2
 async def lay_chuong_voi_hinh_anh(browser, url):
     page = await browser.new_page()
@@ -185,7 +192,9 @@ def tao_file_pdf(content_list, filename, title="Chương truyện", font_name='D
         print(f"!!! LỖI NGHIÊM TRỌNG: Không thể tạo file PDF cho '{title}'. Lý do: {e}")
         print("!!! Chương này sẽ bị bỏ qua.")
 async def main():
-    chapter_urls, ten_truyen_raw = scrape_chapter_urls()
+    chapter_urls, output_folder, trang_chinh = scrape_chapter_urls()
+    tree_path = os.path.join(output_folder, "tree_map.txt")
+    await get_chapter_tree(url=trang_chinh, output_file=tree_path)
     if not chapter_urls:
         print("Không tìm thấy chương nào trong sitemap.")
         return
@@ -221,8 +230,7 @@ async def main():
         file_format_choice = 'epub'
     elif choice == '3':
         file_format_choice = 'both'
-    output_folder = ten_truyen_raw.strip()
-    os.makedirs(output_folder, exist_ok=True)
+    
     print(f"Tất cả các file sẽ được lưu trong thư mục: '{output_folder}'")
     CONCURRENT_TASKS = input("Nhập số lượng tác vụ song song tối đa (mặc định là 5): ")
     if not CONCURRENT_TASKS.isdigit():
@@ -254,10 +262,11 @@ async def main():
         await browser.close()
         print("Hoàn tất! Đã đóng trình duyệt.")
     if skipped_urls:
-        log_file_path = os.path.join("cac_chuong_da_bo_qua.txt")
+        log_file_path = os.path.join(output_folder, "cac chuong da bo qua")
         print(f"Đang ghi danh sách các chương bị lỗi vào file: {log_file_path}")
         with open(log_file_path, "w", encoding="utf-8") as f:
             for url in skipped_urls:
                 f.write(f"{url}\n")
 if __name__ == "__main__":
+    
     asyncio.run(main())
