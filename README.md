@@ -6,8 +6,8 @@ Dự án **Web Novel Scraper** là một công cụ được viết bằng Pytho
 ## Tính năng
 - **Tải nội dung song song**: Hỗ trợ tải nhiều chương cùng lúc với số lượng tác vụ song song tùy chỉnh.
 - **Định dạng đầu ra**: Lưu nội dung dưới dạng PDF, EPUB, hoặc cả hai.
-- **Hỗ trợ font tiếng Việt**: Lựa chọn giữa font `NotoSerif` và `DejaVuSans` cho file PDF.
 - **Ghi log lỗi**: Lưu danh sách các chương bị lỗi vào file `cac_chuong_da_bo_qua.txt`.
+- **Tự động sắp xếp files**(beta): Tự động tạo và sắp xếp các file chương(chapter) vào các thư mục tập(volume).
 
 ## Yêu cầu cài đặt
 Để chạy dự án, bạn cần cài đặt Python 3.8+ và các thư viện sau:
@@ -28,21 +28,13 @@ playwright install
 
 -**Cách 2: Sử dụng file .bat**
 
-chạy file `install.bat` để tự động cài đặt các thư viện cần thiết và trình duyệt Playwright.
+chạy file `install.bat` để tự động cài đặt các thư viện cần thiết và trình duyệt Playwright(không bao gồm font).
 ## Cách sử dụng
 1. Chạy file Python:
    ```bash
    python scraper.py
    ```
-2. Nhập tên truyện (ví dụ: "Tên Truyện Của Bạn").
-3. Chọn bỏ qua các chương minh họa (nhập `y` hoặc `n`).
-4. Chọn định dạng file đầu ra:
-   - `1`: PDF
-   - `2`: EPUB
-   - `3`: Cả PDF và EPUB
-5. Nếu chọn PDF, chọn font (`1` cho NotoSerif, `2` cho DejaVuSans, hoặc Enter để dùng mặc định).
-6. Nhập số lượng tác vụ song song (mặc định là 5).
-7. Các file đầu ra sẽ được lưu trong thư mục mang tên truyện.
+2. Làm theo hướng dẫn trong terminal
 
 ## Cấu trúc thư mục
 Sau khi chạy, thư mục dự án sẽ có cấu trúc như sau:
@@ -50,11 +42,15 @@ Sau khi chạy, thư mục dự án sẽ có cấu trúc như sau:
 project/
 │
 ├── scraper.py                # File mã nguồn chính
-├── cac_chuong_da_bo_qua.txt  # File log các chương bị lỗi (nếu có)
+├── tao_so_do_cay.py          # File mã nguồn chứa tính năng
 ├── Tên Truyện/               # Thư mục chứa các file PDF/EPUB
-│   ├── chuong-1.pdf
-│   ├── chuong-1.epub
-│   ├── ...
+│   ├── Tập 1-Ví dụ
+|      ├── chuong-1-vi-du.epub
+|      ├── ...
+│   ├── Tập...
+├── install.bat               # File tự động cài đặt
+├── requirements.txt          # File chứa các thư viện cần thiết
+├── LICENSE                   # Giấy phép MIT
 └── README.md                 # File hướng dẫn sử dụng
 ```
 
