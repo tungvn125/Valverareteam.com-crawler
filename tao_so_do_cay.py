@@ -3,6 +3,7 @@ from playwright.async_api import async_playwright
 from bs4 import BeautifulSoup
 
 async def get_chapter_tree(url: str, output_file: str):
+    print("Đang tạo sơ đồ cây...")
     """
     Sử dụng Playwright Async API để truy cập URL, sau đó dùng BeautifulSoup để
     phân tích và trích xuất sơ đồ các tập và chương truyện, rồi lưu vào file txt.

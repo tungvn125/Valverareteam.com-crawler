@@ -12,6 +12,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from PIL import Image as PILImage
 from tao_so_do_cay import get_chapter_tree
+from alive_progress import alive_bar
 skipped_urls = []
 def scrape_chapter_urls():
     sitemap_url = "https://valvrareteam.net/sitemap.xml"
@@ -63,15 +64,16 @@ def scrape_chapter_urls():
         except ValueError:
             print("Vui lòng nhập lại.")
     print(f"Đã tìm thấy {len(chapter_urls)} chương truyện")
+
     return chapter_urls, output_folder, trang_chinh
 MAX_RETRIES = 2
 async def lay_chuong_voi_hinh_anh(browser, url):
     page = await browser.new_page()
     for attempt in range(MAX_RETRIES):
         try:
-            print(f"Đang truy cập URL: {url} (Lần thử {attempt + 1}/{MAX_RETRIES})")
+            #print(f"Đang truy cập URL: {url} (Lần thử {attempt + 1}/{MAX_RETRIES})")
             await page.goto(url, wait_until='domcontentloaded', timeout=60000)
-            print("Trang đã tải xong. Bắt đầu trích xuất nội dung...")
+            #print("Trang đã tải xong. Bắt đầu trích xuất nội dung...")
             content_selector = ".chapter-card p, .chapter-card img"
             await page.wait_for_selector(content_selector, timeout=30000)
             elements = page.locator(content_selector)
@@ -100,7 +102,7 @@ async def lay_chuong_voi_hinh_anh(browser, url):
     await page.close()
     return None
 def tao_file_epub(content_list, filename, title="Chương truyện"):
-    print(f"Đang tạo file EPUB: {filename}...")
+    #print(f"Đang tạo file EPUB: {filename}...")
     book = epub.EpubBook()
     book.set_identifier('id123456')
     book.set_title(title)
@@ -138,13 +140,13 @@ def tao_file_epub(content_list, filename, title="Chương truyện"):
     book.add_item(epub.EpubNcx())
     book.add_item(epub.EpubNav())
     epub.write_epub(filename, book, {})
-    print(f"Tạo file EPUB thành công: {filename}")
+    #print(f"Tạo file EPUB thành công: {filename}")
 def tao_file_pdf(content_list, filename, title="Chương truyện", font_name='DejaVuSans'):
     valid_fonts = ['DejaVuSans', 'NotoSerif']
     if font_name not in valid_fonts:
         print(f"[Cảnh báo] Font '{font_name}' không hợp lệ. Sử dụng font mặc định 'DejaVuSans'.")
         font_name = 'DejaVuSans'
-    print(f"Đang tạo file PDF: {filename}...")
+    #print(f"Đang tạo file PDF: {filename}...")
     try:
         pdfmetrics.registerFont(TTFont(f"{font_name}", f'{font_name}.ttf'))
         style = ParagraphStyle(name='Normal_vi', fontName=font_name, fontSize=12, leading=14)
@@ -186,7 +188,7 @@ def tao_file_pdf(content_list, filename, title="Chương truyện", font_name='D
                 print(f"  [Cảnh báo] Không thể tải hoặc xử lý ảnh: {item['data']}. Lỗi: {e}")
     try:
         doc.build(story)
-        print(f"Tạo file PDF thành công: {filename}")
+        #print(f"Tạo file PDF thành công: {filename}")
     except Exception as e:
         skipped_urls.append(filename + " (Lỗi: " + str(e) + ")" + "pdf")
         print(f"!!! LỖI NGHIÊM TRỌNG: Không thể tạo file PDF cho '{title}'. Lý do: {e}")
@@ -243,7 +245,7 @@ async def main():
             content = await lay_chuong_voi_hinh_anh(browser, url)
             ten_chuong = url.rstrip("/").rsplit("/", 1)[-1]
             if content:
-                print(f"Đã lấy xong nội dung chương: {ten_chuong}. Bắt đầu tạo file...")
+                #print(f"Đã lấy xong nội dung chương: {ten_chuong}. Bắt đầu tạo file...")
                 pdf_path = os.path.join(folder, f"{ten_chuong}.pdf")
                 epub_path = os.path.join(folder, f"{ten_chuong}.epub")
                 if file_format_choice in ['pdf', 'both']:
@@ -258,7 +260,13 @@ async def main():
         print(
             f"Đã khởi động trình duyệt. Sẽ tải {len(chapter_urls)} chương với tối đa {CONCURRENT_TASKS} tác vụ song song.")
         tasks = [process_url(browser, url, output_folder, skipped_urls) for url in chapter_urls]
-        await asyncio.gather(*tasks)
+        with alive_bar(len(tasks), title=f"Đang tải truyện", bar='filling', spinner='dots_waves') as bar:
+            for future in asyncio.as_completed(tasks):
+                try:
+                    await future
+                except Exception as e:
+                    print(f"Một tác vụ đã gặp lỗi: {e}")
+                bar() # Cập nhật thanh tiến trình sau mỗi chương hoàn thành
         await browser.close()
         print("Hoàn tất! Đã đóng trình duyệt.")
     if skipped_urls:
