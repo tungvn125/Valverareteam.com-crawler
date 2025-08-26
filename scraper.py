@@ -1,5 +1,7 @@
 import asyncio
+import json
 import os
+import time
 import requests
 from io import BytesIO
 from playwright.async_api import async_playwright
@@ -11,7 +13,7 @@ from reportlab.lib.units import inch
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from PIL import Image as PILImage
-from tao_so_do_cay import get_chapter_tree
+from tao_so_do_cay import get_chapter_tree, get_chapter_tree_list, get_chapters_by_volume_index , get_chapter_tree_folder
 from alive_progress import alive_bar
 skipped_urls = []
 def scrape_chapter_urls():
@@ -193,10 +195,32 @@ def tao_file_pdf(content_list, filename, title="Chương truyện", font_name='D
         skipped_urls.append(filename + " (Lỗi: " + str(e) + ")" + "pdf")
         print(f"!!! LỖI NGHIÊM TRỌNG: Không thể tạo file PDF cho '{title}'. Lý do: {e}")
         print("!!! Chương này sẽ bị bỏ qua.")
+
+#create folder base on tree map
+def create_folders_from_tree(tree_file, base_folder):
+    with open(tree_file, 'r', encoding='utf-8') as f:
+        tree_data = f.readlines()
+    for line in tree_data:
+        folder_name = line.strip()
+        folder_path = os.path.join(base_folder, folder_name)
+        os.makedirs(folder_path, exist_ok=True)
+
 async def main():
     chapter_urls, output_folder, trang_chinh = scrape_chapter_urls()
     tree_path = os.path.join(output_folder, "tree_map.txt")
-    await get_chapter_tree(url=trang_chinh, output_file=tree_path)
+    await get_chapter_tree_list(trang_chinh, output_file="chapter_list.json")  # Tạo file chapter_list.json
+    await asyncio.sleep(2)  # Đợi 2 giây để đảm bảo file được ghi xong
+    try:
+        with open("chapter_list.json", "r", encoding="utf-8") as f:
+            chapter_data = json.load(f)
+    except Exception as e:
+        print(f"Đã xảy ra lỗi khi đọc file chapter_list.json: {e}")
+        return
+    #get_chapters_by_volume_index(file_path="chapter_list.json", index=0)  # Ví dụ lấy chương của tập đầu tiên
+    #print(len(chapter_data))
+    
+    await get_chapter_tree_folder(url=trang_chinh, output_file=tree_path)  # Tạo file tree_map.txt
+    create_folders_from_tree(tree_path, output_folder)
     if not chapter_urls:
         print("Không tìm thấy chương nào trong sitemap.")
         return
@@ -243,9 +267,15 @@ async def main():
     async def process_url(browser, url, folder, skipped_urls):
         async with semaphore:
             content = await lay_chuong_voi_hinh_anh(browser, url)
-            ten_chuong = url.rstrip("/").rsplit("/", 1)[-1]
+            url_ = url.replace("https://valvrareteam.net", "")
+            print(url_)
+            for n in range(0,len(chapter_data)):
+                if url_ in get_chapters_by_volume_index(file_path="chapter_list.json", index=n):
+                    folder = f"{output_folder}\{chapter_data[n]['volume']}"
+                else:
+                    continue
+            ten_chuong = url.split("/")[-1]
             if content:
-                #print(f"Đã lấy xong nội dung chương: {ten_chuong}. Bắt đầu tạo file...")
                 pdf_path = os.path.join(folder, f"{ten_chuong}.pdf")
                 epub_path = os.path.join(folder, f"{ten_chuong}.epub")
                 if file_format_choice in ['pdf', 'both']:
@@ -275,6 +305,8 @@ async def main():
         with open(log_file_path, "w", encoding="utf-8") as f:
             for url in skipped_urls:
                 f.write(f"{url}\n")
+    os.remove(f"{output_folder}\tree_map.txt")
+    get_chapter_tree(url=trang_chinh, output_file=f"{output_folder}\tree_map.txt")
 if __name__ == "__main__":
-    
     asyncio.run(main())
+    os.remove("chapter_list.json")
