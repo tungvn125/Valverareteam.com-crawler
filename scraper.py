@@ -270,10 +270,11 @@ async def main():
             url_ = url.replace("https://valvrareteam.net", "")
             print(url_)
             for n in range(0,len(chapter_data)):
+                # Check if the URL belongs to a volume and update the folder path accordingly.
+                # Using os.path.join ensures cross-platform compatibility.
                 if url_ in get_chapters_by_volume_index(file_path="chapter_list.json", index=n):
-                    folder = f"{output_folder}\{chapter_data[n]['volume']}"
-                else:
-                    continue
+                    folder = os.path.join(output_folder, chapter_data[n]['volume'])
+                    break # Found the correct volume, no need to check further.
             ten_chuong = url.split("/")[-1]
             if content:
                 pdf_path = os.path.join(folder, f"{ten_chuong}.pdf")
@@ -305,8 +306,11 @@ async def main():
         with open(log_file_path, "w", encoding="utf-8") as f:
             for url in skipped_urls:
                 f.write(f"{url}\n")
-    os.remove(f"{output_folder}\tree_map.txt")
-    get_chapter_tree(url=trang_chinh, output_file=f"{output_folder}\tree_map.txt")
+    tree_map_path = os.path.join(output_folder, "tree_map.txt")
+    if os.path.exists(tree_map_path):
+        os.remove(tree_map_path)
+    get_chapter_tree(url=trang_chinh, output_file=tree_map_path)
 if __name__ == "__main__":
     asyncio.run(main())
-    os.remove("chapter_list.json")
+    if os.path.exists("chapter_list.json"):
+        os.remove("chapter_list.json")
