@@ -1,6 +1,10 @@
 #!/bin/bash
 
+# Exit immediately if a command exits with a non-zero status.
+set -e
+
 echo "Installing dependencies for Web Novel Scraper..."
+echo ""
 
 # --- Check if Python is installed and is version 3.8 or higher ---
 PYTHON_CMD=""
@@ -11,7 +15,8 @@ elif command -v python &> /dev/null; then
 fi
 
 if [ -z "$PYTHON_CMD" ]; then
-    echo "Error: Python 3.8 or higher is not installed! Please install it from https://www.python.org/downloads/"
+    echo "Error: Python 3.8 or higher is not found on your system."
+    echo "Please install it from https://www.python.org/downloads/"
     read -p "Press Enter to exit..."
     exit 1
 fi
@@ -22,33 +27,58 @@ MAJOR=${VERSION_PARTS[0]}
 MINOR=${VERSION_PARTS[1]}
 
 if [[ "$MAJOR" -lt 3 ]] || ([[ "$MAJOR" -eq 3 ]] && [[ "$MINOR" -lt 8 ]]); then
-    echo "Error: Python version ${PYTHON_VERSION} found. Python 3.8 or higher is required! Please install it from https://www.python.org/downloads/"
+    echo "Error: Python version ${PYTHON_VERSION} found. This project requires Python 3.8 or higher."
+    echo "Please install a compatible version from https://www.python.org/downloads/"
     read -p "Press Enter to exit..."
     exit 1
 fi
 
-echo "Python ($PYTHON_CMD $PYTHON_VERSION) found."
+echo "Compatible Python version ($PYTHON_CMD $PYTHON_VERSION) found."
+echo ""
 
-# --- Upgrade pip to the latest version ---
-echo "Upgrading pip..."
-"$PYTHON_CMD" -m pip install --upgrade pip || { echo "Failed to upgrade pip. Exiting."; read -p "Press Enter to exit..." ; exit 1; }
+# --- Create virtual environment ---
+VENV_DIR=".venv"
+if [ ! -d "$VENV_DIR" ]; then
+    echo "Creating virtual environment in '$VENV_DIR'..."
+    "$PYTHON_CMD" -m venv "$VENV_DIR"
+    echo "Virtual environment created successfully."
+else
+    echo "Virtual environment '$VENV_DIR' already exists. Skipping creation."
+fi
+echo ""
 
-# --- Install required Python packages ---
+# Define path to the virtual environment's Python executable
+VENV_PYTHON="$VENV_DIR/bin/python"
+
+# --- Upgrade pip to the latest version in the venv ---
+echo "Upgrading pip in the virtual environment..."
+"$VENV_PYTHON" -m pip install --upgrade pip
+echo ""
+
+# --- Install required Python packages into the venv ---
 echo "Installing required Python packages from requirements.txt..."
-"$PYTHON_CMD" -m pip install -r requirements.txt || { echo "Failed to install Python packages. Exiting."; read -p "Press Enter to exit..." ; exit 1; }
+"$VENV_PYTHON" -m pip install -r requirements.txt
+echo ""
 
 # --- Install Playwright browsers ---
 echo "Installing Playwright browsers..."
-"$PYTHON_CMD" -m playwright install || { echo "Failed to install Playwright browsers. Exiting."; read -p "Press Enter to exit..." ; exit 1; }
+"$VENV_PYTHON" -m playwright install
+echo ""
 
 # --- Note about fonts ---
-echo ""
-echo "Note: The scraper is configured to automatically download required fonts (DejaVuSans/NotoSerif) if they are missing during PDF generation."
-echo "If you encounter font issues, please ensure you have an active internet connection when running the scraper."
+echo "Note: The scraper is now configured to automatically download required fonts (e.g., DejaVuSans) if they are missing."
+echo "If you encounter font issues, please ensure you have an active internet connection when running the scraper for the first time."
 echo ""
 
 # --- Instructions to run ---
+echo "--------------------------------------------------"
 echo "Installation complete!"
-echo "To run the scraper, execute: $PYTHON_CMD scraper.py"
+echo ""
+echo "To run the scraper, follow these steps:"
+echo "1. Activate the virtual environment: source $VENV_DIR/bin/activate"
+echo "2. Run the scraper script:         python scraper.py"
+echo "3. When you are finished, deactivate: deactivate"
+echo "--------------------------------------------------"
+echo ""
 read -p "Press Enter to exit..."
 exit 0
