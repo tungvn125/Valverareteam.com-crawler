@@ -9,6 +9,15 @@ if %ERRORLEVEL% neq 0 (
     exit /b 1
 )
 
+:: crete a virtual environment
+echo Creating virtual environment...
+python -m venv venv
+
+:: activate the virtual environment
+echo Activating virtual environment...
+.\venv\Scripts\activate
+
+
 :: Upgrade pip to the latest version
 echo Upgrading pip...
 python -m pip install --upgrade pip
@@ -19,7 +28,7 @@ pip install -r requirements.txt
 
 :: Install Playwright browsers
 echo Installing Playwright browsers...
-playwright install
+playwright install chromium
 
 :: Download DejaVuSans font
 echo Please download the DejaVuSans or NotoSerif font manually and place it in the project directory.
