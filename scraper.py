@@ -33,6 +33,35 @@ def sanitize_filename(name):
 skipped_urls = []
 MAX_RETRIES = 2
 
+async def lay_thong_tin_truyen(browser, ten_truyen):
+    """
+    Scrapes basic information about the story from its main page. Such as title, author, description and cover image.
+    """
+    page = await browser.new_page()
+    url = f"https://valvrareteam.net/{ten_truyen}"
+    await page.goto(url, wait_until='domcontentloaded')
+    title = await page.locator("h1.rd-novel-title").inner_text()
+    # load 2 authors 
+    author_elements = page.locator("span.rd-author-name")
+    authors = []
+    for i in range(await author_elements.count()):
+        author_name = await author_elements.nth(i).inner_text()
+        authors.append(author_name.strip())
+    author = ", ".join(authors)
+    description = await page.locator("div.rd-description-content").inner_text()
+    # download cover image 
+    
+    image_url = await page.locator("img.rd-cover-image").get_attribute("src")
+    if image_url:
+        response = requests.get(image_url)
+        if response.status_code == 200:
+            cover_path = "cover.jpg"
+            print(f"Đang tải ảnh bìa về: {cover_path}")
+            with open(cover_path, "wb") as f:
+                f.write(response.content)
+    await page.close()
+    return {"title": title.strip(), "author": author.strip(), "description": description.strip(), cover_path: cover_path
+    }
 
 async def lay_chuong_voi_hinh_anh(browser, url):
     """
@@ -73,55 +102,120 @@ async def lay_chuong_voi_hinh_anh(browser, url):
 
 # --- CÁC HÀM XUẤT FILE ---
 
-def tao_file_epub(content_list, filename, title="Chương truyện"):
-    """Creates an EPUB file from a list of content."""
+def tao_file_epub(filename, book_title, author, chapters_data, description="", cover_path=None):
+    """
+    Creates a structured EPUB file from a list of chapters, potentially grouped by volumes.
+    - chapters_data: A list that can contain:
+        - Chapter dictionaries: {'title': str, 'content': list}
+        - Volume dictionaries: {'volume': str, 'chapters': [list of chapter dictionaries]}
+    """
     print(f"Đang tạo file EPUB: {filename}...")
     book = epub.EpubBook()
-    book.set_identifier('id123456')
-    book.set_title(title)
+
+    # --- Set Metadata ---
+    book.set_identifier(f'urn:uuid:{os.path.basename(filename)}')
+    book.set_title(book_title)
     book.set_language('vi')
-    book.add_author('Valvrare Team (Scraped)')
-    
-    html_content = f'<h1>{title}</h1>'
+    book.add_author(author)
+    book.add_metadata('DC', 'description', description)
+    try:
+        book.set_cover("cover.jpg", open('cover.jpg', 'rb').read())
+    except Exception:
+        print("  [Cảnh báo] Không thể thêm ảnh bìa vào EPUB.")
+    # --- Process Chapters and Volumes ---
+    toc = []
+    spine = ['nav']
     image_counter = 1
-    chapter = epub.EpubHtml(title=title, file_name='chap_01.xhtml', lang='vi')
-    
-    # Create a directory for images inside the epub if it doesn't exist
-    if not any(isinstance(item, epub.EpubImage) for item in book.items):
-        book.add_item(epub.EpubItem(file_name="images/", media_type="application/x-dtbncx+xml"))
 
-    for item in content_list:
-        if item['type'] == 'text':
-            html_content += f'<p>{item["data"]}</p>'
-        elif item['type'] == 'image':
-            try:
-                img_url = item["data"]
-                response = requests.get(img_url)
-                response.raise_for_status()
-                img_content = response.content
-                img_extension = img_url.split('.')[-1].lower().split('?')[0] # Handle cases with URL params
-                if not img_extension: img_extension = 'jpg'
+    def process_chapter(chap_data, chap_idx):
+        nonlocal image_counter
+        chap_title = chap_data.get('title', f"Chương {chap_idx}")
+        chap_filename = f'chap_{chap_idx}.xhtml'
+        chapter_obj = epub.EpubHtml(title=chap_title, file_name=chap_filename, lang='vi')
 
-                img_filename = f'image_{image_counter}.{img_extension}'
-                image_counter += 1
+        html_content = f'<h1>{chap_title}</h1>'
+        for item in chap_data.get('content', []):
+            if item['type'] == 'text':
+                html_content += f'<p>{item["data"]}</p>'
+            elif item['type'] == 'image':
+                try:
+                    img_url = item["data"]
+                    # Basic check for valid image URL
+                    if not img_url.startswith(('http://', 'https://')):
+                        raise ValueError("Invalid image URL")
 
-                img_item = epub.EpubImage(
-                    uid=os.path.splitext(img_filename)[0],
-                    file_name=f'images/{img_filename}',
-                    media_type=f'image/{img_extension}',
-                    content=img_content
-                )
-                book.add_item(img_item)
-                html_content += f'<img src="images/{img_filename}" alt="Hình minh họa"/>'
-            except Exception as e:
-                print(f"  [Cảnh báo] Không thể tải hoặc xử lý ảnh cho EPUB: {item['data']}. Lỗi: {e}")
+                    response = requests.get(img_url)
+                    response.raise_for_status()
+                    img_content = response.content
+                    
+                    # Determine image extension
+                    img_extension = 'jpg' # default
+                    parsed_url = requests.utils.urlparse(img_url)
+                    path_parts = parsed_url.path.split('.')
+                    if len(path_parts) > 1:
+                        img_extension = path_parts[-1].lower()
+                    
+                    # Ensure extension is valid for epub
+                    if img_extension not in ['jpg', 'jpeg', 'png', 'gif', 'svg']:
+                        # Attempt to get mimetype and decide extension
+                        try:
+                            content_type = response.headers['Content-Type']
+                            if 'jpeg' in content_type: img_extension = 'jpg'
+                            elif 'png' in content_type: img_extension = 'png'
+                            #... add other mimetypes if needed
+                        except (KeyError, IndexError):
+                             img_extension = 'jpg' # fallback
 
-    chapter.content = html_content
-    book.add_item(chapter)
-    book.toc = (epub.Link('chap_01.xhtml', title, 'intro'),)
-    book.spine = ['nav', chapter]
+                    img_filename = f'image_{image_counter}.{img_extension}'
+                    image_counter += 1
+
+                    img_item = epub.EpubImage(
+                        uid=os.path.splitext(img_filename)[0],
+                        file_name=f'images/{img_filename}',
+                        media_type=f'image/{img_extension}',
+                        content=img_content
+                    )
+                    book.add_item(img_item)
+                    html_content += f'<img src="images/{img_filename}" alt="Hình minh họa"/>'
+                except Exception as e:
+                    print(f"  [Cảnh báo] Không thể tải hoặc xử lý ảnh cho EPUB: {item.get('data', 'N/A')}. Lỗi: {e}")
+
+        chapter_obj.content = html_content
+        return chapter_obj
+
+    chapter_index = 1
+    for item in chapters_data:
+        if 'volume' in item: # It's a volume
+            volume_title = item['volume']
+            volume_chapters = item.get('chapters', [])
+            if not volume_chapters:
+                continue
+
+            toc_volume_chapters = []
+            for chap_data in volume_chapters:
+                epub_chapter = process_chapter(chap_data, chapter_index)
+                book.add_item(epub_chapter)
+                spine.append(epub_chapter)
+                toc_volume_chapters.append(epub.Link(epub_chapter.file_name, epub_chapter.title, f'chap_{chapter_index}'))
+                chapter_index += 1
+            toc.append((epub.Section(volume_title), tuple(toc_volume_chapters)))
+        
+        elif 'title' in item: # It's a standalone chapter
+            epub_chapter = process_chapter(item, chapter_index)
+            book.add_item(epub_chapter)
+            spine.append(epub_chapter)
+            toc.append(epub.Link(epub_chapter.file_name, epub_chapter.title, f'chap_{chapter_index}'))
+            chapter_index += 1
+
+    book.toc = tuple(toc)
+    book.spine = spine
     book.add_item(epub.EpubNcx())
     book.add_item(epub.EpubNav())
+
+    # Create image directory placeholder if needed
+    if image_counter > 1 and not any(item.file_name == 'images/' for item in book.items):
+         book.add_item(epub.EpubItem(file_name="images/", media_type="application/x-dtbncx+xml"))
+
     epub.write_epub(filename, book, {})
     print(f"Tạo file EPUB thành công: {filename}")
 
@@ -134,7 +228,7 @@ def tao_file_pdf(content_list, filename, title="Chương truyện", font_name='D
         print(f"[Cảnh báo] Font '{font_name}' không hợp lệ. Sử dụng font mặc định 'DejaVuSans'.")
         font_name = 'DejaVuSans'
 
-    font_filename_map = {'DejaVuSans': 'DejaVuSans.ttf', 'NotoSerif': 'NotoSerif-Regular.ttf'}
+    font_filename_map = {'DejaVuSans': 'DejaVuSans.ttf', 'NotoSerifF': 'NotoSerif-Regular.ttf'}
     font_path = font_filename_map.get(font_name, 'DejaVuSans.ttf')
 
     if not os.path.exists(font_path):
@@ -315,6 +409,11 @@ async def main():
         print(f"Không tìm thấy truyện '{ten_truyen_raw}'. Vui lòng kiểm tra lại tên truyện.")
         return
 
+    # get basic story info
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        story_info = await lay_thong_tin_truyen(browser, trang_chinh.split("https://valvrareteam.net/")[-1])
+        await browser.close()
     print("Đang lấy danh sách chương từ trang chính của truyện...")
     await get_chapter_tree_list(trang_chinh, output_file="chapter_list.json")
     await asyncio.sleep(1)
@@ -445,18 +544,23 @@ async def main():
                 
                 ten_chuong = url.split("/")[-1]
                 content_list = scraped_content[url]
+                author = story_info.get("author", "Valvrare Team (Scraped)")
+                description = story_info.get("description", "")
+                cover_path = story_info.get("cover_path", None)
 
                 for fmt in formats_to_export:
+                    file_path = os.path.join(current_folder, f"{ten_chuong}.{fmt.lower().split(' ')[0].replace('(.md)', '.md').replace('(.txt)', '.txt')}")
                     if fmt == "PDF":
-                        tao_file_pdf(content_list, os.path.join(current_folder, f"{ten_chuong}.pdf"), ten_chuong, font_name)
+                        tao_file_pdf(content_list, file_path, ten_chuong, font_name)
                     elif fmt == "EPUB":
-                        tao_file_epub(content_list, os.path.join(current_folder, f"{ten_chuong}.epub"), ten_chuong)
+                        chapters_data = [{'title': ten_chuong, 'content': content_list}]
+                        tao_file_epub(file_path, ten_chuong, author, chapters_data, description, cover_path)
                     elif fmt == "HTML":
-                        tao_file_html(content_list, os.path.join(current_folder, f"{ten_chuong}.html"), ten_chuong)
+                        tao_file_html(content_list, file_path, ten_chuong)
                     elif fmt == "Markdown (.md)":
-                        tao_file_md(content_list, os.path.join(current_folder, f"{ten_chuong}.md"), ten_chuong)
+                        tao_file_md(content_list, file_path, ten_chuong)
                     elif fmt == "Text (.txt)":
-                        tao_file_txt(content_list, os.path.join(current_folder, f"{ten_chuong}.txt"), ten_chuong)
+                        tao_file_txt(content_list, file_path, ten_chuong)
                         
     # 2. Gộp theo Volume
     elif gop_choice_index == 1:
@@ -467,44 +571,80 @@ async def main():
                 volume_name = url_to_volume_map.get(relative_url, "Unknown Volume")
                 if volume_name not in volume_contents:
                     volume_contents[volume_name] = []
-                volume_contents[volume_name].extend(scraped_content[url])
-        
-        for volume_name, content_list in volume_contents.items():
+                
+                ten_chuong = url.split("/")[-1]
+                volume_contents[volume_name].append({
+                    'title': ten_chuong,
+                    'content': scraped_content[url]
+                })
+
+        author = story_info.get("author", "Valvrare Team (Scraped)")
+        description = story_info.get("description", "")
+        cover_path = story_info.get("cover_path", None)
+
+        for volume_name, chapters_list in volume_contents.items():
             sanitized_vol_name = sanitize_filename(volume_name)
+            # Volume folder is not strictly needed when merging, but let's keep it clean
             current_folder = os.path.join(output_folder, sanitized_vol_name)
             os.makedirs(current_folder, exist_ok=True)
             
+            # Use the full content of the volume for PDF and other simple formats
+            full_volume_content = []
+            for chap in chapters_list:
+                full_volume_content.extend(chap['content'])
+
             for fmt in formats_to_export:
+                file_path = os.path.join(current_folder, f"{sanitized_vol_name}.{fmt.lower().split(' ')[0].replace('(.md)', '.md').replace('(.txt)', '.txt')}")
                 if fmt == "PDF":
-                    tao_file_pdf(content_list, os.path.join(current_folder, f"{sanitized_vol_name}.pdf"), volume_name, font_name)
+                    tao_file_pdf(full_volume_content, file_path, volume_name, font_name)
                 elif fmt == "EPUB":
-                    tao_file_epub(content_list, os.path.join(current_folder, f"{sanitized_vol_name}.epub"), volume_name)
+                    tao_file_epub(file_path, volume_name, author, chapters_list, description, cover_path)
                 elif fmt == "HTML":
-                    tao_file_html(content_list, os.path.join(current_folder, f"{sanitized_vol_name}.html"), volume_name)
+                    tao_file_html(full_volume_content, file_path, volume_name)
                 elif fmt == "Markdown (.md)":
-                    tao_file_md(content_list, os.path.join(current_folder, f"{sanitized_vol_name}.md"), volume_name)
+                    tao_file_md(full_volume_content, file_path, volume_name)
                 elif fmt == "Text (.txt)":
-                    tao_file_txt(content_list, os.path.join(current_folder, f"{sanitized_vol_name}.txt"), volume_name)
+                    tao_file_txt(full_volume_content, file_path, volume_name)
 
     # 3. Gộp tất cả
     elif gop_choice_index == 2:
-        full_content_list = []
-        for url in chapter_urls: # Iterate in order
-            if url in scraped_content:
-                full_content_list.extend(scraped_content[url])
+        full_story_structure = []
+        full_content_list_simple = []
         
+        # Preserve the original volume and chapter order from chapter_data
+        for volume_info in chapter_data:
+            volume_title = volume_info['volume']
+            chapters_in_volume = []
+            
+            # Filter for selected chapters only
+            for relative_url in volume_info['chapters']:
+                full_url = base_url + relative_url
+                if full_url in scraped_content:
+                    chapter_title = relative_url.split('/')[-1]
+                    content = scraped_content[full_url]
+                    chapters_in_volume.append({'title': chapter_title, 'content': content})
+                    full_content_list_simple.extend(content)
+            
+            if chapters_in_volume:
+                full_story_structure.append({'volume': volume_title, 'chapters': chapters_in_volume})
+
         sanitized_story_name = sanitize_filename(ten_truyen_raw)
+        author = story_info.get("author", "Valvrare Team (Scraped)")
+        description = story_info.get("description", "")
+        cover_path = story_info.get("cover_path", None)
+
         for fmt in formats_to_export:
+            file_path = os.path.join(output_folder, f"{sanitized_story_name}.{fmt.lower().split(' ')[0].replace('(.md)', '.md').replace('(.txt)', '.txt')}")
             if fmt == "PDF":
-                tao_file_pdf(full_content_list, os.path.join(output_folder, f"{sanitized_story_name}.pdf"), ten_truyen_raw, font_name)
+                tao_file_pdf(full_content_list_simple, file_path, ten_truyen_raw, font_name)
             elif fmt == "EPUB":
-                tao_file_epub(full_content_list, os.path.join(output_folder, f"{sanitized_story_name}.epub"), ten_truyen_raw)
+                tao_file_epub(file_path, ten_truyen_raw, author, full_story_structure, description, cover_path)
             elif fmt == "HTML":
-                tao_file_html(full_content_list, os.path.join(output_folder, f"{sanitized_story_name}.html"), ten_truyen_raw)
+                tao_file_html(full_content_list_simple, file_path, ten_truyen_raw)
             elif fmt == "Markdown (.md)":
-                tao_file_md(full_content_list, os.path.join(output_folder, f"{sanitized_story_name}.md"), ten_truyen_raw)
+                tao_file_md(full_content_list_simple, file_path, ten_truyen_raw)
             elif fmt == "Text (.txt)":
-                tao_file_txt(full_content_list, os.path.join(output_folder, f"{sanitized_story_name}.txt"), ten_truyen_raw)
+                tao_file_txt(full_content_list_simple, file_path, ten_truyen_raw)
                 
     print("\n--- HOÀN TẤT ---")
     if skipped_urls:
@@ -515,11 +655,6 @@ async def main():
             for url in skipped_urls:
                 f.write(f"{url}\n")
     
-    # Cleanup
-    if os.path.exists("chapter_list.json"):
-        os.remove("chapter_list.json")
-    if os.path.exists(tree_path):
-        os.remove(tree_path)
 
 if __name__ == "__main__":
     try:
