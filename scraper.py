@@ -377,16 +377,103 @@ def create_folders_from_tree(tree_file, base_folder):
         print(f"Lưu ý: file tree_map.txt không tồn tại, sẽ tạo thư mục gốc.")
         os.makedirs(base_folder, exist_ok=True)
 
+import argparse
+import sys
+
+# (Các import khác giữ nguyên)
+# ...
+
 async def main():
+    parser = argparse.ArgumentParser(
+        description="Tải truyện từ Valvrare Team dưới dạng PDF, EPUB, và các định dạng khác.",
+        formatter_class=argparse.RawTextHelpFormatter
+    )
+    # Nếu có đối số dòng lệnh, dùng chế độ CLI, ngược lại, dùng chế độ tương tác
+    is_cli_mode = len(sys.argv) > 1
+
+    # --- Định nghĩa các đối số cho CLI ---
+    parser.add_argument(
+        'ten_truyen', 
+        nargs='?' if not is_cli_mode else None, 
+        help="Tên truyện cần tải (bắt buộc ở chế độ CLI)."
+    )
+    parser.add_argument(
+        '-o', '--output', 
+        dest='output_folder', 
+        help="Thư mục đầu ra để lưu file. Mặc định là tên truyện."
+    )
+    parser.add_argument(
+        '-f', '--format', 
+        nargs='+', 
+        default=['EPUB'], 
+        choices=['PDF', 'EPUB', 'HTML', 'MD', 'TXT'],
+        help="Định dạng file đầu ra. Có thể chọn nhiều. Mặc định: EPUB."
+    )
+    parser.add_argument(
+        '-g', '--gop', 
+        default='rieng', 
+        choices=['rieng', 'volume', 'tatca'],
+        help="Cách gộp file:\n"
+             "rieng: Mỗi chương một file (mặc định).\n"
+             "volume: Gộp các chương theo từng tập.\n"
+             "tatca: Gộp tất cả thành một file duy nhất."
+    )
+    parser.add_argument(
+        '--khong-minh-hoa', 
+        action='store_true',
+        help="Bỏ qua các chương/tập minh họa."
+    )
+    parser.add_argument(
+        '--font', 
+        default='DejaVuSans', 
+        choices=['NotoSerif', 'DejaVuSans'],
+        help="Font chữ cho file PDF. Mặc định: DejaVuSans."
+    )
+    parser.add_argument(
+        '-t', '--tasks', 
+        type=int, 
+        default=5,
+        help="Số lượng tác vụ tải song song. Mặc định: 5."
+    )
+    
+    selection_group = parser.add_mutually_exclusive_group()
+    selection_group.add_argument(
+        '--all', 
+        action='store_true',
+        help="Tải tất cả các chương (mặc định)."
+    )
+    selection_group.add_argument(
+        '--volumes', 
+        nargs='+', 
+        type=int,
+        help="Tải các tập cụ thể theo số thứ tự (ví dụ: --volumes 1 3 5)."
+    )
+    selection_group.add_argument(
+        '--chapters', 
+        nargs='+', 
+        type=int,
+        help="Tải các chương cụ thể theo số thứ tự tuyệt đối (ví dụ: --chapters 1 10 15)."
+    )
+
+    args = parser.parse_args()
+
+    # --- Logic chính ---
+    if is_cli_mode:
+        ten_truyen_raw = args.ten_truyen
+        if not ten_truyen_raw:
+            parser.error("Tên truyện là bắt buộc ở chế độ CLI.")
+    else:
+        ten_truyen_raw = input("Nhập tên truyện bạn muốn tải: ")
+
     sitemap_url = "https://valvrareteam.net/sitemap.xml"
     response = requests.get(sitemap_url)
     soup = BeautifulSoup(response.content, "lxml-xml")
     
-    ten_truyen_raw = input("Nhập tên truyện bạn muốn tải: ")
     ten_truyen_normalized = ten_truyen_raw.lower().replace(" ", "-")
-    output_folder = sanitize_filename(ten_truyen_raw.strip())
+    output_folder = args.output_folder if is_cli_mode and args.output_folder else sanitize_filename(ten_truyen_raw.strip())
     os.makedirs(output_folder, exist_ok=True)
     
+    # ... (phần xử lý vietnamese_map giữ nguyên)
     vietnamese_map = {
         'à':'a', 'á':'a', 'ả':'a', 'ã':'a', 'ạ':'a', 'ă':'a', 'ằ':'a', 'ắ':'a', 'ẳ':'a', 'ẵ':'a', 'ặ':'a',
         'â':'a', 'ầ':'a', 'ấ':'a', 'ẩ':'a', 'ẫ':'a', 'ậ':'a', 'đ':'d', 'è':'e', 'é':'e', 'ẻ':'e', 'ẽ':'e',
@@ -397,8 +484,9 @@ async def main():
     }
     for key, value in vietnamese_map.items():
         ten_truyen_normalized = ten_truyen_normalized.replace(key, value)
-
+    # ...
     trang_chinh = None
+    #... (phần tìm trang_chinh giữ nguyên)
     for loc in soup.find_all("loc"):
         url = loc.text
         if ten_truyen_normalized in url and "/chuong" not in url:
@@ -409,7 +497,7 @@ async def main():
         print(f"Không tìm thấy truyện '{ten_truyen_raw}'. Vui lòng kiểm tra lại tên truyện.")
         return
 
-    # get basic story info
+    # ... (phần lay_thong_tin_truyen và get_chapter_tree_list giữ nguyên)
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         story_info = await lay_thong_tin_truyen(browser, trang_chinh.split("https://valvrareteam.net/")[-1])
@@ -425,8 +513,14 @@ async def main():
         print(f"Đã xảy ra lỗi khi đọc file chapter_list.json: {e}")
         return
 
+    # --- Xử lý lựa chọn của người dùng (CLI hoặc tương tác) ---
+
     # Lọc chương minh họa
-    minh_hoa_choice = input("Bạn có muốn bỏ qua các chương minh họa không? (Y/n): ").strip().lower()
+    if is_cli_mode:
+        minh_hoa_choice = 'y' if args.khong_minh_hoa else 'n'
+    else:
+        minh_hoa_choice = input("Bạn có muốn bỏ qua các chương minh họa không? (Y/n): ").strip().lower()
+
     if not minh_hoa_choice or minh_hoa_choice in ["y", "yes"]:
         print("Bạn đã chọn bỏ qua các chương minh họa.")
         for volume_data in chapter_data:
@@ -437,30 +531,50 @@ async def main():
         print("Không có chương nào để tải sau khi đã lọc.")
         return
 
-    # Menu chọn chương/tập
-    main_menu_items = ["Tải xuống tất cả", "Chọn tập để tải", "Chọn chương để tải"]
-    main_menu = TerminalMenu(main_menu_items, title=" Tùy chọn tải xuống ", menu_cursor_style=("fg_cyan", "bold"), menu_highlight_style=("bg_cyan", "fg_black"))
-    main_menu_selection_index = main_menu.show()
-
+    # Chọn chương/tập để tải
     selected_chapters_relative = []
-    if main_menu_selection_index == 0: # Tải tất cả
-        for volume in chapter_data:
-            selected_chapters_relative.extend(volume['chapters'])
-    elif main_menu_selection_index == 1: # Chọn tập
-        volume_titles = [volume['volume'] for volume in chapter_data]
-        volume_menu = TerminalMenu(volume_titles, title=" Chọn tập (Space để chọn, Enter để xác nhận) ", multi_select=True, show_multi_select_hint=True, multi_select_cursor_style=("fg_yellow", "bold"))
-        selected_volume_indices = volume_menu.show()
-        if selected_volume_indices:
-            for index in selected_volume_indices:
-                selected_chapters_relative.extend(chapter_data[index]['chapters'])
-    elif main_menu_selection_index == 2: # Chọn chương
-        all_chapters_for_menu = [(f"{vol['volume']}: {ch.split('/')[-1]}", ch) for vol in chapter_data for ch in vol['chapters']]
-        chapter_menu_items = [item[0] for item in all_chapters_for_menu]
-        chapter_menu = TerminalMenu(chapter_menu_items, title=" Chọn chương (Space để chọn, Enter để xác nhận) ", multi_select=True, show_multi_select_hint=True, multi_select_cursor_style=("fg_yellow", "bold"))
-        selected_chapter_indices = chapter_menu.show()
-        if selected_chapter_indices:
-            for index in selected_chapter_indices:
-                selected_chapters_relative.append(all_chapters_for_menu[index][1])
+    if is_cli_mode:
+        if args.volumes:
+            selected_indices = [int(i) - 1 for i in args.volumes]
+            for index in selected_indices:
+                if 0 <= index < len(chapter_data):
+                    selected_chapters_relative.extend(chapter_data[index]['chapters'])
+                else:
+                    print(f"[Cảnh báo] Bỏ qua chỉ số tập không hợp lệ: {index + 1}")
+        elif args.chapters:
+            all_chapters_flat = [chap_url for vol in chapter_data for chap_url in vol['chapters']]
+            selected_indices = [int(i) - 1 for i in args.chapters]
+            for index in selected_indices:
+                if 0 <= index < len(all_chapters_flat):
+                    selected_chapters_relative.append(all_chapters_flat[index])
+                else:
+                    print(f"[Cảnh báo] Bỏ qua chỉ số chương không hợp lệ: {index + 1}")
+        else: # Mặc định là tải tất cả
+            selected_chapters_relative.extend(chap for vol in chapter_data for chap in vol['chapters'])
+    else:
+        # Menu chọn chương/tập (chế độ tương tác)
+        main_menu_items = ["Tải xuống tất cả", "Chọn tập để tải", "Chọn chương để tải"]
+        main_menu = TerminalMenu(main_menu_items, title=" Tùy chọn tải xuống ", menu_cursor_style=("fg_cyan", "bold"), menu_highlight_style=("bg_cyan", "fg_black"))
+        main_menu_selection_index = main_menu.show()
+
+        if main_menu_selection_index == 0: # Tải tất cả
+            for volume in chapter_data:
+                selected_chapters_relative.extend(volume['chapters'])
+        elif main_menu_selection_index == 1: # Chọn tập
+            volume_titles = [volume['volume'] for volume in chapter_data]
+            volume_menu = TerminalMenu(volume_titles, title=" Chọn tập (Space để chọn, Enter để xác nhận) ", multi_select=True, show_multi_select_hint=True, multi_select_cursor_style=("fg_yellow", "bold"))
+            selected_volume_indices = volume_menu.show()
+            if selected_volume_indices:
+                for index in selected_volume_indices:
+                    selected_chapters_relative.extend(chapter_data[index]['chapters'])
+        elif main_menu_selection_index == 2: # Chọn chương
+            all_chapters_for_menu = [(f"{vol['volume']}: {ch.split('/')[-1]}", ch) for vol in chapter_data for ch in vol['chapters']]
+            chapter_menu_items = [item[0] for item in all_chapters_for_menu]
+            chapter_menu = TerminalMenu(chapter_menu_items, title=" Chọn chương (Space để chọn, Enter để xác nhận) ", multi_select=True, show_multi_select_hint=True, multi_select_cursor_style=("fg_yellow", "bold"))
+            selected_chapter_indices = chapter_menu.show()
+            if selected_chapter_indices:
+                for index in selected_chapter_indices:
+                    selected_chapters_relative.append(all_chapters_for_menu[index][1])
 
     if not selected_chapters_relative:
         print("Không có chương nào được chọn. Đang thoát.")
@@ -469,31 +583,37 @@ async def main():
     base_url = "https://valvrareteam.net"
     chapter_urls = [base_url + rel_url for rel_url in selected_chapters_relative]
     
-    # Menu chọn cách gộp file
-    gop_menu_items = ["Xuất riêng từng chương (mặc định)", "Gộp các chương theo từng Volume", "Gộp tất cả chương đã chọn thành 1 file"]
-    gop_menu = TerminalMenu(gop_menu_items, title=" Chọn cách thức xuất file ", menu_cursor_style=("fg_green", "bold"), menu_highlight_style=("bg_green", "fg_black"))
-    gop_choice_index = gop_menu.show()
-    
-    # Menu chọn định dạng
-    format_items = ["PDF", "EPUB", "HTML", "Markdown (.md)", "Text (.txt)"]
-    format_menu = TerminalMenu(format_items, title=" Chọn định dạng file (Space để chọn, Enter để xác nhận) ", multi_select=True, show_multi_select_hint=True, multi_select_cursor_style=("fg_yellow", "bold"))
-    selected_format_indices = format_menu.show()
-
-    if not selected_format_indices:
-        print("Không có định dạng nào được chọn. Đang thoát.")
-        return
+    # Chọn cách gộp và định dạng file
+    if is_cli_mode:
+        gop_map = {'rieng': 0, 'volume': 1, 'tatca': 2}
+        gop_choice_index = gop_map[args.gop]
+        formats_to_export = [f.upper() for f in args.format]
+        font_name = args.font
+        CONCURRENT_TASKS = args.tasks
+    else:
+        gop_menu_items = ["Xuất riêng từng chương (mặc định)", "Gộp các chương theo từng Volume", "Gộp tất cả chương đã chọn thành 1 file"]
+        gop_menu = TerminalMenu(gop_menu_items, title=" Chọn cách thức xuất file ", menu_cursor_style=("fg_green", "bold"), menu_highlight_style=("bg_green", "fg_black"))
+        gop_choice_index = gop_menu.show()
         
-    formats_to_export = [format_items[i] for i in selected_format_indices]
-    
-    font_name = 'DejaVuSans'
-    if "PDF" in formats_to_export:
-        font_choice = input("Chọn font cho PDF:\n1. Noto Serif\n2. DejaVu Sans (mặc định)\nLựa chọn của bạn (1/2, Enter để dùng mặc định): ").strip()
-        if font_choice == '1':
-            font_name = 'NotoSerif'
+        format_items = ["PDF", "EPUB", "HTML", "Markdown (.md)", "Text (.txt)"]
+        format_menu = TerminalMenu(format_items, title=" Chọn định dạng file (Space để chọn, Enter để xác nhận) ", multi_select=True, show_multi_select_hint=True, multi_select_cursor_style=("fg_yellow", "bold"))
+        selected_format_indices = format_menu.show()
+        if not selected_format_indices:
+            print("Không có định dạng nào được chọn. Đang thoát.")
+            return
+        formats_to_export = [format_items[i] for i in selected_format_indices]
+        
+        font_name = 'DejaVuSans'
+        if "PDF" in formats_to_export:
+            font_choice = input("Chọn font cho PDF:\n1. Noto Serif\n2. DejaVu Sans (mặc định)\nLựa chọn của bạn (1/2, Enter để dùng mặc định): ").strip()
+            if font_choice == '1':
+                font_name = 'NotoSerif'
 
-    CONCURRENT_TASKS_str = input("Nhập số lượng tác vụ song song tối đa (mặc định là 5): ")
-    CONCURRENT_TASKS = int(CONCURRENT_TASKS_str) if CONCURRENT_TASKS_str.isdigit() and int(CONCURRENT_TASKS_str) > 0 else 5
+        CONCURRENT_TASKS_str = input("Nhập số lượng tác vụ song song tối đa (mặc định là 5): ")
+        CONCURRENT_TASKS = int(CONCURRENT_TASKS_str) if CONCURRENT_TASKS_str.isdigit() and int(CONCURRENT_TASKS_str) > 0 else 5
+
     semaphore = asyncio.Semaphore(CONCURRENT_TASKS)
+    # ... (phần còn lại của logic tải và xử lý file giữ nguyên)
     
     print(f"Chuẩn bị tải {len(chapter_urls)} chương với tối đa {CONCURRENT_TASKS} tác vụ song song...")
 
