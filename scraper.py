@@ -435,6 +435,11 @@ async def main():
         default=5,
         help="Số lượng tác vụ tải song song. Mặc định: 5."
     )
+    parser.add_argument(
+        '--cookie-file',
+        dest='cookie_file',
+        help="Đường dẫn đến file cookies.json để đăng nhập."
+    )
     
     selection_group = parser.add_mutually_exclusive_group()
     selection_group.add_argument(
@@ -500,7 +505,29 @@ async def main():
     # ... (phần lay_thong_tin_truyen và get_chapter_tree_list giữ nguyên)
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        story_info = await lay_thong_tin_truyen(browser, trang_chinh.split("https://valvrareteam.net/")[-1])
+        context = browser
+        close_context = False
+        if args.cookie_file:
+            if not os.path.exists(args.cookie_file):
+                print(f"[Lỗi] Không tìm thấy file cookie tại: {args.cookie_file}")
+                await browser.close()
+                return
+            try:
+                print(f"Đang sử dụng cookie từ file: {args.cookie_file}")
+                context = await browser.new_context()
+                close_context = True
+                with open(args.cookie_file, 'r', encoding='utf-8') as f:
+                    cookies = json.load(f)
+                await context.add_cookies(cookies)
+            except Exception as e:
+                print(f"[Lỗi] Không thể đọc hoặc áp dụng file cookie: {e}")
+                await browser.close()
+                return
+        
+        story_info = await lay_thong_tin_truyen(context, trang_chinh.split("https://valvrareteam.net/")[-1])
+        
+        if close_context:
+            await context.close()
         await browser.close()
     print("Đang lấy danh sách chương từ trang chính của truyện...")
     await get_chapter_tree_list(trang_chinh, output_file="chapter_list.json")
@@ -636,11 +663,33 @@ async def main():
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        tasks = [process_url(browser, url) for url in chapter_urls]
+        context = browser
+        close_context = False
+        if args.cookie_file:
+            if not os.path.exists(args.cookie_file):
+                print(f"[Lỗi] Không tìm thấy file cookie tại: {args.cookie_file}")
+                await browser.close()
+                return
+            try:
+                print(f"Đang sử dụng cookie từ file: {args.cookie_file}")
+                context = await browser.new_context()
+                close_context = True
+                with open(args.cookie_file, 'r', encoding='utf-8') as f:
+                    cookies = json.load(f)
+                await context.add_cookies(cookies)
+            except Exception as e:
+                print(f"[Lỗi] Không thể đọc hoặc áp dụng file cookie: {e}")
+                await browser.close()
+                return
+
+        tasks = [process_url(context, url) for url in chapter_urls]
         with alive_bar(len(tasks), title=f"Đang tải nội dung", bar='filling', spinner='dots_waves') as bar:
             for future in asyncio.as_completed(tasks):
                 await future
                 bar()
+
+        if close_context:
+            await context.close()
         await browser.close()
     
     print("Đã tải xong nội dung. Bắt đầu tạo file...")
@@ -784,4 +833,6 @@ if __name__ == "__main__":
     finally:
         if os.path.exists("chapter_list.json"):
             os.remove("chapter_list.json")
+        if os.path.exists("cover.jpg"):
+            os.remove("cover.jpg")
         print("Đã dọn dẹp file tạm. Hẹn gặp lại!")
