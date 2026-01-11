@@ -62,7 +62,7 @@ echo ""
 
 # --- Install Playwright browsers ---
 echo "Installing Playwright browsers..."
-"$VENV_PYTHON" -m playwright install chromium
+"$VENV_PYTHON" -m playwright install chromium-headless-shell
 echo ""
 
 # --- Note about fonts ---
