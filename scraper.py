@@ -621,7 +621,18 @@ async def main():
         gop_menu_items = ["Xuất riêng từng chương (mặc định)", "Gộp các chương theo từng Volume", "Gộp tất cả chương đã chọn thành 1 file"]
         gop_menu = TerminalMenu(gop_menu_items, title=" Chọn cách thức xuất file ", menu_cursor_style=("fg_green", "bold"), menu_highlight_style=("bg_green", "fg_black"))
         gop_choice_index = gop_menu.show()
-        
+        if gop_choice_index == 0: # xuat rieng tung chuong
+            # Tạo cấu trúc thư mục trước
+            tree_path = os.path.join(output_folder, "tree_map.txt")
+            await get_chapter_tree_folder(url=trang_chinh, output_file=tree_path)
+            create_folders_from_tree(tree_path, output_folder)
+        elif gop_choice_index == 1: # Gop theo volume
+            # Tạo cấu trúc thư mục trước
+            tree_path = os.path.join(output_folder, "tree_map.txt")
+            await get_chapter_tree_folder(url=trang_chinh, output_file=tree_path)
+            create_folders_from_tree(tree_path, output_folder)
+        elif gop_choice_index == 3:
+            os.mkdir(output_folder)
         format_items = ["PDF", "EPUB", "HTML", "Markdown (.md)", "Text (.txt)"]
         format_menu = TerminalMenu(format_items, title=" Chọn định dạng file (Space để chọn, Enter để xác nhận) ", multi_select=True, show_multi_select_hint=True, multi_select_cursor_style=("fg_yellow", "bold"))
         selected_format_indices = format_menu.show()
@@ -645,9 +656,9 @@ async def main():
     print(f"Chuẩn bị tải {len(chapter_urls)} chương với tối đa {CONCURRENT_TASKS} tác vụ song song...")
 
     # Tạo cấu trúc thư mục trước
-    tree_path = os.path.join(output_folder, "tree_map.txt")
-    await get_chapter_tree_folder(url=trang_chinh, output_file=tree_path)
-    create_folders_from_tree(tree_path, output_folder)
+    #tree_path = os.path.join(output_folder, "tree_map.txt")
+    #await get_chapter_tree_folder(url=trang_chinh, output_file=tree_path)
+    #create_folders_from_tree(tree_path, output_folder)
     
     # Dictionary để lưu content đã scrape
     scraped_content = {}
