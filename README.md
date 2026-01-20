@@ -1,13 +1,13 @@
 # Web Novel Scraper
 
 ## Mô tả dự án
-Dự án **Web Novel Scraper** là một công cụ được viết bằng Python để tải và lưu các chương truyện từ trang web [Valvrare Team](https://valvrareteam.net) dưới dạng file PDF và/hoặc EPUB. Công cụ này sử dụng các thư viện như `playwright`, `BeautifulSoup`, `ebooklib`, và `reportlab` để thu thập nội dung (bao gồm văn bản và hình ảnh minh họa) từ các chương truyện, sau đó tạo file đầu ra theo định dạng người dùng chọn.
+Dự án **Web Novel Scraper** là một công cụ được viết bằng Python để tải và lưu các bộ truyện từ trang web [Valvrare Team](https://valvrareteam.net) dưới dạng file PDF và/hoặc EPUB. Công cụ này sử dụng các thư viện như `playwright`, `BeautifulSoup`, `ebooklib`, và `reportlab` để thu thập nội dung (bao gồm văn bản và hình ảnh minh họa) từ các chương truyện, sau đó tạo file đầu ra theo định dạng người dùng chọn.
 
 ## Tính năng
 - **Tải nội dung song song**: Hỗ trợ tải nhiều chương cùng lúc với số lượng tác vụ song song tùy chỉnh.
-- **Định dạng đầu ra**: Lưu nội dung dưới dạng PDF, EPUB, hoặc cả hai.
+- **Định dạng đầu ra**: Lưu nội dung dưới dạng PDF, EPUB, hoặc các định dạng khác.
 - **Ghi log lỗi**: Lưu danh sách các chương bị lỗi vào file `cac_chuong_da_bo_qua.txt`.
-- **Tự động sắp xếp files**(beta): Tự động tạo và sắp xếp các file chương(chapter) vào các thư mục tập(volume).
+- **Tự động sắp xếp files**: Tự động tạo và sắp xếp các file chương(chapter) vào các thư mục tập(volume).
 
 ## Yêu cầu cài đặt
 Để chạy dự án, bạn cần cài đặt Python 3.8+ và các thư viện sau:
@@ -17,18 +17,18 @@ Dự án **Web Novel Scraper** là một công cụ được viết bằng Pytho
 pip install -r requirement.txt
 ```
 
-Cài đặt trình duyệt Playwright:
+Cài đặt trình duyệt Playwright(chromium-headless-shell):
 ```bash
-playwright install
+playwright install chromium-headless-shell
 ```
- Font hỗ trợ tiếng Việt:
+ Font hỗ trợ tiếng Việt(nếu tải PDF):
 - **DejaVuSans** (mặc định): Tải tại [DejaVu Fonts](https://dejavu-fonts.github.io/).
 - **NotoSerif**: Tải tại [Google Fonts](https://fonts.google.com/noto/specimen/Noto+Serif).
 - Đặt file font (.ttf) vào cùng thư mục với mã nguồn để sử dụng trong file PDF.
 
 -**Cách 2: Sử dụng file .bat**
 
-chạy file `install.bat` để tự động cài đặt các thư viện cần thiết và trình duyệt Playwright(không bao gồm font).
+chạy file `install.bat` hoặc `install.sh` để tự động cài đặt các thư viện cần thiết trong môi trường ảo(venv) và trình duyệt Playwright(không bao gồm font).
 ## Cách sử dụng
 1. Chạy file Python:
    ```bash
@@ -36,7 +36,7 @@ chạy file `install.bat` để tự động cài đặt các thư viện cần 
    ```
 2. Làm theo hướng dẫn trong terminal
 
-## Cấu trúc thư mục
+## Cấu trúc thư mục(outdated)
 Sau khi chạy, thư mục dự án sẽ có cấu trúc như sau:
 ```
 project/
@@ -55,6 +55,7 @@ project/
 ```
 
 ## Lưu ý
+- Cookie file is unusable for now
 - Đảm bảo kết nối internet ổn định để tải nội dung và hình ảnh.
 - Một số chương có thể bị bỏ qua nếu gặp lỗi tải (xem file `cac_chuong_da_bo_qua.txt`).
 - Font tiếng Việt cần được cài đặt đúng để tránh lỗi hiển thị trong file PDF.
