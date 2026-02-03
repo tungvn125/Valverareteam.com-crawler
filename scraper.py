@@ -539,6 +539,7 @@ async def main():
     except Exception as e:
         print(f"Đã xảy ra lỗi khi đọc file chapter_list.json: {e}")
         return
+    
 
     # --- Xử lý lựa chọn của người dùng (CLI hoặc tương tác) ---
 
@@ -546,7 +547,7 @@ async def main():
     if is_cli_mode:
         minh_hoa_choice = 'y' if args.khong_minh_hoa else 'n'
     else:
-        minh_hoa_choice = input("Bạn có muốn bỏ qua các chương minh họa không? (Y/n): ").strip().lower()
+        minh_hoa_choice = input("Bạn có muốn bỏ qua các chương minh họa và các chương lỗi không? (Y/n): ").strip().lower()
 
     if not minh_hoa_choice or minh_hoa_choice in ["y", "yes"]:
         print("Bạn đã chọn bỏ qua các chương minh họa.")

@@ -142,10 +142,16 @@ async def get_chapter_tree_list(url: str, output_file: str = "chapter_list.json"
             chapters = volume.find_all('div', class_='module-chapter-item')
             if chapters:
                 for chapter in chapters:
-                    chapter_link = chapter.find('a', class_='chapter-title-link')['href']
-                    if chapter_link:
-                        chapter_title = chapter_link
+                    try:
+                        chapter_link = chapter.find('a', class_='chapter-title-link')['href']
+                        if chapter_link:
+                            chapter_title = chapter_link
+                            chapters_list.append(chapter_title)
+                    except Exception as e :
+                        chapter_title = "minh-hoa" # to remove
                         chapters_list.append(chapter_title)
+
+
             else:
                 chapters_list.append("[Không có chương nào trong tập này]")
 
@@ -162,7 +168,11 @@ async def get_chapter_tree_list(url: str, output_file: str = "chapter_list.json"
         return data
 
     except Exception as e:
-        print(f"Đã xảy ra lỗi: {e}")
+        #print(f"Đã xảy ra lỗi: {e}")
+        err = f"notify-send {e}"
+        import subprocess
+        #err = f"notify-send {e}"
+        subprocess.run(err)
         return []
 def get_chapters_by_volume_index(file_path: str, index: int):
     try:
