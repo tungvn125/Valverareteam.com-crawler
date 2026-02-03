@@ -28,7 +28,7 @@ pip install -r requirements.txt
 
 :: Install Playwright browsers
 echo Installing Playwright browsers...
-playwright install chromium
+playwright install chromium-headless-shell
 
 :: Download DejaVuSans font
 echo Please download the DejaVuSans or NotoSerif font manually and place it in the project directory.
