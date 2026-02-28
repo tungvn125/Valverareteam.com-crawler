@@ -12,23 +12,24 @@ Dự án **Web Novel Scraper** là một công cụ được viết bằng Pytho
 ## Yêu cầu cài đặt
 Để chạy dự án, bạn cần cài đặt Python 3.8+ và các thư viện sau:
 
--**Cách 1: cài gói thủ oông**
+-**Cách 1: Cài đặt thủ công**
 ```bash
-pip install -r requirement.txt
+pip install -r requirements.txt
 ```
 
-Cài đặt trình duyệt Playwright(chromium-headless-shell):
+Cài đặt trình duyệt Playwright (chromium-headless-shell):
 ```bash
 playwright install chromium-headless-shell
 ```
- Font hỗ trợ tiếng Việt(nếu tải PDF):
-- **DejaVuSans** (mặc định): Tải tại [DejaVu Fonts](https://dejavu-fonts.github.io/).
-- **NotoSerif**: Tải tại [Google Fonts](https://fonts.google.com/noto/specimen/Noto+Serif).
-- Đặt file font (.ttf) vào cùng thư mục với mã nguồn để sử dụng trong file PDF.
 
--**Cách 2: Sử dụng file .bat**
+Font hỗ trợ tiếng Việt (nếu tải PDF):
+- **DejaVuSans** (mặc định): Tự động tải xuống khi cần.
+- **NotoSerif**: Tự động tải xuống khi cần.
+- Nếu muốn dùng font có sẵn, đặt file font (.ttf) vào cùng thư mục với mã nguồn.
 
-chạy file `install.bat` hoặc `install.sh` để tự động cài đặt các thư viện cần thiết trong môi trường ảo(venv) và trình duyệt Playwright(không bao gồm font).
+-**Cách 2: Sử dụng file cài đặt tự động**
+
+Chạy file `install.bat` (Windows) hoặc `install.sh` (Linux/macOS) để tự động cài đặt các thư viện cần thiết trong môi trường ảo (venv) và trình duyệt Playwright.
 ## Cách sử dụng
 1. Chạy file Python:
    ```bash
@@ -55,10 +56,9 @@ project/
 ```
 
 ## Lưu ý
-- Cookie file is unusable for now
 - Đảm bảo kết nối internet ổn định để tải nội dung và hình ảnh.
 - Một số chương có thể bị bỏ qua nếu gặp lỗi tải (xem file `cac_chuong_da_bo_qua.txt`).
-- Font tiếng Việt cần được cài đặt đúng để tránh lỗi hiển thị trong file PDF.
+- Font tiếng Việt sẽ tự động tải xuống khi cần.
 - Tôn trọng quyền tác giả và chỉ sử dụng nội dung tải về cho mục đích cá nhân.
 
 ## Giấy phép
