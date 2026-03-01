@@ -27,17 +27,42 @@ Font hỗ trợ tiếng Việt (nếu tải PDF):
 - **NotoSerif**: Tự động tải xuống khi cần.
 - Nếu muốn dùng font có sẵn, đặt file font (.ttf) vào cùng thư mục với mã nguồn.
 
--**Cách 2: Sử dụng file cài đặt tự động**
+-**Cách 1: Sử dụng file cài đặt tự động**
 
 Chạy file `install.bat` (Windows) hoặc `install.sh` (Linux/macOS) để tự động cài đặt các thư viện cần thiết trong môi trường ảo (venv) và trình duyệt Playwright.
-## Cách sử dụng
-1. Chạy file Python:
-   ```bash
-   python scraper.py
-   ```
-2. Làm theo hướng dẫn trong terminal
 
-## Cấu trúc thư mục(outdated)
+-**Cách 2: Sử dụng file setup.sh (Linux/macOS) - Khuyến nghị**
+
+File `setup.sh` cung cấp các tính năng nâng cao:
+- Tạo môi trường ảo sử dụng `uv` (nếu có) hoặc `venv` mặc định
+- Cài đặt dependencies từ `requirements.txt`
+- Cài đặt trình duyệt Playwright
+- **Thêm alias `vvrt`** vào shell config (bash/zsh) để chạy scraper từ bất kỳ đâu
+- Hỗ trợ chạy kiểm thử (pytest) sau khi cài đặt
+
+```bash
+chmod +x setup.sh
+./setup.sh
+```
+
+**Lưu ý:** Alias `vvrt` có thể không hoạt động ngay lập tức. Nếu lệnh `vvrt` không được nhận diện, hãy chạy lệnh `source ~/.bashrc` (bash) hoặc `source ~/.zshrc` (zsh) hoặc khởi động lại terminal.
+
+Sau khi cài đặt, bạn có thể chạy scraper bằng lệnh `vvrt` từ bất kỳ thư mục nào.
+## Cách sử dụng
+
+**Phương pháp 1: Sử dụng Python trực tiếp**
+```bash
+python scraper.py
+```
+
+**Phương pháp 2: Sử dụng alias `vvrt` (sau khi chạy `setup.sh`)**
+```bash
+vvrt
+```
+
+Sau đó làm theo hướng dẫn trong terminal.
+
+## Cấu trúc thư mục
 Sau khi chạy, thư mục dự án sẽ có cấu trúc như sau:
 ```
 project/
@@ -49,7 +74,9 @@ project/
 |      ├── chuong-1-vi-du.epub
 |      ├── ...
 │   ├── Tập...
-├── install.bat               # File tự động cài đặt
+├── setup.sh                  # File cài đặt nâng cao (Linux/macOS)
+├── install.sh                # File cài đặt tự động (Linux/macOS)
+├── install.bat               # File cài đặt tự động (Windows)
 ├── requirements.txt          # File chứa các thư viện cần thiết
 ├── LICENSE                   # Giấy phép MIT
 └── README.md                 # File hướng dẫn sử dụng
@@ -60,6 +87,15 @@ project/
 - Một số chương có thể bị bỏ qua nếu gặp lỗi tải (xem file `cac_chuong_da_bo_qua.txt`).
 - Font tiếng Việt sẽ tự động tải xuống khi cần.
 - Tôn trọng quyền tác giả và chỉ sử dụng nội dung tải về cho mục đích cá nhân.
+
+## Loi thuong gap
+- After running `setup.py`: can not run `vvrt` command not found -> manualy add alias to your shell config
+```
+# Bash/Zsh
+alias vvrt='/home/tung/dev/Valverareteam.com-crawler/.venv/bin/python /home/tung/dev/Valverareteam.com-crawler/scraper.py'
+# Other shell
+# not yet
+```
 
 ## Giấy phép
 Dự án này được phát hành dưới [Giấy phép MIT](LICENSE). Xem file `LICENSE` để biết thêm chi tiết.
