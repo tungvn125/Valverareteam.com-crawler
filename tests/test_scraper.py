@@ -298,7 +298,7 @@ class TestScrapingIntegration:
     @pytest.mark.asyncio
     async def test_lay_thong_tin_truyen_structure(self):
         """Test story info scraping with mocked response"""
-        from scraper import lay_thong_tin_truyen
+        from scraper_core import lay_thong_tin_truyen
         import httpx
 
         mock_html = """
@@ -306,7 +306,6 @@ class TestScrapingIntegration:
             <h1 class="rd-novel-title">Test Story</h1>
             <span class="rd-author-name">Author Name</span>
             <div class="rd-description-content">Story description</div>
-            <img class="rd-cover-image" src="https://example.com/cover.jpg"/>
         </html>
         """
 
@@ -323,9 +322,9 @@ class TestScrapingIntegration:
 
             result = await lay_thong_tin_truyen(instance, "test-story")
 
-            assert result['title'] == 'Test Story'
-            assert result['author'] == 'Author Name'
-            assert result['description'] == 'Story description'
+            assert result.title == 'Test Story'
+            assert result.author == 'Author Name'
+            assert result.description == 'Story description'
 
 
 # =============================================================================
