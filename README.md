@@ -62,26 +62,6 @@ vvrt
 
 Sau đó làm theo hướng dẫn trong terminal.
 
-## Cấu trúc thư mục
-Sau khi chạy, thư mục dự án sẽ có cấu trúc như sau:
-```
-project/
-│
-├── scraper.py                # File mã nguồn chính
-├── tao_so_do_cay.py          # File mã nguồn chứa tính năng
-├── Tên Truyện/               # Thư mục chứa các file PDF/EPUB
-│   ├── Tập 1-Ví dụ
-|      ├── chuong-1-vi-du.epub
-|      ├── ...
-│   ├── Tập...
-├── setup.sh                  # File cài đặt nâng cao (Linux/macOS)
-├── install.sh                # File cài đặt tự động (Linux/macOS)
-├── install.bat               # File cài đặt tự động (Windows)
-├── requirements.txt          # File chứa các thư viện cần thiết
-├── LICENSE                   # Giấy phép MIT
-└── README.md                 # File hướng dẫn sử dụng
-```
-
 ## Lưu ý
 - Đảm bảo kết nối internet ổn định để tải nội dung và hình ảnh.
 - Một số chương có thể bị bỏ qua nếu gặp lỗi tải (xem file `cac_chuong_da_bo_qua.txt`).
@@ -92,7 +72,7 @@ project/
 - After running `setup.py`: can not run `vvrt` command not found -> manualy add alias to your shell config
 ```
 # Bash/Zsh
-alias vvrt='/home/tung/dev/Valverareteam.com-crawler/.venv/bin/python /home/tung/dev/Valverareteam.com-crawler/scraper.py'
+alias vvrt='/home/$USER/dev/Valverareteam.com-crawler/.venv/bin/python /home/$USER/dev/Valverareteam.com-crawler/scraper.py'
 # Other shell
 # not yet
 ```
