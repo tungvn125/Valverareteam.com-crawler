@@ -89,7 +89,7 @@ Sau đó làm theo hướng dẫn trong terminal.
 - After running `setup.py`: can not run `vvrt` command not found -> manualy add alias to your shell config
 ```
 # Bash/Zsh
-alias vvrt='/home/$USER/dev/Valverareteam.com-crawler/.venv/bin/python /home/$USER/dev/Valverareteam.com-crawler/scraper.py'
+alias vvrt='path-to-your-python path-to-scraper.py'
 # Other shell
 
 ```
