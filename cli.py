@@ -21,9 +21,10 @@ from exporter import (
 )
 from utils import sanitize_filename, create_folders_from_tree, normalize_vietnamese_url, HEADERS
 from models import StoryInfo, ContentItem
-
+from session_manager import load_session, save_session, capture_session
 
 skipped_urls: List[str] = []
+SESSION_FILE = ".vvr_session.json"
 
 
 async def main() -> None:
@@ -78,6 +79,21 @@ async def main() -> None:
         default=5,
         help="Số lượng tác vụ tải song song. Mặc định: 5."
     )
+    parser.add_argument(
+        '--login',
+        action='store_true',
+        help="Thực hiện đăng nhập thủ công để lấy session."
+    )
+    parser.add_argument(
+        '--refresh-session',
+        action='store_true',
+        help="Xóa session cũ và đăng nhập lại."
+    )
+    parser.add_argument(
+        '--verbose',
+        action='store_true',
+        help="Hiển thị log chi tiết (bao gồm cookies, headers) để debug."
+    )
 
     selection_group = parser.add_mutually_exclusive_group()
     selection_group.add_argument(
@@ -120,6 +136,59 @@ async def main() -> None:
     output_folder = args.output_folder if is_cli_mode and args.output_folder else sanitize_filename(ten_truyen_raw.strip())
     os.makedirs(output_folder, exist_ok=True)
 
+    # --- Session Management ---
+    session_state = load_session(SESSION_FILE)
+    if args.refresh_session and os.path.exists(SESSION_FILE):
+        os.remove(SESSION_FILE)
+        session_state = None
+
+    if args.login or (not session_state):
+        do_login = args.login
+        if not do_login:
+            prompt = "\nKhông tìm thấy session. Bạn có muốn đăng nhập thủ công để vượt Cloudflare/vào chương khóa không? (Y/n): "
+            # If in CLI mode and --login wasn't provided, we still ask
+            # If in interactive mode, we definitely ask
+            choice = input(prompt).strip().lower()
+            if not choice or choice in ['y', 'yes']:
+                do_login = True
+            else:
+                print("Bỏ qua đăng nhập. Một số nội dung có thể không truy cập được.\n")
+
+        if do_login:
+            print("\nĐang khởi tạo trình duyệt để lấy session...")
+            # Use a generic URL if we don't have the story page yet
+            capture_url = "https://valvrareteam.net/"
+            session_state = await capture_session(capture_url)
+            save_session(session_state, SESSION_FILE)
+            print("Session đã được lưu.\n")
+
+    # Convert storage_state cookies to httpx compatible cookies
+    cookies = {}
+    if session_state and 'cookies' in session_state:
+        for c in session_state['cookies']:
+            cookies[c['name']] = c['value']
+
+    if args.verbose:
+        print("\n" + "="*50)
+        print("[DEBUG] --- SESSION & COOKIE DATA ---")
+        if session_state:
+            print(f"Số lượng cookies từ session: {len(session_state.get('cookies', []))}")
+            if session_state.get('cookies'):
+                for c in session_state['cookies']:
+                    print(f"  - {c['name']}: {c['value'][:20]}...")
+        else:
+            print("Không nạp được session.")
+        print(f"[DEBUG] Headers đang dùng: {HEADERS['User-Agent']}")
+        print("="*50 + "\n")
+
+    sitemap_url = "https://valvrareteam.net/sitemap.xml"
+
+    # Use httpx for sitemap request
+    async with httpx.AsyncClient(headers=HEADERS, cookies=cookies) as client:
+        response = await client.get(sitemap_url)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.content, "lxml-xml")
+
     trang_chinh = None
     for loc in soup.find_all("loc"):
         url = loc.text
@@ -132,11 +201,11 @@ async def main() -> None:
         return
 
     # Get story info
-    async with httpx.AsyncClient(headers=HEADERS) as client:
-        story_info = await lay_thong_tin_truyen(client, trang_chinh.split("https://valvrareteam.net/")[-1])
+    async with httpx.AsyncClient(headers=HEADERS, cookies=cookies) as client:
+        story_info = await lay_thong_tin_truyen(client, trang_chinh.split("https://valvrareteam.net/")[-1], verbose=args.verbose)
 
     print("Đang lấy danh sách chương từ trang chính của truyện...")
-    await tao_so_do_cay.get_chapter_tree_list(trang_chinh, output_file="chapter_list.json")
+    await tao_so_do_cay.get_chapter_tree_list(trang_chinh, output_file="chapter_list.json", session_state=session_state)
     await asyncio.sleep(1)
 
     try:
@@ -228,12 +297,12 @@ async def main() -> None:
         if gop_choice_index == 0:  # xuat rieng tung chuong
             # Tạo cấu trúc thư mục trước
             tree_path = os.path.join(output_folder, "tree_map.txt")
-            await tao_so_do_cay.get_chapter_tree_folder(url=trang_chinh, output_file=tree_path)
+            await tao_so_do_cay.get_chapter_tree_folder(url=trang_chinh, output_file=tree_path, cookies=cookies)
             create_folders_from_tree(tree_path, output_folder)
         elif gop_choice_index == 1:  # Gop theo volume
             # Tạo cấu trúc thư mục trước
             tree_path = os.path.join(output_folder, "tree_map.txt")
-            await tao_so_do_cay.get_chapter_tree_folder(url=trang_chinh, output_file=tree_path)
+            await tao_so_do_cay.get_chapter_tree_folder(url=trang_chinh, output_file=tree_path, cookies=cookies)
             create_folders_from_tree(tree_path, output_folder)
         elif gop_choice_index == 3:
             os.mkdir(output_folder)
@@ -257,7 +326,7 @@ async def main() -> None:
     # Scrape chapters
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        scraped_content = await scrape_chapters(browser, chapter_urls, CONCURRENT_TASKS, skipped_urls=skipped_urls)
+        scraped_content = await scrape_chapters(browser, chapter_urls, CONCURRENT_TASKS, skipped_urls=skipped_urls, session_state=session_state, verbose=args.verbose)
         await browser.close()
 
     print("Đã tải xong nội dung. Bắt đầu tạo file...")

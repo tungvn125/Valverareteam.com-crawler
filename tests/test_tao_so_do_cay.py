@@ -235,6 +235,24 @@ class TestGetChapterTreeFolder:
 class TestGetChapterTreeList:
     """Tests for the get_chapter_tree_list function (uses Playwright)"""
 
+    def _setup_mock_playwright(self, mock_playwright, mock_html):
+        mock_browser = AsyncMock()
+        mock_context = AsyncMock()
+        mock_page = AsyncMock()
+        mock_page.content = AsyncMock(return_value=mock_html)
+
+        mock_p_instance = MagicMock()
+        mock_p_instance.chromium.launch = AsyncMock(return_value=mock_browser)
+
+        mock_browser.__aenter__ = AsyncMock(return_value=mock_browser)
+        mock_browser.__aexit__ = AsyncMock(return_value=None)
+        mock_browser.new_context = AsyncMock(return_value=mock_context)
+        mock_context.new_page = AsyncMock(return_value=mock_page)
+
+        mock_playwright.return_value.__aenter__.return_value = mock_p_instance
+        mock_playwright.return_value.__aexit__ = AsyncMock(return_value=None)
+        return mock_browser, mock_context, mock_page
+
     @pytest.mark.asyncio
     async def test_creates_json_output(self, tmp_path):
         """Test that JSON output file is created with correct structure"""
@@ -254,22 +272,8 @@ class TestGetChapterTreeList:
 
         output_file = str(tmp_path / "chapters.json")
 
-        # Mock Playwright
         with patch('tao_so_do_cay.async_playwright') as mock_playwright:
-            mock_browser = AsyncMock()
-            mock_page = AsyncMock()
-            mock_page.content = AsyncMock(return_value=mock_html)
-
-            mock_p_instance = MagicMock()
-            mock_p_instance.chromium.launch = AsyncMock(return_value=mock_browser)
-
-            mock_browser.__aenter__ = AsyncMock(return_value=mock_browser)
-            mock_browser.__aexit__ = AsyncMock(return_value=None)
-            mock_browser.new_page = AsyncMock(return_value=mock_page)
-
-            mock_playwright.return_value.__aenter__.return_value = mock_p_instance
-            mock_playwright.return_value.__aexit__ = AsyncMock(return_value=None)
-
+            self._setup_mock_playwright(mock_playwright, mock_html)
             result = await get_chapter_tree_list("https://example.com/story", output_file)
 
             assert os.path.exists(output_file)
@@ -279,6 +283,45 @@ class TestGetChapterTreeList:
             assert len(data) == 1
             assert data[0]['volume'] == 'Volume 1'
             assert len(data[0]['chapters']) == 2
+
+    @pytest.mark.asyncio
+    async def test_crawls_both_published_and_protected_chapters(self, tmp_path):
+        """Test that both published and protected chapters are crawled"""
+        mock_html = """
+        <html>
+            <div class="module-container">
+                <h3 class="module-title">Volume 1</h3>
+                <div class="module-chapter-item chapter-item-animated chapter-mode-published">
+                    <a class="chapter-title-link" href="/chap-published">Published</a>
+                </div>
+                <div class="module-chapter-item chapter-item-animated chapter-mode-protected">
+                    <a class="chapter-title-link" href="/chap-protected">Protected</a>
+                </div>
+            </div>
+        </html>
+        """
+
+        output_file = str(tmp_path / "chapters_mixed.json")
+
+        with patch('tao_so_do_cay.async_playwright') as mock_playwright:
+            self._setup_mock_playwright(mock_playwright, mock_html)
+            result = await get_chapter_tree_list("https://example.com/story", output_file)
+
+            assert len(result[0]['chapters']) == 2
+            assert '/chap-published' in result[0]['chapters']
+            assert '/chap-protected' in result[0]['chapters']
+
+    @pytest.mark.asyncio
+    async def test_uses_session_state(self, tmp_path):
+        """Test that session_state is passed to Playwright context"""
+        mock_html = "<html><div class='module-chapter-item'><a class='chapter-title-link' href='/c1'>C1</a></div></html>"
+        output_file = str(tmp_path / "session_test.json")
+        session_state = {"cookies": [{"name": "test", "value": "val"}]}
+
+        with patch('tao_so_do_cay.async_playwright') as mock_playwright:
+            mock_browser, _, _ = self._setup_mock_playwright(mock_playwright, mock_html)
+            await get_chapter_tree_list("https://example.com/story", output_file, session_state=session_state)
+            mock_browser.new_context.assert_called_with(storage_state=session_state)
 
     @pytest.mark.asyncio
     async def test_filters_minh_hoa_chapters(self, tmp_path):
@@ -300,26 +343,12 @@ class TestGetChapterTreeList:
         </html>
         """
 
-        output_file = str(tmp_path / "chapters.json")
+        output_file = str(tmp_path / "chapters_filter.json")
 
         with patch('tao_so_do_cay.async_playwright') as mock_playwright:
-            mock_browser = AsyncMock()
-            mock_page = AsyncMock()
-            mock_page.content = AsyncMock(return_value=mock_html)
-
-            mock_p_instance = MagicMock()
-            mock_p_instance.chromium.launch = AsyncMock(return_value=mock_browser)
-
-            mock_browser.__aenter__ = AsyncMock(return_value=mock_browser)
-            mock_browser.__aexit__ = AsyncMock(return_value=None)
-            mock_browser.new_page = AsyncMock(return_value=mock_page)
-
-            mock_playwright.return_value.__aenter__.return_value = mock_p_instance
-            mock_playwright.return_value.__aexit__ = AsyncMock(return_value=None)
-
+            self._setup_mock_playwright(mock_playwright, mock_html)
             result = await get_chapter_tree_list("https://example.com/story", output_file)
 
-            # Should only have chap-1 and chap-3, not minh-hoa
             assert len(result[0]['chapters']) == 2
             assert '/chap-2-minh-hoa' not in result[0]['chapters']
 
@@ -340,26 +369,12 @@ class TestGetChapterTreeList:
         </html>
         """
 
-        output_file = str(tmp_path / "chapters.json")
+        output_file = str(tmp_path / "chapters_href.json")
 
         with patch('tao_so_do_cay.async_playwright') as mock_playwright:
-            mock_browser = AsyncMock()
-            mock_page = AsyncMock()
-            mock_page.content = AsyncMock(return_value=mock_html)
-
-            mock_p_instance = MagicMock()
-            mock_p_instance.chromium.launch = AsyncMock(return_value=mock_browser)
-
-            mock_browser.__aenter__ = AsyncMock(return_value=mock_browser)
-            mock_browser.__aexit__ = AsyncMock(return_value=None)
-            mock_browser.new_page = AsyncMock(return_value=mock_page)
-
-            mock_playwright.return_value.__aenter__.return_value = mock_p_instance
-            mock_playwright.return_value.__aexit__ = AsyncMock(return_value=None)
-
+            self._setup_mock_playwright(mock_playwright, mock_html)
             result = await get_chapter_tree_list("https://example.com/story", output_file)
 
-            # Should only have the valid chapter
             assert len(result[0]['chapters']) == 1
             assert '/valid-chap' in result[0]['chapters']
 
@@ -373,7 +388,6 @@ class TestGetChaptersByVolumeIndex:
 
     def test_valid_index(self, tmp_path):
         """Test getting chapters with valid index"""
-        # Create test JSON file
         test_data = [
             {"volume": "Volume 1", "chapters": ["/chap-1", "/chap-2"]},
             {"volume": "Volume 2", "chapters": ["/chap-3", "/chap-4"]},
@@ -384,7 +398,6 @@ class TestGetChaptersByVolumeIndex:
             json.dump(test_data, f, ensure_ascii=False)
 
         result = get_chapters_by_volume_index(json_file, 0)
-
         assert result == ["/chap-1", "/chap-2"]
 
     def test_second_volume(self, tmp_path):
@@ -399,7 +412,6 @@ class TestGetChaptersByVolumeIndex:
             json.dump(test_data, f, ensure_ascii=False)
 
         result = get_chapters_by_volume_index(json_file, 1)
-
         assert result == ["/chap-3", "/chap-4"]
 
     def test_invalid_index_negative(self, capsys):
@@ -413,7 +425,6 @@ class TestGetChaptersByVolumeIndex:
         try:
             result = get_chapters_by_volume_index(json_file, -1)
             assert result == []
-
             captured = capsys.readouterr()
             assert "không hợp lệ" in captured.out
         finally:
@@ -430,7 +441,6 @@ class TestGetChaptersByVolumeIndex:
         try:
             result = get_chapters_by_volume_index(json_file, 100)
             assert result == []
-
             captured = capsys.readouterr()
             assert "không hợp lệ" in captured.out
         finally:
@@ -439,7 +449,6 @@ class TestGetChaptersByVolumeIndex:
     def test_nonexistent_file(self, capsys):
         """Test handling of nonexistent file"""
         result = get_chapters_by_volume_index("/nonexistent/file.json", 0)
-
         assert result == []
         captured = capsys.readouterr()
         assert "Đã xảy ra lỗi" in captured.out

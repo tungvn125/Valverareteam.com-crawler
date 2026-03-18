@@ -15,11 +15,16 @@ from models import StoryInfo, ContentItem
 MAX_RETRIES = 2
 
 
-async def lay_thong_tin_truyen(client: httpx.AsyncClient, ten_truyen: str) -> StoryInfo:
+async def lay_thong_tin_truyen(client: httpx.AsyncClient, ten_truyen: str, verbose: bool = False) -> StoryInfo:
     """
     Scrapes basic information about the story from its main page using httpx and BeautifulSoup.
     """
     url = f"https://valvrareteam.net/{ten_truyen}"
+    if verbose:
+        print(f"[DEBUG] Fetching story info from: {url}")
+        print(f"[DEBUG] Client Headers: {client.headers}")
+        print(f"[DEBUG] Client Cookies: {client.cookies}")
+    
     response = await client.get(url, follow_redirects=True)
     response.raise_for_status()
     soup = BeautifulSoup(response.text, 'html.parser')
@@ -59,12 +64,17 @@ async def lay_thong_tin_truyen(client: httpx.AsyncClient, ten_truyen: str) -> St
     )
 
 
-async def lay_chuong_voi_hinh_anh(browser: Browser, url: str) -> Optional[List[ContentItem]]:
+async def lay_chuong_voi_hinh_anh(browser: Browser, url: str, session_state: Optional[Dict[str, Any]] = None, verbose: bool = False) -> Optional[List[ContentItem]]:
     """
     Scrapes a single chapter page for text and images using Playwright.
     Retries on failure.
     """
-    page = await browser.new_page()
+    if verbose:
+        print(f"[DEBUG] Scraping chapter from: {url}")
+        if session_state:
+            print(f"[DEBUG] Session cookies: {len(session_state.get('cookies', []))}")
+
+    page = await browser.new_page(storage_state=session_state) if session_state else await browser.new_page()
     for attempt in range(MAX_RETRIES):
         try:
             await page.goto(url, wait_until='domcontentloaded', timeout=60000)
@@ -101,7 +111,9 @@ async def scrape_chapters(
     browser: Browser,
     urls: List[str],
     concurrent_tasks: int = 5,
-    skipped_urls: Optional[List[str]] = None
+    skipped_urls: Optional[List[str]] = None,
+    session_state: Optional[Dict[str, Any]] = None,
+    verbose: bool = False
 ) -> Dict[str, List[ContentItem]]:
     """
     Scrape multiple chapters concurrently.
@@ -118,7 +130,7 @@ async def scrape_chapters(
 
     async def process_url(browser: Browser, url: str) -> None:
         async with semaphore:
-            content = await lay_chuong_voi_hinh_anh(browser, url)
+            content = await lay_chuong_voi_hinh_anh(browser, url, session_state=session_state, verbose=verbose)
             if content:
                 scraped_content[url] = content
             else:
