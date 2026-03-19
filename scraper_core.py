@@ -39,6 +39,9 @@ async def lay_thong_tin_truyen(client: httpx.AsyncClient, ten_truyen: str, verbo
     description_element = soup.select_one("div.rd-description-content")
     description = description_element.get_text(strip=True) if description_element else "No Description"
 
+    genre_elements = soup.select(".rd-genre-tag")
+    genres = [genre.get_text(strip=True) for genre in genre_elements]
+
     cover_path = None
     image_url_element = soup.select_one("img.rd-cover-image")
     if image_url_element and 'src' in image_url_element.attrs:
@@ -60,6 +63,7 @@ async def lay_thong_tin_truyen(client: httpx.AsyncClient, ten_truyen: str, verbo
         title=title,
         author=author,
         description=description,
+        genres=genres,
         cover_path=cover_path
     )
 

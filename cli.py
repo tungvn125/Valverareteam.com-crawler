@@ -217,7 +217,7 @@ async def main() -> None:
 
     # --- Xử lý lựa chọn của người dùng (CLI hoặc tương tác) ---
 
-    # Lọc chương minh họa
+    # Lọc chương minh hoa
     if is_cli_mode:
         minh_hoa_choice = 'y' if args.khong_minh_hoa else 'n'
     else:
@@ -232,17 +232,18 @@ async def main() -> None:
         return
 
     # Chọn chương/tập để tải
-    selected_chapters_relative: List[str] = []
+    selected_chapters_relative: List[Dict[str, str]] = []
     if is_cli_mode:
         if args.volumes:
             selected_indices = [int(i) - 1 for i in args.volumes]
             for index in selected_indices:
                 if 0 <= index < len(chapter_data):
-                    selected_chapters_relative.extend(chapter_data[index]['chapters'])
+                    for chap in chapter_data[index]['chapters']:
+                        selected_chapters_relative.append(chap)
                 else:
                     print(f"[Cảnh báo] Bỏ qua chỉ số tập không hợp lệ: {index + 1}")
         elif args.chapters:
-            all_chapters_flat = [chap_url for vol in chapter_data for chap_url in vol['chapters']]
+            all_chapters_flat = [chap for vol in chapter_data for chap in vol['chapters']]
             selected_indices = [int(i) - 1 for i in args.chapters]
             for index in selected_indices:
                 if 0 <= index < len(all_chapters_flat):
@@ -250,7 +251,9 @@ async def main() -> None:
                 else:
                     print(f"[Cảnh báo] Bỏ qua chỉ số chương không hợp lệ: {index + 1}")
         else:  # Mặc định là tải tất cả
-            selected_chapters_relative.extend(chap for vol in chapter_data for chap in vol['chapters'])
+            for vol in chapter_data:
+                for chap in vol['chapters']:
+                    selected_chapters_relative.append(chap)
     else:
         # Menu chọn chương/tập (chế độ tương tác)
         main_menu_items = ["Tải xuống tất cả", "Chọn tập để tải", "Chọn chương để tải"]
@@ -259,16 +262,22 @@ async def main() -> None:
 
         if main_menu_selection_index == 0:  # Tải tất cả
             for volume in chapter_data:
-                selected_chapters_relative.extend(volume['chapters'])
+                for chap in volume['chapters']:
+                    selected_chapters_relative.append(chap)
         elif main_menu_selection_index == 1:  # Chọn tập
             volume_titles = [volume['volume'] for volume in chapter_data]
             volume_menu = TerminalMenu(volume_titles, title=" Chọn tập (Space để chọn, Enter để xác nhận) ", multi_select=True, show_multi_select_hint=True, multi_select_cursor_style=("fg_yellow", "bold"))
             selected_volume_indices = volume_menu.show()
             if selected_volume_indices:
                 for index in selected_volume_indices:
-                    selected_chapters_relative.extend(chapter_data[index]['chapters'])
+                    for chap in chapter_data[index]['chapters']:
+                        selected_chapters_relative.append(chap)
         elif main_menu_selection_index == 2:  # Chọn chương
-            all_chapters_for_menu = [(f"{vol['volume']}: {ch.split('/')[-1]}", ch) for vol in chapter_data for ch in vol['chapters']]
+            all_chapters_for_menu = []
+            for vol in chapter_data:
+                for ch in vol['chapters']:
+                    all_chapters_for_menu.append((f"{vol['volume']}: {ch['title']}", ch))
+
             chapter_menu_items = [item[0] for item in all_chapters_for_menu]
             chapter_menu = TerminalMenu(chapter_menu_items, title=" Chọn chương (Space để chọn, Enter để xác nhận) ", multi_select=True, show_multi_select_hint=True, multi_select_cursor_style=("fg_yellow", "bold"))
             selected_chapter_indices = chapter_menu.show()
@@ -281,7 +290,9 @@ async def main() -> None:
         return
 
     base_url = "https://valvrareteam.net"
-    chapter_urls = [base_url + rel_url for rel_url in selected_chapters_relative]
+    chapter_urls = [base_url + chap['url'] for chap in selected_chapters_relative]
+    # Map from URL to original title
+    url_to_title_map = {base_url + chap['url']: chap['title'] for chap in selected_chapters_relative}
 
     # Chọn cách gộp và định dạng file
     if is_cli_mode:
@@ -294,18 +305,14 @@ async def main() -> None:
         gop_menu_items = ["Xuất riêng từng chương (mặc định)", "Gộp các chương theo từng Volume", "Gộp tất cả chương đã chọn thành 1 file"]
         gop_menu = TerminalMenu(gop_menu_items, title=" Chọn cách thức xuất file ", menu_cursor_style=("fg_green", "bold"), menu_highlight_style=("bg_green", "fg_black"))
         gop_choice_index = gop_menu.show()
-        if gop_choice_index == 0:  # xuat rieng tung chuong
+        if gop_choice_index == 0 or gop_choice_index == 1:
             # Tạo cấu trúc thư mục trước
             tree_path = os.path.join(output_folder, "tree_map.txt")
             await tao_so_do_cay.get_chapter_tree_folder(url=trang_chinh, output_file=tree_path, cookies=cookies)
             create_folders_from_tree(tree_path, output_folder)
-        elif gop_choice_index == 1:  # Gop theo volume
-            # Tạo cấu trúc thư mục trước
-            tree_path = os.path.join(output_folder, "tree_map.txt")
-            await tao_so_do_cay.get_chapter_tree_folder(url=trang_chinh, output_file=tree_path, cookies=cookies)
-            create_folders_from_tree(tree_path, output_folder)
-        elif gop_choice_index == 3:
-            os.mkdir(output_folder)
+        elif gop_choice_index == 2:
+            os.makedirs(output_folder, exist_ok=True)
+
         format_items = ["PDF", "EPUB", "HTML", "Markdown (.md)", "Text (.txt)"]
         format_menu = TerminalMenu(format_items, title=" Chọn định dạng file (Space để chọn, Enter để xác nhận) ", multi_select=True, show_multi_select_hint=True, multi_select_cursor_style=("fg_yellow", "bold"))
         selected_format_indices = format_menu.show()
@@ -336,8 +343,8 @@ async def main() -> None:
     # Build a map from relative url to volume name
     url_to_volume_map: Dict[str, str] = {}
     for vol_info in chapter_data:
-        for chap_url in vol_info['chapters']:
-            url_to_volume_map[chap_url] = vol_info['volume']
+        for chap in vol_info['chapters']:
+            url_to_volume_map[chap['url']] = vol_info['volume']
 
     # 1. Xuất riêng từng chương
     if gop_choice_index == 0:
@@ -348,19 +355,21 @@ async def main() -> None:
                 current_folder = os.path.join(output_folder, sanitize_filename(volume_name))
                 os.makedirs(current_folder, exist_ok=True)
 
-                ten_chuong = url.split("/")[-1]
+                ten_chuong = url_to_title_map.get(url, url.split("/")[-1])
                 content_list: ContentList = scraped_content[url]  # Already List[ContentItem]
                 author = story_info.author
                 description = story_info.description
                 cover_path = story_info.cover_path
+                genres = story_info.genres
 
                 for fmt in formats_to_export:
-                    file_path = os.path.join(current_folder, f"{ten_chuong}.{fmt.lower().split(' ')[0].replace('(.md)', '.md').replace('(.txt)', '.txt')}")
+                    file_name = sanitize_filename(ten_chuong)
+                    file_path = os.path.join(current_folder, f"{file_name}.{fmt.lower().split(' ')[0].replace('(.md)', '.md').replace('(.txt)', '.txt')}")
                     if fmt == "PDF":
                         tao_file_pdf(content_list, file_path, ten_chuong, font_name)
                     elif fmt == "EPUB":
                         chapters_data: ChaptersData = [{'title': ten_chuong, 'content': content_list}]
-                        tao_file_epub(file_path, ten_chuong, author, chapters_data, description, cover_path)
+                        tao_file_epub(file_path, ten_chuong, author, chapters_data, description, cover_path, genres)
                     elif fmt == "HTML":
                         tao_file_html(content_list, file_path, ten_chuong)
                     elif fmt == "Markdown (.md)":
@@ -378,7 +387,7 @@ async def main() -> None:
                 if volume_name not in volume_contents:
                     volume_contents[volume_name] = []
 
-                ten_chuong = url.split("/")[-1]
+                ten_chuong = url_to_title_map.get(url, url.split("/")[-1])
                 volume_contents[volume_name].append({
                     'title': ten_chuong,
                     'content': scraped_content[url]
@@ -387,6 +396,7 @@ async def main() -> None:
         author = story_info.author
         description = story_info.description
         cover_path = story_info.cover_path
+        genres = story_info.genres
 
         for volume_name, chapters_list in volume_contents.items():
             sanitized_vol_name = sanitize_filename(volume_name)
@@ -404,7 +414,7 @@ async def main() -> None:
                 if fmt == "PDF":
                     tao_file_pdf(full_volume_content, file_path, volume_name, font_name)
                 elif fmt == "EPUB":
-                    tao_file_epub(file_path, volume_name, author, chapters_list, description, cover_path)
+                    tao_file_epub(file_path, volume_name, author, chapters_list, description, cover_path, genres)
                 elif fmt == "HTML":
                     tao_file_html(full_volume_content, file_path, volume_name)
                 elif fmt == "Markdown (.md)":
@@ -423,10 +433,10 @@ async def main() -> None:
             chapters_in_volume: List[Dict[str, Any]] = []
 
             # Filter for selected chapters only
-            for relative_url in volume_info['chapters']:
-                full_url = base_url + relative_url
+            for chap_entry in volume_info['chapters']:
+                full_url = base_url + chap_entry['url']
                 if full_url in scraped_content:
-                    chapter_title = relative_url.split('/')[-1]
+                    chapter_title = chap_entry['title']
                     content = scraped_content[full_url]
                     chapters_in_volume.append({'title': chapter_title, 'content': content})
                     full_content_list_simple.extend(content)
@@ -438,13 +448,14 @@ async def main() -> None:
         author = story_info.author
         description = story_info.description
         cover_path = story_info.cover_path
+        genres = story_info.genres
 
         for fmt in formats_to_export:
             file_path = os.path.join(output_folder, f"{sanitized_story_name}.{fmt.lower().split(' ')[0].replace('(.md)', '.md').replace('(.txt)', '.txt')}")
             if fmt == "PDF":
                 tao_file_pdf(full_content_list_simple, file_path, ten_truyen_raw, font_name)
             elif fmt == "EPUB":
-                tao_file_epub(file_path, ten_truyen_raw, author, full_story_structure, description, cover_path)
+                tao_file_epub(file_path, ten_truyen_raw, author, full_story_structure, description, cover_path, genres)
             elif fmt == "HTML":
                 tao_file_html(full_content_list_simple, file_path, ten_truyen_raw)
             elif fmt == "Markdown (.md)":

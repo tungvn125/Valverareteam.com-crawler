@@ -155,11 +155,15 @@ async def get_chapter_tree_list(url: str, output_file: str = "chapter_list.json"
                     try:
                         # Find link - try both specific class and any anchor tag
                         link_element = chapter.find('a', class_='chapter-title-link') or chapter.find('a')
-                        
+
                         if link_element and 'href' in link_element.attrs:
                             chapter_link = link_element['href']
+                            chapter_title = link_element.get_text(strip=True)
                             if "minh-hoa" not in chapter_link:
-                                chapters_list.append(chapter_link)
+                                chapters_list.append({
+                                    "title": chapter_title,
+                                    "url": chapter_link
+                                })
                         else:
                             # If we still can't find it, log the classes for debug
                             classes = chapter.get('class', [])

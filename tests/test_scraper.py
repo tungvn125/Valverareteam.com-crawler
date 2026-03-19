@@ -222,7 +222,7 @@ class TestTaoFileEpub:
         ]
         filepath = str(tmp_path / "test.epub")
 
-        tao_file_epub(filepath, "Test Book", "Test Author", chapters_data)
+        tao_file_epub(filepath, "Test Book", "Test Author", chapters_data, genres=["Action", "Fantasy"])
 
         assert os.path.exists(filepath)
         # EPUB files are ZIP archives, check basic structure
@@ -306,6 +306,8 @@ class TestScrapingIntegration:
             <h1 class="rd-novel-title">Test Story</h1>
             <span class="rd-author-name">Author Name</span>
             <div class="rd-description-content">Story description</div>
+            <span class="rd-genre-tag">Action</span>
+            <span class="rd-genre-tag">Fantasy</span>
         </html>
         """
 
@@ -325,6 +327,7 @@ class TestScrapingIntegration:
             assert result.title == 'Test Story'
             assert result.author == 'Author Name'
             assert result.description == 'Story description'
+            assert result.genres == ['Action', 'Fantasy']
 
 
 # =============================================================================

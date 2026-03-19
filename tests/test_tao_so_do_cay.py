@@ -283,6 +283,8 @@ class TestGetChapterTreeList:
             assert len(data) == 1
             assert data[0]['volume'] == 'Volume 1'
             assert len(data[0]['chapters']) == 2
+            assert data[0]['chapters'][0]['title'] == 'Chương 1'
+            assert data[0]['chapters'][0]['url'] == '/chap-1'
 
     @pytest.mark.asyncio
     async def test_crawls_both_published_and_protected_chapters(self, tmp_path):
@@ -308,8 +310,9 @@ class TestGetChapterTreeList:
             result = await get_chapter_tree_list("https://example.com/story", output_file)
 
             assert len(result[0]['chapters']) == 2
-            assert '/chap-published' in result[0]['chapters']
-            assert '/chap-protected' in result[0]['chapters']
+            urls = [c['url'] for c in result[0]['chapters']]
+            assert '/chap-published' in urls
+            assert '/chap-protected' in urls
 
     @pytest.mark.asyncio
     async def test_uses_session_state(self, tmp_path):
@@ -321,7 +324,7 @@ class TestGetChapterTreeList:
         with patch('tao_so_do_cay.async_playwright') as mock_playwright:
             mock_browser, _, _ = self._setup_mock_playwright(mock_playwright, mock_html)
             await get_chapter_tree_list("https://example.com/story", output_file, session_state=session_state)
-            mock_browser.new_context.assert_called_with(storage_state=session_state)
+            mock_browser.new_context.assert_called_with(storage_state=session_state, user_agent=HEADERS.get("User-Agent"))
 
     @pytest.mark.asyncio
     async def test_filters_minh_hoa_chapters(self, tmp_path):
@@ -350,7 +353,8 @@ class TestGetChapterTreeList:
             result = await get_chapter_tree_list("https://example.com/story", output_file)
 
             assert len(result[0]['chapters']) == 2
-            assert '/chap-2-minh-hoa' not in result[0]['chapters']
+            urls = [c['url'] for c in result[0]['chapters']]
+            assert '/chap-2-minh-hoa' not in urls
 
     @pytest.mark.asyncio
     async def test_handles_missing_href(self, tmp_path):
@@ -376,7 +380,7 @@ class TestGetChapterTreeList:
             result = await get_chapter_tree_list("https://example.com/story", output_file)
 
             assert len(result[0]['chapters']) == 1
-            assert '/valid-chap' in result[0]['chapters']
+            assert result[0]['chapters'][0]['url'] == '/valid-chap'
 
 
 # =============================================================================
@@ -389,8 +393,8 @@ class TestGetChaptersByVolumeIndex:
     def test_valid_index(self, tmp_path):
         """Test getting chapters with valid index"""
         test_data = [
-            {"volume": "Volume 1", "chapters": ["/chap-1", "/chap-2"]},
-            {"volume": "Volume 2", "chapters": ["/chap-3", "/chap-4"]},
+            {"volume": "Volume 1", "chapters": [{"title": "C1", "url": "/chap-1"}, {"title": "C2", "url": "/chap-2"}]},
+            {"volume": "Volume 2", "chapters": [{"title": "C3", "url": "/chap-3"}, {"title": "C4", "url": "/chap-4"}]},
         ]
 
         json_file = str(tmp_path / "test.json")
@@ -398,13 +402,13 @@ class TestGetChaptersByVolumeIndex:
             json.dump(test_data, f, ensure_ascii=False)
 
         result = get_chapters_by_volume_index(json_file, 0)
-        assert result == ["/chap-1", "/chap-2"]
+        assert result == [{"title": "C1", "url": "/chap-1"}, {"title": "C2", "url": "/chap-2"}]
 
     def test_second_volume(self, tmp_path):
         """Test getting chapters from second volume"""
         test_data = [
-            {"volume": "Volume 1", "chapters": ["/chap-1", "/chap-2"]},
-            {"volume": "Volume 2", "chapters": ["/chap-3", "/chap-4"]},
+            {"volume": "Volume 1", "chapters": [{"title": "C1", "url": "/chap-1"}, {"title": "C2", "url": "/chap-2"}]},
+            {"volume": "Volume 2", "chapters": [{"title": "C3", "url": "/chap-3"}, {"title": "C4", "url": "/chap-4"}]},
         ]
 
         json_file = str(tmp_path / "test.json")
@@ -412,7 +416,7 @@ class TestGetChaptersByVolumeIndex:
             json.dump(test_data, f, ensure_ascii=False)
 
         result = get_chapters_by_volume_index(json_file, 1)
-        assert result == ["/chap-3", "/chap-4"]
+        assert result == [{"title": "C3", "url": "/chap-3"}, {"title": "C4", "url": "/chap-4"}]
 
     def test_invalid_index_negative(self, capsys):
         """Test handling of negative index"""
