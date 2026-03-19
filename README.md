@@ -4,11 +4,14 @@
 Dự án **Web Novel Scraper** là một công cụ được viết bằng Python để tải và lưu các bộ truyện từ trang web [Valvrare Team](https://valvrareteam.net) dưới dạng file PDF và/hoặc EPUB. Công cụ này sử dụng các thư viện như `playwright`, `BeautifulSoup`, `ebooklib`, và `reportlab` để thu thập nội dung (bao gồm văn bản và hình ảnh minh họa) từ các chương truyện, sau đó tạo file đầu ra theo định dạng người dùng chọn.
 
 ## Tính năng
+- **Tìm kiếm truyện trực tiếp (Live Search)**: Tìm kiếm truyện ngay trong terminal với gợi ý thời gian thực khi nhập (từ 3 ký tự). Tự động xác định slug chính xác từ tên truyện.
 - **Tải nội dung song song**: Hỗ trợ tải nhiều chương cùng lúc với số lượng tác vụ song song tùy chỉnh.
+- **Hỗ trợ Metadata chuyên sâu (Genres/Tags)**: Tự động trích xuất thể loại và nhúng vào metadata của file EPUB (`DC:subject`), giúp quản lý thư viện (ví dụ: trên Calibre) dễ dàng hơn.
+- **Tiêu đề chương nguyên bản**: Sử dụng tiêu đề thực tế từ website thay vì slug URL, giúp tên file và mục lục rõ ràng, dễ đọc.
 - **Vượt rào cản (Session Capture)**: Hỗ trợ lấy session thủ công qua trình duyệt (non-headless) để vượt qua Cloudflare hoặc truy cập các chương yêu cầu đăng nhập.
 - **Định dạng đầu ra**: Lưu nội dung dưới dạng PDF, EPUB, hoặc các định dạng khác.
 - **Ghi log lỗi**: Lưu danh sách các chương bị lỗi vào file `cac_chuong_da_bo_qua.txt`.
-- **Tự động sắp xếp files**: Tự động tạo và sắp xếp các file chương(chapter) vào các thư mục tập(volume).
+- **Tự động sắp xếp files**: Tự động tạo và sắp xếp các file chương(chapter) vào các thư mục tập(volume) với tên file đã được chuẩn hóa nhưng vẫn giữ nguyên tiếng Việt.
 
 ## Yêu cầu cài đặt
 Để chạy dự án, bạn cần cài đặt Python 3.8+ và các thư viện sau:

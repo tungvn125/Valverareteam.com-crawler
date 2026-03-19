@@ -27,6 +27,47 @@ skipped_urls: List[str] = []
 SESSION_FILE = ".vvr_session.json"
 
 
+from prompt_toolkit import PromptSession
+from prompt_toolkit.completion import Completer, Completion, ThreadedCompleter
+
+class NovelCompleter(Completer):
+    """Completer for live novel search using the Valvrare Team API."""
+    def get_completions(self, document, complete_event):
+        text = document.text.strip()
+        if len(text) < 3:
+            return
+
+        try:
+            import httpx
+            with httpx.Client(timeout=3.0) as client:
+                headers = {
+                    "User-Agent": HEADERS["User-Agent"],
+                    "Origin": "https://valvrareteam.net",
+                    "Referer": "https://valvrareteam.net/",
+                    "Accept": "application/json, text/plain, */*"
+                }
+                # Search API endpoint
+                url = f"https://val-ssr-2kzit.ondigitalocean.app/api/novels/search?title={text}"
+                response = client.get(url, headers=headers)
+                
+                if response.status_code == 200:
+                    results = response.json()
+                    for item in results:
+                        title = item.get('title', '').strip()
+                        author = item.get('author', 'Unknown')
+                        _id = item.get('_id', '')
+                        if title and _id:
+                            # The slug is typically the normalized title + the last 8 chars of the MongoDB ID
+                            slug = normalize_vietnamese_url(title) + "-" + _id[-8:]
+                            yield Completion(
+                                slug, 
+                                start_position=-len(document.text), 
+                                display=title, 
+                                display_meta=author
+                            )
+        except Exception:
+            pass
+
 async def main() -> None:
     parser = argparse.ArgumentParser(
         description="Tải truyện từ Valvrare Team dưới dạng PDF, EPUB, và các định dạng khác.",
@@ -122,15 +163,23 @@ async def main() -> None:
         if not ten_truyen_raw:
             parser.error("Tên truyện là bắt buộc ở chế độ CLI.")
     else:
-        ten_truyen_raw = input("Nhập tên truyện bạn muốn tải: ")
-
-    sitemap_url = "https://valvrareteam.net/sitemap.xml"
-
-    # Use httpx for sitemap request
-    async with httpx.AsyncClient(headers=HEADERS) as client:
-        response = await client.get(sitemap_url)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.content, "lxml-xml")
+        print("Nhập tên truyện hoặc tìm kiếm (tối thiểu 3 ký tự để hiện gợi ý) (Tab để di chuyen len xuong va chọn)...")
+        try:
+            session = PromptSession()
+            ten_truyen_raw = await session.prompt_async(
+                "Tên truyện: ",
+                completer=ThreadedCompleter(NovelCompleter()),
+                complete_while_typing=True
+            )
+            ten_truyen_raw = ten_truyen_raw.strip()
+            if not ten_truyen_raw:
+                print("Chưa nhập tên truyện. Đang thoát.")
+                return
+        except KeyboardInterrupt:
+            return
+        except Exception as e:
+            print(f"Lỗi: {e}")
+            ten_truyen_raw = input("Nhập tên truyện bạn muốn tải: ").strip()
 
     ten_truyen_normalized = normalize_vietnamese_url(ten_truyen_raw)
     output_folder = args.output_folder if is_cli_mode and args.output_folder else sanitize_filename(ten_truyen_raw.strip())
@@ -302,15 +351,15 @@ async def main() -> None:
         font_name = args.font
         CONCURRENT_TASKS = args.tasks
     else:
-        gop_menu_items = ["Xuất riêng từng chương (mặc định)", "Gộp các chương theo từng Volume", "Gộp tất cả chương đã chọn thành 1 file"]
+        gop_menu_items = ["Gộp tất cả chương đã chọn thành 1 file (mặc định)", "Xuất riêng từng chương", "Gộp các chương theo từng Volume"]
         gop_menu = TerminalMenu(gop_menu_items, title=" Chọn cách thức xuất file ", menu_cursor_style=("fg_green", "bold"), menu_highlight_style=("bg_green", "fg_black"))
         gop_choice_index = gop_menu.show()
-        if gop_choice_index == 0 or gop_choice_index == 1:
+        if gop_choice_index == 1 or gop_choice_index == 2:
             # Tạo cấu trúc thư mục trước
             tree_path = os.path.join(output_folder, "tree_map.txt")
             await tao_so_do_cay.get_chapter_tree_folder(url=trang_chinh, output_file=tree_path, cookies=cookies)
             create_folders_from_tree(tree_path, output_folder)
-        elif gop_choice_index == 2:
+        elif gop_choice_index == 0:
             os.makedirs(output_folder, exist_ok=True)
 
         format_items = ["PDF", "EPUB", "HTML", "Markdown (.md)", "Text (.txt)"]
@@ -319,7 +368,14 @@ async def main() -> None:
         if not selected_format_indices:
             print("Không có định dạng nào được chọn. Đang thoát.")
             return
-        formats_to_export = [format_items[i] for i in selected_format_indices]
+        format_mapping = {
+            "PDF": "PDF",
+            "EPUB": "EPUB",
+            "HTML": "HTML",
+            "Markdown (.md)": "MD",
+            "Text (.txt)": "TXT"
+        }
+        formats_to_export = [format_mapping[format_items[i]] for i in selected_format_indices]
 
         font_name = 'DejaVuSans'
         if "PDF" in formats_to_export:
@@ -347,7 +403,7 @@ async def main() -> None:
             url_to_volume_map[chap['url']] = vol_info['volume']
 
     # 1. Xuất riêng từng chương
-    if gop_choice_index == 0:
+    if gop_choice_index == 1:
         for url in chapter_urls:
             if url in scraped_content:
                 relative_url = url.replace(base_url, "")
@@ -364,7 +420,7 @@ async def main() -> None:
 
                 for fmt in formats_to_export:
                     file_name = sanitize_filename(ten_chuong)
-                    file_path = os.path.join(current_folder, f"{file_name}.{fmt.lower().split(' ')[0].replace('(.md)', '.md').replace('(.txt)', '.txt')}")
+                    file_path = os.path.join(current_folder, f"{file_name}.{fmt.lower()}")
                     if fmt == "PDF":
                         tao_file_pdf(content_list, file_path, ten_chuong, font_name)
                     elif fmt == "EPUB":
@@ -372,13 +428,13 @@ async def main() -> None:
                         tao_file_epub(file_path, ten_chuong, author, chapters_data, description, cover_path, genres)
                     elif fmt == "HTML":
                         tao_file_html(content_list, file_path, ten_chuong)
-                    elif fmt == "Markdown (.md)":
+                    elif fmt == "MD":
                         tao_file_md(content_list, file_path, ten_chuong)
-                    elif fmt == "Text (.txt)":
+                    elif fmt == "TXT":
                         tao_file_txt(content_list, file_path, ten_chuong)
 
     # 2. Gộp theo Volume
-    elif gop_choice_index == 1:
+    elif gop_choice_index == 2:
         volume_contents: Dict[str, List[Dict[str, Any]]] = {}
         for url in chapter_urls:
             if url in scraped_content:
@@ -410,20 +466,20 @@ async def main() -> None:
                 full_volume_content.extend(chap['content'])
 
             for fmt in formats_to_export:
-                file_path = os.path.join(current_folder, f"{sanitized_vol_name}.{fmt.lower().split(' ')[0].replace('(.md)', '.md').replace('(.txt)', '.txt')}")
+                file_path = os.path.join(current_folder, f"{sanitized_vol_name}.{fmt.lower()}")
                 if fmt == "PDF":
                     tao_file_pdf(full_volume_content, file_path, volume_name, font_name)
                 elif fmt == "EPUB":
                     tao_file_epub(file_path, volume_name, author, chapters_list, description, cover_path, genres)
                 elif fmt == "HTML":
                     tao_file_html(full_volume_content, file_path, volume_name)
-                elif fmt == "Markdown (.md)":
+                elif fmt == "MD":
                     tao_file_md(full_volume_content, file_path, volume_name)
-                elif fmt == "Text (.txt)":
+                elif fmt == "TXT":
                     tao_file_txt(full_volume_content, file_path, volume_name)
 
     # 3. Gộp tất cả
-    elif gop_choice_index == 2:
+    elif gop_choice_index == 0:
         full_story_structure: ChaptersData = []
         full_content_list_simple: ContentList = []
 
@@ -451,16 +507,16 @@ async def main() -> None:
         genres = story_info.genres
 
         for fmt in formats_to_export:
-            file_path = os.path.join(output_folder, f"{sanitized_story_name}.{fmt.lower().split(' ')[0].replace('(.md)', '.md').replace('(.txt)', '.txt')}")
+            file_path = os.path.join(output_folder, f"{sanitized_story_name}.{fmt.lower()}")
             if fmt == "PDF":
                 tao_file_pdf(full_content_list_simple, file_path, ten_truyen_raw, font_name)
             elif fmt == "EPUB":
                 tao_file_epub(file_path, ten_truyen_raw, author, full_story_structure, description, cover_path, genres)
             elif fmt == "HTML":
                 tao_file_html(full_content_list_simple, file_path, ten_truyen_raw)
-            elif fmt == "Markdown (.md)":
+            elif fmt == "MD":
                 tao_file_md(full_content_list_simple, file_path, ten_truyen_raw)
-            elif fmt == "Text (.txt)":
+            elif fmt == "TXT":
                 tao_file_txt(full_content_list_simple, file_path, ten_truyen_raw)
 
     print("\n--- HOÀN TẤT ---")
