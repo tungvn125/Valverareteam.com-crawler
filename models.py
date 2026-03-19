@@ -2,7 +2,7 @@
 Data models for the web novel scraper.
 """
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Union, Literal, TypedDict
+from typing import Dict, List, Optional, Union, Literal, TypedDict, Any
 
 
 @dataclass
@@ -11,6 +11,7 @@ class StoryInfo:
     title: str
     author: str
     description: str
+    genres: List[str] = None
     cover_path: Optional[str] = None
 
 
@@ -39,7 +40,7 @@ class Volume:
 # Type aliases for backward compatibility
 ChapterData = Dict[str, Union[str, List[Dict[str, str]]]]
 VolumeData = Dict[str, Union[str, List[ChapterData]]]
-StoryInfoDict = Dict[str, Optional[str]]
+StoryInfoDict = Dict[str, Any]
 
 
 def story_info_to_dict(info: StoryInfo) -> StoryInfoDict:
@@ -48,6 +49,7 @@ def story_info_to_dict(info: StoryInfo) -> StoryInfoDict:
         "title": info.title,
         "author": info.author,
         "description": info.description,
+        "genres": info.genres or [],
         "cover_path": info.cover_path
     }
 
@@ -58,5 +60,6 @@ def dict_to_story_info(data: StoryInfoDict) -> StoryInfo:
         title=data.get("title") or "Unknown Title",
         author=data.get("author") or "Unknown Author",
         description=data.get("description") or "No Description",
+        genres=data.get("genres") or [],
         cover_path=data.get("cover_path")
     )

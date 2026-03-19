@@ -44,7 +44,8 @@ def tao_file_epub(
     author: str,
     chapters_data: ChaptersData,
     description: str = "",
-    cover_path: Union[str, None] = None
+    cover_path: Union[str, None] = None,
+    genres: List[str] = None
 ) -> None:
     """
     Creates a structured EPUB file from a list of chapters, potentially grouped by volumes.
@@ -61,6 +62,11 @@ def tao_file_epub(
     book.set_language('vi')
     book.add_author(author)
     book.add_metadata('DC', 'description', description)
+    
+    if genres:
+        for genre in genres:
+            book.add_metadata('DC', 'subject', genre)
+
     try:
         book.set_cover("cover.jpg", open('cover.jpg', 'rb').read())
     except Exception:
