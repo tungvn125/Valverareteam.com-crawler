@@ -61,8 +61,14 @@ VIETNAMESE_MAP = {
 
 
 def normalize_vietnamese_url(text: str) -> str:
-    """Normalize Vietnamese characters for URL matching."""
+    """Normalize Vietnamese characters and strip punctuation for URL matching."""
+    if not text:
+        return ""
+    # Remove punctuation that Valvrare Team slugs don't include
+    text = re.sub(r'[,.\?!\(\):;\'"]', "", text)
     normalized = text.lower().replace(" ", "-")
     for key, value in VIETNAMESE_MAP.items():
         normalized = normalized.replace(key, value)
+    # Collapse multiple hyphens and strip leading/trailing hyphens
+    normalized = re.sub(r'-+', '-', normalized).strip('-')
     return normalized

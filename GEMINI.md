@@ -9,16 +9,17 @@
 - **Playwright (`async_playwright`):** Used for navigating pages and extracting content, ensuring compatibility with dynamic or heavily structured DOM elements.
 - **BeautifulSoup4:** Used for parsing simpler HTML structures, like the site's sitemap.
 - **httpx:** Used for efficient, asynchronous HTTP requests.
+- **prompt-toolkit:** Provides the live search feature with real-time suggestions as the user types.
 - **EbookLib & reportlab:** Used for generating EPUB and PDF output files, respectively.
 - **simple-term-menu:** Provides an interactive terminal menu for users running the script without command-line arguments.
 
 **Architecture:**
 The application is structured logically with distinct responsibilities:
 - `scraper.py`: The main entry point script.
-- `cli.py`: Handles command-line arguments, user interaction (menus), and orchestrates the high-level workflow.
-- `scraper_core.py`: Contains the asynchronous functions responsible for interacting with web pages and extracting raw data (text and images).
-- `exporter.py`: Handles taking the scraped data and compiling it into the user's chosen output format(s).
-- `models.py` & `utils.py`: Provide shared data structures (e.g., `StoryInfo`, `ContentItem`) and utility functions.
+- `cli.py`: Handles command-line arguments, live novel search, and orchestrates the high-level workflow.
+- `scraper_core.py`: Contains functions for extracting metadata (including genres), text, and images.
+- `exporter.py`: Handles compiling scraped data into various formats with full metadata support.
+- `models.py` & `utils.py`: Provide shared data structures (including the updated `StoryInfo` with genres) and utility functions (like the improved Unicode-aware sanitization).
 
 ## Building and Running
 
