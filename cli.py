@@ -19,7 +19,7 @@ from exporter import (
     tao_file_epub, tao_file_pdf, tao_file_html, tao_file_md, tao_file_txt,
     ContentList, ChaptersData
 )
-from utils import sanitize_filename, create_folders_from_tree, normalize_vietnamese_url, HEADERS
+from utils import sanitize_filename, create_folders_from_tree, normalize_vietnamese_url, get_token_from_state, HEADERS
 from models import StoryInfo, ContentItem
 from session_manager import load_session, save_session, capture_session
 
@@ -32,6 +32,9 @@ from prompt_toolkit.completion import Completer, Completion, ThreadedCompleter
 
 class NovelCompleter(Completer):
     """Completer for live novel search using the Valvrare Team API."""
+    def __init__(self, token: Optional[str] = None):
+        self.token = token
+
     def get_completions(self, document, complete_event):
         text = document.text.strip()
         if len(text) < 3:
@@ -46,6 +49,9 @@ class NovelCompleter(Completer):
                     "Referer": "https://valvrareteam.net/",
                     "Accept": "application/json, text/plain, */*"
                 }
+                if self.token:
+                    headers["Authorization"] = f"Bearer {self.token}"
+                
                 # Search API endpoint
                 url = f"https://val-ssr-2kzit.ondigitalocean.app/api/novels/search?title={text}"
                 response = client.get(url, headers=headers)
@@ -56,14 +62,18 @@ class NovelCompleter(Completer):
                         title = item.get('title', '').strip()
                         author = item.get('author', 'Unknown')
                         _id = item.get('_id', '')
+                        status = item.get('status', 'Unknown')
+                        total = item.get('totalChapters', 0)
+                        
                         if title and _id:
-                            # The slug is typically the normalized title + the last 8 chars of the MongoDB ID
+                            # The slug is normalized title + the last 8 chars of the MongoDB ID
                             slug = normalize_vietnamese_url(title) + "-" + _id[-8:]
+                            meta = f"{author} | {status} | {total} ch"
                             yield Completion(
                                 slug, 
                                 start_position=-len(document.text), 
                                 display=title, 
-                                display_meta=author
+                                display_meta=meta
                             )
         except Exception:
             pass
@@ -157,18 +167,69 @@ async def main() -> None:
 
     args = parser.parse_args()
 
+    # --- Session Management (Move up to use token in search) ---
+    session_state = load_session(SESSION_FILE)
+    if args.refresh_session and os.path.exists(SESSION_FILE):
+        os.remove(SESSION_FILE)
+        session_state = None
+
+    if args.login or (not session_state):
+        do_login = args.login
+        if not do_login:
+            prompt = "\nKhông tìm thấy session. Bạn có muốn đăng nhập thủ công để vượt Cloudflare/vào chương khóa không? (Y/n): "
+            # If in CLI mode and --login wasn't provided, we still ask
+            # If in interactive mode, we definitely ask
+            if is_cli_mode:
+                do_login = False 
+            else:
+                choice = input(prompt).strip().lower()
+                if not choice or choice in ['y', 'yes']:
+                    do_login = True
+                else:
+                    print("Bỏ qua đăng nhập. Một số nội dung có thể không truy cập được.\n")
+
+        if do_login:
+            print("\nĐang khởi tạo trình duyệt để lấy session...")
+            # Use a generic URL if we don't have the story page yet
+            capture_url = "https://valvrareteam.net/"
+            session_state = await capture_session(capture_url)
+            save_session(session_state, SESSION_FILE)
+            print("Session đã được lưu.\n")
+
+    # Convert storage_state cookies to httpx compatible cookies
+    cookies = {}
+    token = get_token_from_state(session_state)
+    if session_state and 'cookies' in session_state:
+        for c in session_state['cookies']:
+            cookies[c['name']] = c['value']
+
+    if args.verbose:
+        print("\n" + "="*50)
+        print("[DEBUG] --- SESSION & COOKIE DATA ---")
+        if session_state:
+            print(f"Số lượng cookies từ session: {len(session_state.get('cookies', []))}")
+            if token:
+                print(f"Token (JWT): {token[:20]}...")
+            if session_state.get('cookies'):
+                for c in session_state['cookies']:
+                    print(f"  - {c['name']}: {c['value'][:20]}...")
+        else:
+            print("Không nạp được session.")
+        print(f"[DEBUG] Headers đang dùng: {HEADERS['User-Agent']}")
+        print("="*50 + "\n")
+
     # --- Main Logic ---
     if is_cli_mode:
         ten_truyen_raw = args.ten_truyen
         if not ten_truyen_raw:
             parser.error("Tên truyện là bắt buộc ở chế độ CLI.")
     else:
-        print("Nhập tên truyện hoặc tìm kiếm (tối thiểu 3 ký tự để hiện gợi ý) (Tab để di chuyen len xuong va chọn)...")
+        print("Nhập tên truyện hoặc tìm kiếm (tối thiểu 3 ký tự để hiện gợi ý)...")
         try:
             session = PromptSession()
             ten_truyen_raw = await session.prompt_async(
                 "Tên truyện: ",
-                completer=ThreadedCompleter(NovelCompleter()),
+                completer=ThreadedCompleter(NovelCompleter(token=token)),
                 complete_while_typing=True
             )
             ten_truyen_raw = ten_truyen_raw.strip()
@@ -184,51 +245,6 @@ async def main() -> None:
     ten_truyen_normalized = normalize_vietnamese_url(ten_truyen_raw)
     output_folder = args.output_folder if is_cli_mode and args.output_folder else sanitize_filename(ten_truyen_raw.strip())
     os.makedirs(output_folder, exist_ok=True)
-
-    # --- Session Management ---
-    session_state = load_session(SESSION_FILE)
-    if args.refresh_session and os.path.exists(SESSION_FILE):
-        os.remove(SESSION_FILE)
-        session_state = None
-
-    if args.login or (not session_state):
-        do_login = args.login
-        if not do_login:
-            prompt = "\nKhông tìm thấy session. Bạn có muốn đăng nhập thủ công để vượt Cloudflare/vào chương khóa không? (Y/n): "
-            # If in CLI mode and --login wasn't provided, we still ask
-            # If in interactive mode, we definitely ask
-            choice = input(prompt).strip().lower()
-            if not choice or choice in ['y', 'yes']:
-                do_login = True
-            else:
-                print("Bỏ qua đăng nhập. Một số nội dung có thể không truy cập được.\n")
-
-        if do_login:
-            print("\nĐang khởi tạo trình duyệt để lấy session...")
-            # Use a generic URL if we don't have the story page yet
-            capture_url = "https://valvrareteam.net/"
-            session_state = await capture_session(capture_url)
-            save_session(session_state, SESSION_FILE)
-            print("Session đã được lưu.\n")
-
-    # Convert storage_state cookies to httpx compatible cookies
-    cookies = {}
-    if session_state and 'cookies' in session_state:
-        for c in session_state['cookies']:
-            cookies[c['name']] = c['value']
-
-    if args.verbose:
-        print("\n" + "="*50)
-        print("[DEBUG] --- SESSION & COOKIE DATA ---")
-        if session_state:
-            print(f"Số lượng cookies từ session: {len(session_state.get('cookies', []))}")
-            if session_state.get('cookies'):
-                for c in session_state['cookies']:
-                    print(f"  - {c['name']}: {c['value'][:20]}...")
-        else:
-            print("Không nạp được session.")
-        print(f"[DEBUG] Headers đang dùng: {HEADERS['User-Agent']}")
-        print("="*50 + "\n")
 
     sitemap_url = "https://valvrareteam.net/sitemap.xml"
 
@@ -389,7 +405,15 @@ async def main() -> None:
     # Scrape chapters
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        scraped_content = await scrape_chapters(browser, chapter_urls, CONCURRENT_TASKS, skipped_urls=skipped_urls, session_state=session_state, verbose=args.verbose)
+        scraped_content = await scrape_chapters(
+            browser, 
+            chapter_urls, 
+            CONCURRENT_TASKS, 
+            skipped_urls=skipped_urls, 
+            session_state=session_state, 
+            verbose=args.verbose,
+            token=token
+        )
         await browser.close()
 
     print("Đã tải xong nội dung. Bắt đầu tạo file...")
