@@ -21,6 +21,28 @@ The application is structured logically with distinct responsibilities:
 - `exporter.py`: Handles compiling scraped data into various formats with full metadata support.
 - `models.py` & `utils.py`: Provide shared data structures (including the updated `StoryInfo` with genres) and utility functions (like the improved Unicode-aware sanitization).
 
+## Technical Implementation Details
+
+### Hybrid Scraping Architecture
+The scraper uses a multi-layered approach to balance speed and reliability:
+1.  **Fast Mode (`httpx`):** Attempts to fetch chapter content directly from the DigitalOcean SSR fallback (`val-ssr-2kzit.ondigitalocean.app`). This bypasses the main domain's heavy Cloudflare protection and browser rendering overhead.
+2.  **Reliable Mode (`Playwright`):** If Fast Mode fails or returns empty content, the scraper falls back to a full headless browser session on the main domain. This ensures content is captured even if SSR is unavailable or blocked.
+
+### Live Search & Slug Resolution
+- **Interactive Search:** Powered by `prompt-toolkit` and `ThreadedCompleter`, providing real-time suggestions from the Valvrare Team API as the user types (triggering after 3 characters).
+- **Slug Discovery:** The search automatically resolves the required URL slug using the logic: `normalize_vietnamese_url(title) + "-" + mongodb_id[-8:]`. This removes the need for users to manually find story slugs.
+
+### Authentication & Authorization
+- **Session Capture:** Uses a non-headless browser to allow users to solve Cloudflare challenges or log in manually.
+- **JWT Extraction:** Automatically parses the saved `storage_state` to extract Bearer tokens from `localStorage` (specifically looking for `accessToken` or keys within `auth-storage`).
+- **Authenticated SSR:** These tokens are automatically injected into the `Authorization` header for `httpx` requests to the SSR fallback, allowing authorized access to protected/locked chapters in Fast Mode.
+
+### Advanced Normalization
+- The `utils.normalize_vietnamese_url` function implements an aggressive sanitization logic that:
+    1.  Maps Vietnamese diacritics to base ASCII.
+    2.  Strips all non-alphanumeric special characters (tildes, commas, colons, etc.).
+    3.  Collapses spaces and preserves readability while matching the website's internal slug generation.
+
 ## Building and Running
 
 ### Installation
