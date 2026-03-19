@@ -68,13 +68,61 @@ async def lay_thong_tin_truyen(client: httpx.AsyncClient, ten_truyen: str, verbo
     )
 
 
+async def lay_chuong_httpx(client: httpx.AsyncClient, url: str, verbose: bool = False, token: Optional[str] = None) -> Optional[List[ContentItem]]:
+    """
+    Scrapes a single chapter page using httpx and BeautifulSoup (Fast Mode).
+    Uses the DigitalOcean SSR fallback for better reliability and speed.
+    """
+    # Map main domain to SSR fallback
+    fallback_url = url.replace("valvrareteam.net", "val-ssr-2kzit.ondigitalocean.app")
+    
+    if verbose:
+        print(f"[DEBUG] Fast-scraping chapter from: {fallback_url}")
+    
+    try:
+        headers = client.headers.copy()
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+            
+        response = await client.get(fallback_url, follow_redirects=True, timeout=30.0, headers=headers)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # Target the chapter content container
+        content_container = soup.select_one(".chapter-content")
+        if not content_container:
+            if verbose:
+                print(f"[DEBUG] No .chapter-content found at {fallback_url}")
+            return None
+            
+        extracted_content: List[ContentItem] = []
+        # Find all paragraphs and images within the content container
+        elements = content_container.select("p, img")
+        
+        for el in elements:
+            if el.name == 'img':
+                image_url = el.get('src')
+                if image_url:
+                    extracted_content.append(ContentItem(type='image', data=image_url))
+            elif el.name == 'p':
+                text = el.get_text(strip=True)
+                if text:
+                    extracted_content.append(ContentItem(type='text', data=text))
+        
+        return extracted_content if extracted_content else None
+    except Exception as e:
+        if verbose:
+            print(f"[DEBUG] Fast-scrape failed for {fallback_url}: {e}")
+        return None
+
+
 async def lay_chuong_voi_hinh_anh(browser: Browser, url: str, session_state: Optional[Dict[str, Any]] = None, verbose: bool = False) -> Optional[List[ContentItem]]:
     """
-    Scrapes a single chapter page for text and images using Playwright.
+    Scrapes a single chapter page for text and images using Playwright (Reliable Mode).
     Retries on failure.
     """
     if verbose:
-        print(f"[DEBUG] Scraping chapter from: {url}")
+        print(f"[DEBUG] Playwright-scraping chapter from: {url}")
         if session_state:
             print(f"[DEBUG] Session cookies: {len(session_state.get('cookies', []))}")
 
@@ -82,7 +130,8 @@ async def lay_chuong_voi_hinh_anh(browser: Browser, url: str, session_state: Opt
     for attempt in range(MAX_RETRIES):
         try:
             await page.goto(url, wait_until='domcontentloaded', timeout=60000)
-            content_selector = ".chapter-card p, .chapter-card img"
+            # The site uses .chapter-content or .chapter-card p
+            content_selector = ".chapter-content p, .chapter-content img, .chapter-card p, .chapter-card img"
             await page.wait_for_selector(content_selector, timeout=30000)
             elements = page.locator(content_selector)
             extracted_content: List[ContentItem] = []
@@ -100,12 +149,13 @@ async def lay_chuong_voi_hinh_anh(browser: Browser, url: str, session_state: Opt
             await page.close()
             return extracted_content
         except Exception as e:
-            print(f"Lỗi lần {attempt + 1}/{MAX_RETRIES} khi scraping {url}: {e}")
+            if verbose:
+                print(f"[DEBUG] Playwright attempt {attempt + 1} failed for {url}: {e}")
             if attempt < MAX_RETRIES - 1:
-                print("Đang thử lại sau 5 giây...")
-                await asyncio.sleep(5)
+                await asyncio.sleep(2)
             else:
-                print(f"Bỏ qua URL {url} sau {MAX_RETRIES} lần thử thất bại.")
+                if verbose:
+                    print(f"[DEBUG] Playwright failed for {url} after {MAX_RETRIES} attempts.")
 
     await page.close()
     return None
@@ -117,12 +167,14 @@ async def scrape_chapters(
     concurrent_tasks: int = 5,
     skipped_urls: Optional[List[str]] = None,
     session_state: Optional[Dict[str, Any]] = None,
-    verbose: bool = False
+    verbose: bool = False,
+    token: Optional[str] = None
 ) -> Dict[str, List[ContentItem]]:
     """
     Scrape multiple chapters concurrently.
-    Returns a dictionary mapping URL to content list.
-    If skipped_urls list is provided, failed URLs are appended to it.
+    Uses a hybrid approach:
+    1. Try HTTTPX (Fast) first.
+    2. Fallback to Playwright (Reliable) if HTTPX fails or returns empty.
     """
     semaphore = asyncio.Semaphore(concurrent_tasks)
     scraped_content: Dict[str, List[ContentItem]] = {}
@@ -132,14 +184,30 @@ async def scrape_chapters(
     else:
         skipped_urls_local = skipped_urls
 
+    # Convert session_state to httpx cookies
+    cookies = {}
+    if session_state and 'cookies' in session_state:
+        for c in session_state['cookies']:
+            cookies[c['name']] = c['value']
+
     async def process_url(browser: Browser, url: str) -> None:
         async with semaphore:
-            content = await lay_chuong_voi_hinh_anh(browser, url, session_state=session_state, verbose=verbose)
+            content = None
+            # 1. Try Fast Mode (HTTPX)
+            async with httpx.AsyncClient(headers=HEADERS, cookies=cookies, follow_redirects=True) as client:
+                content = await lay_chuong_httpx(client, url, verbose=verbose, token=token)
+            
+            # 2. Try Reliable Mode (Playwright) if Fast Mode failed
+            if not content:
+                if verbose:
+                    print(f"[*] Fast-scrape failed or empty for {url}. Falling back to Playwright...")
+                content = await lay_chuong_voi_hinh_anh(browser, url, session_state=session_state, verbose=verbose)
+            
             if content:
                 scraped_content[url] = content
             else:
                 skipped_urls.append(url)
-                print(f"Đã thêm {url} vào danh sách các chương bị bỏ qua.")
+                print(f"(!) Thất bại sau cả 2 phương thức: {url}")
 
     tasks = [process_url(browser, url) for url in urls]
     await asyncio.gather(*tasks)

@@ -3,7 +3,7 @@ Utility functions for the web novel scraper.
 """
 import os
 import re
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 
 HEADERS = {
@@ -61,14 +61,59 @@ VIETNAMESE_MAP = {
 
 
 def normalize_vietnamese_url(text: str) -> str:
-    """Normalize Vietnamese characters and strip punctuation for URL matching."""
+    """Normalize Vietnamese characters and strip ALL punctuation/special chars for URL matching."""
     if not text:
         return ""
-    # Remove punctuation that Valvrare Team slugs don't include
-    text = re.sub(r'[,.\?!\(\):;\'"]', "", text)
-    normalized = text.lower().replace(" ", "-")
+    
+    # 1. Lowercase
+    text = text.lower()
+    
+    # 2. Replace Vietnamese characters with ASCII
     for key, value in VIETNAMESE_MAP.items():
-        normalized = normalized.replace(key, value)
-    # Collapse multiple hyphens and strip leading/trailing hyphens
+        text = text.replace(key, value)
+    
+    # 3. Remove all non-alphanumeric characters except spaces
+    # This removes commas, dots, tildes (~), colons, etc.
+    text = re.sub(r'[^a-z0-9\s-]', '', text)
+    
+    # 4. Replace spaces with hyphens
+    normalized = text.replace(" ", "-")
+    
+    # 5. Collapse multiple hyphens and strip leading/trailing hyphens
     normalized = re.sub(r'-+', '-', normalized).strip('-')
+    
     return normalized
+
+
+def get_token_from_state(state: Dict) -> Optional[str]:
+    """
+    Extracts the JWT token from Playwright's storage state (localStorage).
+    Looks for common token keys like 'accessToken', 'token', or within 'auth-storage'.
+    """
+    if not state or 'origins' not in state:
+        return None
+    
+    for origin in state['origins']:
+        if "valvrareteam.net" in origin['origin']:
+            ls = origin.get('localStorage', [])
+            for item in ls:
+                name = item.get('name', '')
+                value = item.get('value', '')
+                
+                # Direct match
+                if name in ['accessToken', 'token', 'jwt']:
+                    return value
+                
+                # Check for auth-storage (often a JSON string)
+                if name == 'auth-storage':
+                    try:
+                        import json
+                        data = json.loads(value)
+                        # Check for state.token or similar structures
+                        if isinstance(data, dict):
+                            state_data = data.get('state', {})
+                            if isinstance(state_data, dict):
+                                return state_data.get('token') or state_data.get('accessToken')
+                    except Exception:
+                        pass
+    return None
