@@ -12,8 +12,8 @@ from unittest.mock import AsyncMock, MagicMock, patch, mock_open
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils import sanitize_filename, HEADERS
-from exporter import (
+from vvr_scraper.utils import sanitize_filename, HEADERS
+from vvr_scraper.exporter import (
     tao_file_epub,
     tao_file_pdf,
     tao_file_html,
@@ -306,7 +306,7 @@ class TestScrapingIntegration:
     @pytest.mark.asyncio
     async def test_lay_thong_tin_truyen_structure(self):
         """Test story info scraping with mocked response"""
-        from scraper_core import lay_thong_tin_truyen
+        from vvr_scraper.scraper_core import lay_thong_tin_truyen
         import httpx
 
         mock_html = """

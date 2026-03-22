@@ -6,7 +6,7 @@ import json
 import subprocess # Added for notify-send
 from typing import Optional, Dict, Any
 
-from utils import HEADERS
+from .utils import HEADERS
 
 
 async def get_chapter_tree(url: str, output_file: str, cookies: Optional[Dict[str, str]] = None):

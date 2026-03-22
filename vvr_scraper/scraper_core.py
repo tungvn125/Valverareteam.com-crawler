@@ -10,8 +10,8 @@ from bs4 import BeautifulSoup
 
 from loguru import logger
 
-from utils import HEADERS
-from models import StoryInfo, ContentItem
+from .utils import HEADERS
+from .models import StoryInfo, ContentItem
 
 
 MAX_RETRIES = 2

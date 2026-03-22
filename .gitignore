@@ -1,6 +1,7 @@
 .vvr_session.json
 vat-cung-te-cua-sakuchishi-nghi-thuc-di-giao*/
 bi mat cua phu thuy tinh lang*/
+DejaVuSans.ttf
 docs/
 .venv/
 __pycache__/
@@ -20,3 +21,7 @@ memory/
 !requirements.txt
 !GEMINI.md
 !example_trang_chinh.html
+*.egg-info/
+dist/
+build/
+.env
