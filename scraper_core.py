@@ -8,6 +8,8 @@ import httpx
 from playwright.async_api import Browser, async_playwright
 from bs4 import BeautifulSoup
 
+from loguru import logger
+
 from utils import HEADERS
 from models import StoryInfo, ContentItem
 
@@ -20,10 +22,7 @@ async def lay_thong_tin_truyen(client: httpx.AsyncClient, ten_truyen: str, verbo
     Scrapes basic information about the story from its main page using httpx and BeautifulSoup.
     """
     url = f"https://valvrareteam.net/{ten_truyen}"
-    if verbose:
-        print(f"[DEBUG] Fetching story info from: {url}")
-        print(f"[DEBUG] Client Headers: {client.headers}")
-        print(f"[DEBUG] Client Cookies: {client.cookies}")
+    logger.debug(f"Fetching story info from: {url}")
     
     response = await client.get(url, follow_redirects=True)
     response.raise_for_status()
@@ -31,6 +30,11 @@ async def lay_thong_tin_truyen(client: httpx.AsyncClient, ten_truyen: str, verbo
 
     title_element = soup.select_one("h1.rd-novel-title")
     title = title_element.get_text(strip=True) if title_element else "Unknown Title"
+    
+    # Clean up status suffixes from title
+    for status in ["+Đang tiến hành", "+Hoàn thành", "+Tạm ngưng"]:
+        if status in title:
+            title = title.replace(status, "").strip()
 
     author_elements = soup.select("span.rd-author-name")
     authors = [author.get_text(strip=True) for author in author_elements]
@@ -48,16 +52,14 @@ async def lay_thong_tin_truyen(client: httpx.AsyncClient, ten_truyen: str, verbo
         image_url = image_url_element['src']
         if image_url:
             try:
-                response = await client.get(image_url, timeout=30.0)  # Added timeout
+                response = await client.get(image_url, timeout=30.0)
                 response.raise_for_status()
                 cover_path = "cover.jpg"
-                print(f"Đang tải ảnh bìa về: {cover_path}")
+                logger.info(f"Đã tải ảnh bìa: {cover_path}")
                 with open(cover_path, "wb") as f:
                     f.write(response.content)
-            except httpx.HTTPStatusError as e:
-                print(f"Lỗi HTTP khi tải ảnh bìa từ {image_url}: {e}")
             except Exception as e:
-                print(f"Lỗi khi tải hoặc lưu ảnh bìa: {e}")  # Improved error message
+                logger.warning(f"Không thể tải ảnh bìa: {e}")
 
     return StoryInfo(
         title=title,
@@ -73,11 +75,8 @@ async def lay_chuong_httpx(client: httpx.AsyncClient, url: str, verbose: bool = 
     Scrapes a single chapter page using httpx and BeautifulSoup (Fast Mode).
     Uses the DigitalOcean SSR fallback for better reliability and speed.
     """
-    # Map main domain to SSR fallback
     fallback_url = url.replace("valvrareteam.net", "val-ssr-2kzit.ondigitalocean.app")
-    
-    if verbose:
-        print(f"[DEBUG] Fast-scraping chapter from: {fallback_url}")
+    logger.debug(f"Fast-scraping from: {fallback_url}")
     
     try:
         headers = client.headers.copy()
@@ -88,15 +87,11 @@ async def lay_chuong_httpx(client: httpx.AsyncClient, url: str, verbose: bool = 
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # Target the chapter content container
         content_container = soup.select_one(".chapter-content")
         if not content_container:
-            if verbose:
-                print(f"[DEBUG] No .chapter-content found at {fallback_url}")
             return None
             
         extracted_content: List[ContentItem] = []
-        # Find all paragraphs and images within the content container
         elements = content_container.select("p, img")
         
         for el in elements:
@@ -111,26 +106,20 @@ async def lay_chuong_httpx(client: httpx.AsyncClient, url: str, verbose: bool = 
         
         return extracted_content if extracted_content else None
     except Exception as e:
-        if verbose:
-            print(f"[DEBUG] Fast-scrape failed for {fallback_url}: {e}")
+        logger.debug(f"Fast-scrape failed for {fallback_url}: {e}")
         return None
 
 
 async def lay_chuong_voi_hinh_anh(browser: Browser, url: str, session_state: Optional[Dict[str, Any]] = None, verbose: bool = False) -> Optional[List[ContentItem]]:
     """
     Scrapes a single chapter page for text and images using Playwright (Reliable Mode).
-    Retries on failure.
     """
-    if verbose:
-        print(f"[DEBUG] Playwright-scraping chapter from: {url}")
-        if session_state:
-            print(f"[DEBUG] Session cookies: {len(session_state.get('cookies', []))}")
+    logger.debug(f"Playwright-scraping from: {url}")
 
     page = await browser.new_page(storage_state=session_state) if session_state else await browser.new_page()
     for attempt in range(MAX_RETRIES):
         try:
             await page.goto(url, wait_until='domcontentloaded', timeout=60000)
-            # The site uses .chapter-content or .chapter-card p
             content_selector = ".chapter-content p, .chapter-content img, .chapter-card p, .chapter-card img"
             await page.wait_for_selector(content_selector, timeout=30000)
             elements = page.locator(content_selector)
