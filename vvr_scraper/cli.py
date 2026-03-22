@@ -20,18 +20,18 @@ from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 from rich.panel import Panel
 
-import tao_so_do_cay
-from scraper_core import lay_thong_tin_truyen, scrape_chapters
-from exporter import (
+from . import tao_so_do_cay
+from .scraper_core import lay_thong_tin_truyen, scrape_chapters
+from .exporter import (
     tao_file_epub, tao_file_pdf, tao_file_html, tao_file_md, tao_file_txt,
     ContentList, ChaptersData
 )
-from utils import (
+from .utils import (
     sanitize_filename, create_folders_from_tree, normalize_vietnamese_url, 
     get_token_from_state, HEADERS, configure_logger
 )
-from models import StoryInfo, ContentItem
-from session_manager import load_session, save_session, capture_session
+from .models import StoryInfo, ContentItem
+from .session_manager import load_session, save_session, capture_session
 
 SESSION_FILE = ".vvr_session.json"
 BASE_URL = "https://valvrareteam.net"
@@ -449,13 +449,14 @@ class ValvrareScraperCLI:
                 for url in self.skipped_urls: f.write(f"{url}\n")
 
 
-async def main():
+def main():
+    """Entry point for the CLI."""
     cli = ValvrareScraperCLI()
     try:
-        await cli.run()
+        asyncio.run(cli.run())
     except KeyboardInterrupt:
         console.print("\n[bold red]Chương trình bị dừng bởi người dùng.[/bold red]")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

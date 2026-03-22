@@ -10,14 +10,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from tao_so_do_cay import (
+from vvr_scraper.tao_so_do_cay import (
     get_chapter_tree,
     get_chapter_tree_folder,
     get_chapter_tree_list,
-    get_chapters_by_volume_index,
-    HEADERS
+    get_chapters_by_volume_index
 )
+from vvr_scraper.utils import HEADERS
 
 
 # =============================================================================
@@ -272,7 +271,7 @@ class TestGetChapterTreeList:
 
         output_file = str(tmp_path / "chapters.json")
 
-        with patch('tao_so_do_cay.async_playwright') as mock_playwright:
+        with patch('vvr_scraper.tao_so_do_cay.async_playwright') as mock_playwright:
             self._setup_mock_playwright(mock_playwright, mock_html)
             result = await get_chapter_tree_list("https://example.com/story", output_file)
 
@@ -305,7 +304,7 @@ class TestGetChapterTreeList:
 
         output_file = str(tmp_path / "chapters_mixed.json")
 
-        with patch('tao_so_do_cay.async_playwright') as mock_playwright:
+        with patch('vvr_scraper.tao_so_do_cay.async_playwright') as mock_playwright:
             self._setup_mock_playwright(mock_playwright, mock_html)
             result = await get_chapter_tree_list("https://example.com/story", output_file)
 
@@ -321,7 +320,7 @@ class TestGetChapterTreeList:
         output_file = str(tmp_path / "session_test.json")
         session_state = {"cookies": [{"name": "test", "value": "val"}]}
 
-        with patch('tao_so_do_cay.async_playwright') as mock_playwright:
+        with patch('vvr_scraper.tao_so_do_cay.async_playwright') as mock_playwright:
             mock_browser, _, _ = self._setup_mock_playwright(mock_playwright, mock_html)
             await get_chapter_tree_list("https://example.com/story", output_file, session_state=session_state)
             mock_browser.new_context.assert_called_with(storage_state=session_state, user_agent=HEADERS.get("User-Agent"))
@@ -348,7 +347,7 @@ class TestGetChapterTreeList:
 
         output_file = str(tmp_path / "chapters_filter.json")
 
-        with patch('tao_so_do_cay.async_playwright') as mock_playwright:
+        with patch('vvr_scraper.tao_so_do_cay.async_playwright') as mock_playwright:
             self._setup_mock_playwright(mock_playwright, mock_html)
             result = await get_chapter_tree_list("https://example.com/story", output_file)
 
@@ -375,7 +374,7 @@ class TestGetChapterTreeList:
 
         output_file = str(tmp_path / "chapters_href.json")
 
-        with patch('tao_so_do_cay.async_playwright') as mock_playwright:
+        with patch('vvr_scraper.tao_so_do_cay.async_playwright') as mock_playwright:
             self._setup_mock_playwright(mock_playwright, mock_html)
             result = await get_chapter_tree_list("https://example.com/story", output_file)
 

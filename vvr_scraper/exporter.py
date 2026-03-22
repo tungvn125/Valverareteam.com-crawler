@@ -18,8 +18,8 @@ from PIL import Image as PILImage
 from loguru import logger
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 
-from utils import HEADERS
-from models import StoryInfo, ContentItem, Chapter, Volume
+from .utils import HEADERS
+from .models import StoryInfo, ContentItem, Chapter, Volume
 
 
 ContentItemLike = Union[ContentItem, Dict[str, str]]

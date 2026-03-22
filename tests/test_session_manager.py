@@ -1,7 +1,7 @@
 import os
 import json
 import pytest
-from session_manager import save_session, load_session
+from vvr_scraper.session_manager import save_session, load_session
 
 def test_save_load_session(tmp_path):
     session_file = tmp_path / ".vvr_session.json"

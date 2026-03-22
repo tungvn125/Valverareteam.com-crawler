@@ -3,17 +3,14 @@
 Main entry point for the web novel scraper.
 This is a thin wrapper that delegates to the CLI module.
 """
-import asyncio
 import os
 
-from cli import main as cli_main
+from vvr_scraper.cli import main as cli_main
 
 
 if __name__ == "__main__":
     try:
-        asyncio.run(cli_main())
-    except KeyboardInterrupt:
-        print("\nChương trình bị dừng bởi người dùng.")
+        cli_main()
     finally:
         # Cleanup temporary files
         if os.path.exists("chapter_list.json"):
