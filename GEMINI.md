@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**Purpose:** This project is a Python-based command-line tool (CLI) designed to scrape and download web novels from [Valvrare Team](https://valvrareteam.net). It allows users to save stories in various formats including PDF, EPUB, HTML, Markdown, and TXT.
+**Purpose:** This project is a Python-based command-line tool (CLI) designed to scrape and download web novels from [Valvrare Team](https://valvrareteam.net). It allows users to save stories in various formats including PDF, EPUB, HTML, Markdown, and TXT. It is distributed as a standard Python package named `vvr-scraper`.
 
 **Main Technologies:**
 - **Python (3.8+)**
@@ -16,12 +16,14 @@
 - **Rich:** Professional UI elements including tables, spinners, and progress bars.
 
 **Architecture:**
-The application follows an Object-Oriented and modular design:
-- `scraper.py`: The main entry point script.
-- `cli.py`: Contains `ValvrareScraperCLI` (orchestrator) and `InteractiveUI` classes. Handles arguments, UI logic, and workflow coordination.
-- `scraper_core.py`: Core functions for extracting metadata (with automatic title cleaning), text, and images.
-- `exporter.py`: Asynchronous export logic. Handles bulk image downloading and file compilation.
-- `models.py` & `utils.py`: Shared data structures and utility functions (logging configuration, normalization, session management).
+The application follows a standard Python package structure (PEP 517/518) with logic encapsulated in the `vvr_scraper` package:
+- `vvr_scraper/`: Core package directory.
+    - `cli.py`: Contains `ValvrareScraperCLI` (orchestrator) and `InteractiveUI` classes. Handles arguments, UI logic, and workflow coordination.
+    - `scraper_core.py`: Core functions for extracting metadata (with automatic title cleaning), text, and images.
+    - `exporter.py`: Asynchronous export logic. Handles bulk image downloading and file compilation.
+    - `models.py` & `utils.py`: Shared data structures and utility functions (logging configuration, normalization, session management).
+- `scraper.py`: A convenience wrapper for local execution.
+- `pyproject.toml`: Modern packaging configuration defining dependencies and the `vvrt` entry point.
 
 ## Technical Implementation Details
 
@@ -52,37 +54,47 @@ The export process is fully asynchronous to maximize I/O performance:
 
 ### Installation
 
-1.  **Prerequisites:** Ensure Python 3.8+ is installed.
-2.  **Automated Setup (Recommended):**
-    *   **Linux/macOS:** Run `./setup.sh`.
-    *   **Windows:** Run `install.bat`.
-3.  **Manual Setup:**
-    ```bash
-    pip install -r requirements.txt
-    playwright install chromium-headless-shell
-    ```
+**1. From PyPI (Recommended):**
+```bash
+pip install vvr-scraper
+playwright install chromium-headless-shell
+```
+
+**2. Development Install:**
+```bash
+git clone https://github.com/your-repo/valvrareteam-net-crawler.git
+cd valvrareteam-net-crawler
+pip install -e .
+playwright install chromium-headless-shell
+```
 
 ### Execution
 
-**1. Interactive Mode:**
+**1. Global Command:**
+```bash
+vvrt
+```
+
+**2. Interactive Mode (Local Script):**
 ```bash
 python scraper.py
 ```
 
-**2. CLI Mode:**
+**3. CLI Mode:**
 ```bash
 # Example: Download a specific novel with verbose logging and 10 concurrent tasks
-python scraper.py "novel-slug" -f EPUB PDF -g tatca -t 10 --verbose
+vvrt "novel-slug" -f EPUB PDF -g tatca -t 10 --verbose
 ```
 
 ### Testing
 ```bash
-# Runs the full test suite (including new async tests)
+# Runs the full test suite (compatible with package structure)
 pytest
 ```
 
 ## Development Conventions
 
+- **Standard Package Structure:** Always use relative imports within the `vvr_scraper` package (e.g., `from .models import ...`).
 - **Strict Asynchronous Workflow:** All network and I/O bound operations must be `async`.
 - **Structured Logging:** Use `loguru`'s `logger` instead of `print`.
 - **UI Consistency:** Use `rich` for terminal feedback. Display summary tables in verbose mode.
