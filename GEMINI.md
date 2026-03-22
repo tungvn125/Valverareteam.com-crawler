@@ -12,36 +12,41 @@
 - **prompt-toolkit:** Provides the live search feature with real-time suggestions as the user types.
 - **EbookLib & reportlab:** Used for generating EPUB and PDF output files, respectively.
 - **simple-term-menu:** Provides an interactive terminal menu for users running the script without command-line arguments.
+- **Loguru:** Structured logging for better debugging and cleaner output control.
+- **Rich:** Professional UI elements including tables, spinners, and progress bars.
 
 **Architecture:**
-The application is structured logically with distinct responsibilities:
+The application follows an Object-Oriented and modular design:
 - `scraper.py`: The main entry point script.
-- `cli.py`: Handles command-line arguments, live novel search, and orchestrates the high-level workflow.
-- `scraper_core.py`: Contains functions for extracting metadata (including genres), text, and images.
-- `exporter.py`: Handles compiling scraped data into various formats with full metadata support.
-- `models.py` & `utils.py`: Provide shared data structures (including the updated `StoryInfo` with genres) and utility functions (like the improved Unicode-aware sanitization).
+- `cli.py`: Contains `ValvrareScraperCLI` (orchestrator) and `InteractiveUI` classes. Handles arguments, UI logic, and workflow coordination.
+- `scraper_core.py`: Core functions for extracting metadata (with automatic title cleaning), text, and images.
+- `exporter.py`: Asynchronous export logic. Handles bulk image downloading and file compilation.
+- `models.py` & `utils.py`: Shared data structures and utility functions (logging configuration, normalization, session management).
 
 ## Technical Implementation Details
 
 ### Hybrid Scraping Architecture
 The scraper uses a multi-layered approach to balance speed and reliability:
-1.  **Fast Mode (`httpx`):** Attempts to fetch chapter content directly from the DigitalOcean SSR fallback (`val-ssr-2kzit.ondigitalocean.app`). This bypasses the main domain's heavy Cloudflare protection and browser rendering overhead.
-2.  **Reliable Mode (`Playwright`):** If Fast Mode fails or returns empty content, the scraper falls back to a full headless browser session on the main domain. This ensures content is captured even if SSR is unavailable or blocked.
+1.  **Fast Mode (`httpx`):** Attempts to fetch chapter content directly from the DigitalOcean SSR fallback (`val-ssr-2kzit.ondigitalocean.app`). This bypasses the main domain's heavy Cloudflare protection.
+2.  **Reliable Mode (`Playwright`):** Fallback to a full headless browser session on the main domain if Fast Mode fails.
+
+### Optimized Asynchronous Export
+The export process is fully asynchronous to maximize I/O performance:
+- **Bulk Image Downloading:** Instead of sequential downloads, the `exporter` identifies all image URLs in a document and fetches them concurrently using `asyncio.gather` and an `asyncio.Semaphore` (default limit: 10).
+- **In-Memory Assembly:** Images are downloaded into memory and injected directly into EPUB/PDF structures, significantly reducing disk I/O overhead.
 
 ### Live Search & Slug Resolution
-- **Interactive Search:** Powered by `prompt-toolkit` and `ThreadedCompleter`, providing real-time suggestions from the Valvrare Team API as the user types (triggering after 3 characters).
-- **Slug Discovery:** The search automatically resolves the required URL slug using the logic: `normalize_vietnamese_url(title) + "-" + mongodb_id[-8:]`. This removes the need for users to manually find story slugs.
+- **Interactive Search:** Powered by `prompt-toolkit` and `ThreadedCompleter`, providing real-time suggestions from the Valvrare Team API.
+- **Slug Discovery:** Resolves story URLs from the sitemap. The logic preserves the full relative path (e.g., `/truyen/novel-slug`) to ensure compatibility with all website sections and avoid 404 errors.
+
+### Metadata & Title Cleaning
+- **Automatic Sanitization:** Automatically removes status suffixes from novel titles (e.g., `+Đang tiến hành`, `+Hoàn thành`, `+Tạm ngưng`) for cleaner file naming.
+- **Output Structure:** Uses the novel's slug for the directory name and the full (cleaned) title for the filename.
 
 ### Authentication & Authorization
-- **Session Capture:** Uses a non-headless browser to allow users to solve Cloudflare challenges or log in manually.
-- **JWT Extraction:** Automatically parses the saved `storage_state` to extract Bearer tokens from `localStorage` (specifically looking for `accessToken` or keys within `auth-storage`).
-- **Authenticated SSR:** These tokens are automatically injected into the `Authorization` header for `httpx` requests to the SSR fallback, allowing authorized access to protected/locked chapters in Fast Mode.
-
-### Advanced Normalization
-- The `utils.normalize_vietnamese_url` function implements an aggressive sanitization logic that:
-    1.  Maps Vietnamese diacritics to base ASCII.
-    2.  Strips all non-alphanumeric special characters (tildes, commas, colons, etc.).
-    3.  Collapses spaces and preserves readability while matching the website's internal slug generation.
+- **Session Capture:** Uses a non-headless browser for manual Cloudflare bypass or login.
+- **JWT Extraction:** Extracts Bearer tokens from `localStorage` within the `storage_state`.
+- **Authenticated SSR:** Injects JWT tokens into Fast Mode requests for access to locked/protected content.
 
 ## Building and Running
 
@@ -49,7 +54,7 @@ The scraper uses a multi-layered approach to balance speed and reliability:
 
 1.  **Prerequisites:** Ensure Python 3.8+ is installed.
 2.  **Automated Setup (Recommended):**
-    *   **Linux/macOS:** Run `./setup.sh`. This script creates a virtual environment, installs dependencies, installs Playwright browsers, and sets up a `vvrt` alias in your shell.
+    *   **Linux/macOS:** Run `./setup.sh`.
     *   **Windows:** Run `install.bat`.
 3.  **Manual Setup:**
     ```bash
@@ -59,34 +64,27 @@ The scraper uses a multi-layered approach to balance speed and reliability:
 
 ### Execution
 
-The application can be run in two modes:
-
 **1. Interactive Mode:**
-Run the script without arguments to be guided by interactive menus.
 ```bash
 python scraper.py
-# OR, if setup.sh was used:
-vvrt
 ```
 
 **2. CLI Mode:**
-Provide command-line arguments for automated or scriptable usage.
 ```bash
-# Example: Download a specific novel, save as EPUB and PDF, merge by volume, using 10 concurrent tasks
-python scraper.py "ten-truyen" -f EPUB PDF -g volume -t 10
+# Example: Download a specific novel with verbose logging and 10 concurrent tasks
+python scraper.py "novel-slug" -f EPUB PDF -g tatca -t 10 --verbose
 ```
-Use `python scraper.py -h` or `vvrt -h` for a full list of available options.
 
 ### Testing
-To run tests (if the development dependencies are installed):
 ```bash
+# Runs the full test suite (including new async tests)
 pytest
 ```
 
 ## Development Conventions
 
-- **Asynchronous Programming:** The project heavily utilizes `asyncio` to achieve high performance through concurrent scraping tasks. When adding new network or I/O bound features, ensure they are asynchronous.
-- **Type Hinting:** The codebase uses Python type hints (e.g., `from typing import List, Dict, Optional`). New code should maintain this practice for clarity and maintainability.
-- **Separation of Concerns:** Logic is cleanly separated between CLI interaction, scraping, and exporting. Modifications should respect these boundaries (e.g., don't put HTML parsing logic in `exporter.py`).
-- **Error Handling:** The scraper is designed to be resilient. It attempts retries for failing pages and logs skipped URLs to a file (`cac_chuong_da_bo_qua.txt`) rather than crashing the entire process. Maintain this robust approach when modifying scraping logic.
-- **Language:** The user interface and comments/docstrings are predominantly in Vietnamese.
+- **Strict Asynchronous Workflow:** All network and I/O bound operations must be `async`.
+- **Structured Logging:** Use `loguru`'s `logger` instead of `print`.
+- **UI Consistency:** Use `rich` for terminal feedback. Display summary tables in verbose mode.
+- **Type Safety:** Maintain comprehensive Type Hinting for all new functions.
+- **Language:** UI and core documentation are in Vietnamese; internal code/logic uses English naming conventions (PEP 8).

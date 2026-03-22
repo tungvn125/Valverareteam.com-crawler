@@ -6,12 +6,19 @@ import asyncio
 import json
 import os
 import sys
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 
 import httpx
 from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright
 from simple_term_menu import TerminalMenu
+from prompt_toolkit import PromptSession
+from prompt_toolkit.completion import Completer, Completion, ThreadedCompleter
+from loguru import logger
+from rich.console import Console
+from rich.table import Table
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+from rich.panel import Panel
 
 import tao_so_do_cay
 from scraper_core import lay_thong_tin_truyen, scrape_chapters
@@ -19,16 +26,17 @@ from exporter import (
     tao_file_epub, tao_file_pdf, tao_file_html, tao_file_md, tao_file_txt,
     ContentList, ChaptersData
 )
-from utils import sanitize_filename, create_folders_from_tree, normalize_vietnamese_url, get_token_from_state, HEADERS
+from utils import (
+    sanitize_filename, create_folders_from_tree, normalize_vietnamese_url, 
+    get_token_from_state, HEADERS, configure_logger
+)
 from models import StoryInfo, ContentItem
 from session_manager import load_session, save_session, capture_session
 
-skipped_urls: List[str] = []
 SESSION_FILE = ".vvr_session.json"
+BASE_URL = "https://valvrareteam.net"
+console = Console()
 
-
-from prompt_toolkit import PromptSession
-from prompt_toolkit.completion import Completer, Completion, ThreadedCompleter
 
 class NovelCompleter(Completer):
     """Completer for live novel search using the Valvrare Team API."""
@@ -41,18 +49,16 @@ class NovelCompleter(Completer):
             return
 
         try:
-            import httpx
             with httpx.Client(timeout=3.0) as client:
                 headers = {
                     "User-Agent": HEADERS["User-Agent"],
-                    "Origin": "https://valvrareteam.net",
-                    "Referer": "https://valvrareteam.net/",
+                    "Origin": BASE_URL,
+                    "Referer": f"{BASE_URL}/",
                     "Accept": "application/json, text/plain, */*"
                 }
                 if self.token:
                     headers["Authorization"] = f"Bearer {self.token}"
                 
-                # Search API endpoint
                 url = f"https://val-ssr-2kzit.ondigitalocean.app/api/novels/search?title={text}"
                 response = client.get(url, headers=headers)
                 
@@ -66,7 +72,6 @@ class NovelCompleter(Completer):
                         total = item.get('totalChapters', 0)
                         
                         if title and _id:
-                            # The slug is normalized title + the last 8 chars of the MongoDB ID
                             slug = normalize_vietnamese_url(title) + "-" + _id[-8:]
                             meta = f"{author} | {status} | {total} ch"
                             yield Completion(
@@ -78,476 +83,379 @@ class NovelCompleter(Completer):
         except Exception:
             pass
 
-async def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Tải truyện từ Valvrare Team dưới dạng PDF, EPUB, và các định dạng khác.",
-        formatter_class=argparse.RawTextHelpFormatter
-    )
-    # If there are command line arguments, use CLI mode, otherwise, use interactive mode
-    is_cli_mode = len(sys.argv) > 1
 
-    # --- Define arguments for CLI ---
-    parser.add_argument(
-        'ten_truyen',
-        nargs='?' if not is_cli_mode else None,
-        help="Tên truyện cần tải (bắt buộc ở chế độ CLI)."
-    )
-    parser.add_argument(
-        '-o', '--output',
-        dest='output_folder',
-        help="Thư mục đầu ra để lưu file. Mặc định là tên truyện."
-    )
-    parser.add_argument(
-        '-f', '--format',
-        nargs='+',
-        default=['EPUB'],
-        choices=['PDF', 'EPUB', 'HTML', 'MD', 'TXT'],
-        help="Định dạng file đầu ra. Có thể chọn nhiều. Mặc định: EPUB."
-    )
-    parser.add_argument(
-        '-g', '--gop',
-        default='rieng',
-        choices=['rieng', 'volume', 'tatca'],
-        help="Cách gộp file:\n"
-             "rieng: Mỗi chương một file (mặc định).\n"
-             "volume: Gộp các chương theo từng tập.\n"
-             "tatca: Gộp tất cả thành một file duy nhất."
-    )
-    parser.add_argument(
-        '--khong-minh-hoa',
-        action='store_true',
-        help="Bỏ qua các chương/tập minh họa."
-    )
-    parser.add_argument(
-        '--font',
-        default='DejaVuSans',
-        choices=['NotoSerif', 'DejaVuSans'],
-        help="Font chữ cho file PDF. Mặc định: DejaVuSans."
-    )
-    parser.add_argument(
-        '-t', '--tasks',
-        type=int,
-        default=5,
-        help="Số lượng tác vụ tải song song. Mặc định: 5."
-    )
-    parser.add_argument(
-        '--login',
-        action='store_true',
-        help="Thực hiện đăng nhập thủ công để lấy session."
-    )
-    parser.add_argument(
-        '--refresh-session',
-        action='store_true',
-        help="Xóa session cũ và đăng nhập lại."
-    )
-    parser.add_argument(
-        '--verbose',
-        action='store_true',
-        help="Hiển thị log chi tiết (bao gồm cookies, headers) để debug."
-    )
+class InteractiveUI:
+    """Handles all interactive terminal elements."""
+    
+    @staticmethod
+    def show_menu(items: List[str], title: str, multi_select: bool = False) -> Any:
+        menu = TerminalMenu(
+            items, 
+            title=f" {title} ", 
+            menu_cursor_style=("fg_cyan", "bold"), 
+            menu_highlight_style=("bg_cyan", "fg_black"),
+            multi_select=multi_select,
+            show_multi_select_hint=multi_select
+        )
+        return menu.show()
 
-    selection_group = parser.add_mutually_exclusive_group()
-    selection_group.add_argument(
-        '--all',
-        action='store_true',
-        help="Tải tất cả các chương (mặc định)."
-    )
-    selection_group.add_argument(
-        '--volumes',
-        nargs='+',
-        type=int,
-        help="Tải các tập cụ thể theo số thứ tự (ví dụ: --volumes 1 3 5)."
-    )
-    selection_group.add_argument(
-        '--chapters',
-        nargs='+',
-        type=int,
-        help="Tải các chương cụ thể theo số thứ tự tuyệt đối (ví dụ: --chapters 1 10 15)."
-    )
-
-    args = parser.parse_args()
-
-    # --- Session Management (Move up to use token in search) ---
-    session_state = load_session(SESSION_FILE)
-    if args.refresh_session and os.path.exists(SESSION_FILE):
-        os.remove(SESSION_FILE)
-        session_state = None
-
-    if args.login or (not session_state):
-        do_login = args.login
-        if not do_login:
-            prompt = "\nKhông tìm thấy session. Bạn có muốn đăng nhập thủ công để vượt Cloudflare/vào chương khóa không? (Y/n): "
-            # If in CLI mode and --login wasn't provided, we still ask
-            # If in interactive mode, we definitely ask
-            if is_cli_mode:
-                do_login = False 
-            else:
-                choice = input(prompt).strip().lower()
-                if not choice or choice in ['y', 'yes']:
-                    do_login = True
-                else:
-                    print("Bỏ qua đăng nhập. Một số nội dung có thể không truy cập được.\n")
-
-        if do_login:
-            print("\nĐang khởi tạo trình duyệt để lấy session...")
-            # Use a generic URL if we don't have the story page yet
-            capture_url = "https://valvrareteam.net/"
-            session_state = await capture_session(capture_url)
-            save_session(session_state, SESSION_FILE)
-            print("Session đã được lưu.\n")
-
-    # Convert storage_state cookies to httpx compatible cookies
-    cookies = {}
-    token = get_token_from_state(session_state)
-    if session_state and 'cookies' in session_state:
-        for c in session_state['cookies']:
-            cookies[c['name']] = c['value']
-
-    if args.verbose:
-        print("\n" + "="*50)
-        print("[DEBUG] --- SESSION & COOKIE DATA ---")
-        if session_state:
-            print(f"Số lượng cookies từ session: {len(session_state.get('cookies', []))}")
-            if token:
-                print(f"Token (JWT): {token[:20]}...")
-            if session_state.get('cookies'):
-                for c in session_state['cookies']:
-                    print(f"  - {c['name']}: {c['value'][:20]}...")
-        else:
-            print("Không nạp được session.")
-        print(f"[DEBUG] Headers đang dùng: {HEADERS['User-Agent']}")
-        print("="*50 + "\n")
-
-    # --- Main Logic ---
-    if is_cli_mode:
-        ten_truyen_raw = args.ten_truyen
-        if not ten_truyen_raw:
-            parser.error("Tên truyện là bắt buộc ở chế độ CLI.")
-    else:
-        print("Nhập tên truyện hoặc tìm kiếm (tối thiểu 3 ký tự để hiện gợi ý)...")
+    @staticmethod
+    async def get_novel_name_interactive(token: Optional[str] = None) -> str:
+        console.print("[yellow]Nhập tên truyện hoặc tìm kiếm (tối thiểu 3 ký tự để hiện gợi ý)...[/yellow]")
         try:
             session = PromptSession()
-            ten_truyen_raw = await session.prompt_async(
+            name = await session.prompt_async(
                 "Tên truyện: ",
                 completer=ThreadedCompleter(NovelCompleter(token=token)),
                 complete_while_typing=True
             )
-            ten_truyen_raw = ten_truyen_raw.strip()
-            if not ten_truyen_raw:
-                print("Chưa nhập tên truyện. Đang thoát.")
+            return name.strip()
+        except (KeyboardInterrupt, Exception) as e:
+            if isinstance(e, KeyboardInterrupt): raise
+            return input("Nhập tên truyện bạn muốn tải: ").strip()
+
+    @staticmethod
+    def display_story_summary(info: StoryInfo):
+        table = Table(title="[bold cyan]Thông tin truyện[/bold cyan]", show_header=True, header_style="bold magenta", border_style="bright_blue")
+        table.add_column("Trường", style="cyan", width=15)
+        table.add_column("Giá trị", style="white")
+        
+        table.add_row("Tiêu đề", info.title)
+        table.add_row("Tác giả", info.author)
+        table.add_row("Thể loại", ", ".join(info.genres) if info.genres else "N/A")
+        desc = info.description
+        if len(desc) > 200: desc = desc[:197] + "..."
+        table.add_row("Mô tả", desc)
+        
+        console.print(table)
+
+
+class ValvrareScraperCLI:
+    """Main Orchestrator for the Valvrare Team Scraper CLI."""
+
+    def __init__(self):
+        self.args = self._parse_arguments()
+        self.is_cli_mode = len(sys.argv) > 1
+        self.session_state = None
+        self.cookies = {}
+        self.token = None
+        self.skipped_urls = []
+        self.output_folder = ""
+        
+        # Configure logging
+        configure_logger(self.args.verbose)
+
+    def _parse_arguments(self) -> argparse.Namespace:
+        parser = argparse.ArgumentParser(
+            description="Tải truyện từ Valvrare Team dưới dạng PDF, EPUB, và các định dạng khác.",
+            formatter_class=argparse.RawTextHelpFormatter
+        )
+        parser.add_argument('ten_truyen', nargs='?', help="Tên truyện cần tải.")
+        parser.add_argument('-o', '--output', dest='output_folder', help="Thư mục đầu ra.")
+        parser.add_argument('-f', '--format', nargs='+', default=['EPUB'], 
+                           choices=['PDF', 'EPUB', 'HTML', 'MD', 'TXT'], help="Định dạng file.")
+        parser.add_argument('-g', '--gop', default='rieng', choices=['rieng', 'volume', 'tatca'], 
+                           help="Cách gộp file (rieng/volume/tatca).")
+        parser.add_argument('--khong-minh-hoa', action='store_true', help="Bỏ qua minh họa.")
+        parser.add_argument('--font', default='DejaVuSans', choices=['NotoSerif', 'DejaVuSans'], 
+                           help="Font cho PDF.")
+        parser.add_argument('-t', '--tasks', type=int, default=5, help="Số lượng tác vụ song song.")
+        parser.add_argument('--login', action='store_true', help="Đăng nhập thủ công.")
+        parser.add_argument('--refresh-session', action='store_true', help="Xóa session cũ.")
+        parser.add_argument('--verbose', action='store_true', help="Hiển thị log chi tiết.")
+        
+        selection_group = parser.add_mutually_exclusive_group()
+        selection_group.add_argument('--all', action='store_true', help="Tải tất cả.")
+        selection_group.add_argument('--volumes', nargs='+', type=int, help="Tải các tập cụ thể.")
+        selection_group.add_argument('--chapters', nargs='+', type=int, help="Tải các chương cụ thể.")
+        
+        return parser.parse_args()
+
+    async def setup_session(self):
+        """Handles session loading, login, and token extraction."""
+        self.session_state = load_session(SESSION_FILE)
+        
+        if self.args.refresh_session and os.path.exists(SESSION_FILE):
+            os.remove(SESSION_FILE)
+            self.session_state = None
+
+        if self.args.login or not self.session_state:
+            do_login = self.args.login
+            if not do_login and not self.is_cli_mode:
+                choice = input("\nKhông tìm thấy session. Bạn có muốn đăng nhập không? (Y/n): ").strip().lower()
+                do_login = not choice or choice in ['y', 'yes']
+            
+            if do_login:
+                logger.info("Đang khởi tạo trình duyệt để lấy session...")
+                self.session_state = await capture_session(f"{BASE_URL}/")
+                save_session(self.session_state, SESSION_FILE)
+                logger.success("Session đã được lưu.")
+
+        self.token = get_token_from_state(self.session_state)
+        if self.session_state and 'cookies' in self.session_state:
+            for c in self.session_state['cookies']:
+                self.cookies[c['name']] = c['value']
+
+        if self.args.verbose:
+            self._print_debug_info()
+
+    def _print_debug_info(self):
+        logger.debug(f"Số lượng cookies: {len(self.session_state.get('cookies', [])) if self.session_state else 0}")
+        if self.token: logger.debug(f"Token (JWT): {self.token[:20]}...")
+        logger.debug(f"Headers: {HEADERS['User-Agent']}")
+
+    async def resolve_story_url(self, name_raw: str) -> Optional[str]:
+        """Finds the story URL from sitemap."""
+        normalized = normalize_vietnamese_url(name_raw)
+        sitemap_url = f"{BASE_URL}/sitemap.xml"
+        
+        async with httpx.AsyncClient(headers=HEADERS, cookies=self.cookies) as client:
+            try:
+                response = await client.get(sitemap_url)
+                response.raise_for_status()
+                soup = BeautifulSoup(response.content, "lxml-xml")
+                for loc in soup.find_all("loc"):
+                    url = loc.text
+                    if normalized in url and "/chuong" not in url:
+                        return url
+            except Exception as e:
+                logger.error(f"Lỗi khi truy cập sitemap: {e}")
+        return None
+
+    def filter_chapters(self, chapter_data: List[Dict]) -> List[Dict]:
+        """Applies filters like excluding illustrations/empty volumes."""
+        if self.is_cli_mode:
+            skip_minh_hoa = self.args.khong_minh_hoa
+        else:
+            choice = input("Bạn có muốn bỏ qua minh họa và chương lỗi? (Y/n): ").strip().lower()
+            skip_minh_hoa = not choice or choice in ["y", "yes"]
+
+        if skip_minh_hoa:
+            return [vol for vol in chapter_data if vol['chapters']]
+        return chapter_data
+
+    def select_chapters_to_download(self, chapter_data: List[Dict]) -> List[Dict]:
+        """Handles chapter selection logic for both CLI and Interactive modes."""
+        selected = []
+        if self.is_cli_mode:
+            if self.args.volumes:
+                for idx in self.args.volumes:
+                    if 0 < idx <= len(chapter_data):
+                        selected.extend(chapter_data[idx-1]['chapters'])
+            elif self.args.chapters:
+                flat = [c for v in chapter_data for c in v['chapters']]
+                for idx in self.args.chapters:
+                    if 0 < idx <= len(flat):
+                        selected.append(flat[idx-1])
+            else: # All
+                selected = [c for v in chapter_data for c in v['chapters']]
+        else:
+            menu_idx = InteractiveUI.show_menu(
+                ["Tải xuống tất cả", "Chọn tập để tải", "Chọn chương để tải"],
+                "Tùy chọn tải xuống"
+            )
+            if menu_idx == 0:
+                selected = [c for v in chapter_data for c in v['chapters']]
+            elif menu_idx == 1:
+                vols = [v['volume'] for v in chapter_data]
+                v_idxs = InteractiveUI.show_menu(vols, "Chọn tập", multi_select=True)
+                if v_idxs:
+                    for i in v_idxs: selected.extend(chapter_data[i]['chapters'])
+            elif menu_idx == 2:
+                all_chaps = [(f"{v['volume']}: {c['title']}", c) for v in chapter_data for c in v['chapters']]
+                c_idxs = InteractiveUI.show_menu([i[0] for i in all_chaps], "Chọn chương", multi_select=True)
+                if c_idxs:
+                    for i in c_idxs: selected.append(all_chaps[i][1])
+        return selected
+
+    async def run(self):
+        """Main execution flow."""
+        await self.setup_session()
+
+        # 1. Get Novel Name
+        if self.is_cli_mode:
+            name_raw = self.args.ten_truyen
+            if not name_raw:
+                logger.error("Tên truyện là bắt buộc ở chế độ CLI.")
                 return
-        except KeyboardInterrupt:
+        else:
+            name_raw = await InteractiveUI.get_novel_name_interactive(self.token)
+            if not name_raw: return
+
+        # 2. Resolve URL and Info
+        story_url = await self.resolve_story_url(name_raw)
+        if not story_url:
+            logger.error(f"Không tìm thấy truyện '{name_raw}'.")
             return
-        except Exception as e:
-            print(f"Lỗi: {e}")
-            ten_truyen_raw = input("Nhập tên truyện bạn muốn tải: ").strip()
 
-    ten_truyen_normalized = normalize_vietnamese_url(ten_truyen_raw)
-    output_folder = args.output_folder if is_cli_mode and args.output_folder else sanitize_filename(ten_truyen_raw.strip())
-    os.makedirs(output_folder, exist_ok=True)
+        # Folder name is based on the slug from the URL
+        relative_path = story_url.split(f"{BASE_URL}/")[-1]
+        # Folder name should be just the last part for cleanliness, but the slug for fetching info must be the full relative path
+        self.output_folder = self.args.output_folder or sanitize_filename(relative_path.split("/")[-1])
+        os.makedirs(self.output_folder, exist_ok=True)
 
-    sitemap_url = "https://valvrareteam.net/sitemap.xml"
+        async with httpx.AsyncClient(headers=HEADERS, cookies=self.cookies) as client:
+            # Full relative path is used to fetch info
+            story_info = await lay_thong_tin_truyen(client, relative_path, verbose=self.args.verbose)
+            if not self.is_cli_mode or self.args.verbose:
+                InteractiveUI.display_story_summary(story_info)
 
-    # Use httpx for sitemap request
-    async with httpx.AsyncClient(headers=HEADERS, cookies=cookies) as client:
-        response = await client.get(sitemap_url)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.content, "lxml-xml")
-
-    trang_chinh = None
-    for loc in soup.find_all("loc"):
-        url = loc.text
-        if ten_truyen_normalized in url and "/chuong" not in url:
-            trang_chinh = url
-            break
-
-    if not trang_chinh:
-        print(f"Không tìm thấy truyện '{ten_truyen_raw}'. Vui lòng kiểm tra lại tên truyện.")
-        return
-
-    # Get story info
-    async with httpx.AsyncClient(headers=HEADERS, cookies=cookies) as client:
-        story_info = await lay_thong_tin_truyen(client, trang_chinh.split("https://valvrareteam.net/")[-1], verbose=args.verbose)
-
-    print("Đang lấy danh sách chương từ trang chính của truyện...")
-    await tao_so_do_cay.get_chapter_tree_list(trang_chinh, output_file="chapter_list.json", session_state=session_state)
-    await asyncio.sleep(1)
-
-    try:
+        # 3. Load Chapter List
+        logger.info("Đang lấy danh sách chương...")
+        await tao_so_do_cay.get_chapter_tree_list(story_url, output_file="chapter_list.json", session_state=self.session_state)
         with open("chapter_list.json", "r", encoding="utf-8") as f:
             chapter_data = json.load(f)
-    except Exception as e:
-        print(f"Đã xảy ra lỗi khi đọc file chapter_list.json: {e}")
-        return
 
-    # --- Xử lý lựa chọn của người dùng (CLI hoặc tương tác) ---
+        # 4. Filter and Select
+        chapter_data = self.filter_chapters(chapter_data)
+        if not chapter_data: return
+        
+        selected_chaps = self.select_chapters_to_download(chapter_data)
+        if not selected_chaps: return
 
-    # Lọc chương minh hoa
-    if is_cli_mode:
-        minh_hoa_choice = 'y' if args.khong_minh_hoa else 'n'
-    else:
-        minh_hoa_choice = input("Bạn có muốn bỏ qua các chương minh họa và các chương lỗi không? (Y/n): ").strip().lower()
+        # 5. Export Config
+        export_config = await self._get_export_config(story_url)
+        
+        # 6. Scrape
+        urls = [f"{BASE_URL}{c['url']}" for c in selected_chaps]
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TaskProgressColumn(),
+                console=console,
+                transient=True
+            ) as progress:
+                scrape_task = progress.add_task("[green]Đang tải nội dung chương...", total=len(urls))
+                
+                # Note: To show real progress, scrape_chapters would need to be modified.
+                # For now, we show a bar that completes after the call.
+                scraped = await scrape_chapters(
+                    browser, urls, export_config['tasks'], 
+                    skipped_urls=self.skipped_urls, 
+                    session_state=self.session_state, 
+                    verbose=self.args.verbose,
+                    token=self.token
+                )
+                progress.update(scrape_task, completed=len(urls))
+                
+            await browser.close()
 
-    if not minh_hoa_choice or minh_hoa_choice in ["y", "yes"]:
-        print("Bạn đã chọn bỏ qua các chương minh họa và các tập rỗng.")
-        chapter_data = [vol for vol in chapter_data if vol['chapters']]
+        # 7. Generate Files
+        logger.info("Bắt đầu tạo file...")
+        await self._generate_files(chapter_data, selected_chaps, scraped, story_info, export_config)
+        self._cleanup()
 
-    if not chapter_data:
-        print("Không có chương nào để tải sau khi đã lọc.")
-        return
-
-    # Chọn chương/tập để tải
-    selected_chapters_relative: List[Dict[str, str]] = []
-    if is_cli_mode:
-        if args.volumes:
-            selected_indices = [int(i) - 1 for i in args.volumes]
-            for index in selected_indices:
-                if 0 <= index < len(chapter_data):
-                    for chap in chapter_data[index]['chapters']:
-                        selected_chapters_relative.append(chap)
-                else:
-                    print(f"[Cảnh báo] Bỏ qua chỉ số tập không hợp lệ: {index + 1}")
-        elif args.chapters:
-            all_chapters_flat = [chap for vol in chapter_data for chap in vol['chapters']]
-            selected_indices = [int(i) - 1 for i in args.chapters]
-            for index in selected_indices:
-                if 0 <= index < len(all_chapters_flat):
-                    selected_chapters_relative.append(all_chapters_flat[index])
-                else:
-                    print(f"[Cảnh báo] Bỏ qua chỉ số chương không hợp lệ: {index + 1}")
-        else:  # Mặc định là tải tất cả
-            for vol in chapter_data:
-                for chap in vol['chapters']:
-                    selected_chapters_relative.append(chap)
-    else:
-        # Menu chọn chương/tập (chế độ tương tác)
-        main_menu_items = ["Tải xuống tất cả", "Chọn tập để tải", "Chọn chương để tải"]
-        main_menu = TerminalMenu(main_menu_items, title=" Tùy chọn tải xuống ", menu_cursor_style=("fg_cyan", "bold"), menu_highlight_style=("bg_cyan", "fg_black"))
-        main_menu_selection_index = main_menu.show()
-
-        if main_menu_selection_index == 0:  # Tải tất cả
-            for volume in chapter_data:
-                for chap in volume['chapters']:
-                    selected_chapters_relative.append(chap)
-        elif main_menu_selection_index == 1:  # Chọn tập
-            volume_titles = [volume['volume'] for volume in chapter_data]
-            volume_menu = TerminalMenu(volume_titles, title=" Chọn tập (Space để chọn, Enter để xác nhận) ", multi_select=True, show_multi_select_hint=True, multi_select_cursor_style=("fg_yellow", "bold"))
-            selected_volume_indices = volume_menu.show()
-            if selected_volume_indices:
-                for index in selected_volume_indices:
-                    for chap in chapter_data[index]['chapters']:
-                        selected_chapters_relative.append(chap)
-        elif main_menu_selection_index == 2:  # Chọn chương
-            all_chapters_for_menu = []
-            for vol in chapter_data:
-                for ch in vol['chapters']:
-                    all_chapters_for_menu.append((f"{vol['volume']}: {ch['title']}", ch))
-
-            chapter_menu_items = [item[0] for item in all_chapters_for_menu]
-            chapter_menu = TerminalMenu(chapter_menu_items, title=" Chọn chương (Space để chọn, Enter để xác nhận) ", multi_select=True, show_multi_select_hint=True, multi_select_cursor_style=("fg_yellow", "bold"))
-            selected_chapter_indices = chapter_menu.show()
-            if selected_chapter_indices:
-                for index in selected_chapter_indices:
-                    selected_chapters_relative.append(all_chapters_for_menu[index][1])
-
-    if not selected_chapters_relative:
-        print("Không có chương nào được chọn. Đang thoát.")
-        return
-
-    base_url = "https://valvrareteam.net"
-    chapter_urls = [base_url + chap['url'] for chap in selected_chapters_relative]
-    # Map from URL to original title
-    url_to_title_map = {base_url + chap['url']: chap['title'] for chap in selected_chapters_relative}
-
-    # Chọn cách gộp và định dạng file
-    if is_cli_mode:
-        gop_map = {'rieng': 0, 'volume': 1, 'tatca': 2}
-        gop_choice_index = gop_map[args.gop]
-        formats_to_export = [f.upper() for f in args.format]
-        font_name = args.font
-        CONCURRENT_TASKS = args.tasks
-    else:
-        gop_menu_items = ["Gộp tất cả chương đã chọn thành 1 file (mặc định)", "Xuất riêng từng chương", "Gộp các chương theo từng Volume"]
-        gop_menu = TerminalMenu(gop_menu_items, title=" Chọn cách thức xuất file ", menu_cursor_style=("fg_green", "bold"), menu_highlight_style=("bg_green", "fg_black"))
-        gop_choice_index = gop_menu.show()
-        if gop_choice_index == 1 or gop_choice_index == 2:
-            # Tạo cấu trúc thư mục trước
-            tree_path = os.path.join(output_folder, "tree_map.txt")
-            await tao_so_do_cay.get_chapter_tree_folder(url=trang_chinh, output_file=tree_path, cookies=cookies)
-            create_folders_from_tree(tree_path, output_folder)
-        elif gop_choice_index == 0:
-            os.makedirs(output_folder, exist_ok=True)
+    async def _get_export_config(self, story_url: str) -> Dict:
+        if self.is_cli_mode:
+            gop_map = {'rieng': 1, 'volume': 2, 'tatca': 0}
+            return {
+                'mode_idx': gop_map[self.args.gop],
+                'formats': [f.upper() for f in self.args.format],
+                'font': self.args.font,
+                'tasks': self.args.tasks
+            }
+        
+        mode_idx = InteractiveUI.show_menu(
+            ["Gộp tất cả (mặc định)", "Xuất riêng từng chương", "Gộp theo Volume"],
+            "Chọn cách thức xuất file"
+        )
+        if mode_idx in [1, 2]:
+            tree_path = os.path.join(self.output_folder, "tree_map.txt")
+            await tao_so_do_cay.get_chapter_tree_folder(url=story_url, output_file=tree_path, cookies=self.cookies)
+            create_folders_from_tree(tree_path, self.output_folder)
 
         format_items = ["PDF", "EPUB", "HTML", "Markdown (.md)", "Text (.txt)"]
-        format_menu = TerminalMenu(format_items, title=" Chọn định dạng file (Space để chọn, Enter để xác nhận) ", multi_select=True, show_multi_select_hint=True, multi_select_cursor_style=("fg_yellow", "bold"))
-        selected_format_indices = format_menu.show()
-        if not selected_format_indices:
-            print("Không có định dạng nào được chọn. Đang thoát.")
-            return
-        format_mapping = {
-            "PDF": "PDF",
-            "EPUB": "EPUB",
-            "HTML": "HTML",
-            "Markdown (.md)": "MD",
-            "Text (.txt)": "TXT"
-        }
-        formats_to_export = [format_mapping[format_items[i]] for i in selected_format_indices]
+        f_idxs = InteractiveUI.show_menu(format_items, "Chọn định dạng file", multi_select=True)
+        if not f_idxs: return {}
+        
+        mapping = {"PDF": "PDF", "EPUB": "EPUB", "HTML": "HTML", "Markdown (.md)": "MD", "Text (.txt)": "TXT"}
+        formats = [mapping[format_items[i]] for i in f_idxs]
+        
+        font = 'DejaVuSans'
+        if "PDF" in formats:
+            f_choice = input("Chọn font PDF (1. Noto Serif, 2. DejaVu Sans): ").strip()
+            if f_choice == '1': font = 'NotoSerif'
 
-        font_name = 'DejaVuSans'
-        if "PDF" in formats_to_export:
-            font_choice = input("Chọn font cho PDF:\n1. Noto Serif\n2. DejaVu Sans (mặc định)\nLựa chọn của bạn (1/2, Enter để dùng mặc định): ").strip()
-            if font_choice == '1':
-                font_name = 'NotoSerif'
+        tasks_in = input("Số lượng tác vụ song song (mặc định 5): ")
+        tasks = int(tasks_in) if tasks_in.isdigit() and int(tasks_in) > 0 else 5
+        
+        return {'mode_idx': mode_idx, 'formats': formats, 'font': font, 'tasks': tasks}
 
-        CONCURRENT_TASKS_str = input("Nhập số lượng tác vụ song song tối đa (mặc định là 5): ")
-        CONCURRENT_TASKS = int(CONCURRENT_TASKS_str) if CONCURRENT_TASKS_str.isdigit() and int(CONCURRENT_TASKS_str) > 0 else 5
+    async def _generate_files(self, chapter_data, selected_chaps, scraped, story_info, config):
+        # Map URL to metadata
+        url_to_vol = {c['url']: v['volume'] for v in chapter_data for c in v['chapters']}
+        url_to_title = {f"{BASE_URL}{c['url']}": c['title'] for c in selected_chaps}
+        
+        mode = config['mode_idx']
+        
+        if mode == 1: # Rieng
+            for url, content in scraped.items():
+                rel_url = url.replace(BASE_URL, "")
+                vol_name = url_to_vol.get(rel_url, "Unknown")
+                folder = os.path.join(self.output_folder, sanitize_filename(vol_name))
+                os.makedirs(folder, exist_ok=True)
+                title = url_to_title.get(url, "Chapter")
+                await self._write_to_formats(folder, title, content, story_info, config, [{'title': title, 'content': content}])
 
-    # Scrape chapters
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        scraped_content = await scrape_chapters(
-            browser, 
-            chapter_urls, 
-            CONCURRENT_TASKS, 
-            skipped_urls=skipped_urls, 
-            session_state=session_state, 
-            verbose=args.verbose,
-            token=token
-        )
-        await browser.close()
+        elif mode == 2: # Volume
+            vol_map = {}
+            for url, content in scraped.items():
+                v = url_to_vol.get(url.replace(BASE_URL, ""), "Unknown")
+                if v not in vol_map: vol_map[v] = []
+                vol_map[v].append({'title': url_to_title[url], 'content': content})
+            
+            for vol_name, chapters in vol_map.items():
+                folder = os.path.join(self.output_folder, sanitize_filename(vol_name))
+                os.makedirs(folder, exist_ok=True)
+                full_content = [item for c in chapters for item in c['content']]
+                await self._write_to_formats(folder, vol_name, full_content, story_info, config, chapters)
 
-    print("Đã tải xong nội dung. Bắt đầu tạo file...")
+        else: # Tat ca
+            full_structure = []
+            full_flat = []
+            for v_info in chapter_data:
+                v_chaps = []
+                for c_entry in v_info['chapters']:
+                    f_url = f"{BASE_URL}{c_entry['url']}"
+                    if f_url in scraped:
+                        v_chaps.append({'title': c_entry['title'], 'content': scraped[f_url]})
+                        full_flat.extend(scraped[f_url])
+                if v_chaps:
+                    full_structure.append({'volume': v_info['volume'], 'chapters': v_chaps})
+            
+            # Use real title for the filename
+            await self._write_to_formats(self.output_folder, story_info.title, full_flat, story_info, config, full_structure)
 
-    # --- Xử lý tạo file sau khi đã scrape ---
+    async def _write_to_formats(self, folder, title, content, info, config, structure):
+        for fmt in config['formats']:
+            fname = sanitize_filename(title)
+            fpath = os.path.join(folder, f"{fname}.{fmt.lower()}")
+            if fmt == "PDF": await tao_file_pdf(content, fpath, title, config['font'])
+            elif fmt == "EPUB": await tao_file_epub(fpath, title, info.author, structure, info.description, info.cover_path, info.genres)
+            elif fmt == "HTML": await tao_file_html(content, fpath, title)
+            elif fmt == "MD": await tao_file_md(content, fpath, title)
+            elif fmt == "TXT": await tao_file_txt(content, fpath, title)
 
-    # Build a map from relative url to volume name
-    url_to_volume_map: Dict[str, str] = {}
-    for vol_info in chapter_data:
-        for chap in vol_info['chapters']:
-            url_to_volume_map[chap['url']] = vol_info['volume']
+    def _cleanup(self):
+        logger.success("--- HOÀN TẤT ---")
+        if self.skipped_urls:
+            log_path = os.path.join(self.output_folder, "cac_chuong_da_bo_qua.txt")
+            logger.warning(f"{len(self.skipped_urls)} chương bị lỗi. Xem tại: {log_path}")
+            with open(log_path, "w", encoding="utf-8") as f:
+                for url in self.skipped_urls: f.write(f"{url}\n")
 
-    # 1. Xuất riêng từng chương
-    if gop_choice_index == 1:
-        for url in chapter_urls:
-            if url in scraped_content:
-                relative_url = url.replace(base_url, "")
-                volume_name = url_to_volume_map.get(relative_url, "Unknown Volume")
-                current_folder = os.path.join(output_folder, sanitize_filename(volume_name))
-                os.makedirs(current_folder, exist_ok=True)
 
-                ten_chuong = url_to_title_map.get(url, url.split("/")[-1])
-                content_list: ContentList = scraped_content[url]  # Already List[ContentItem]
-                author = story_info.author
-                description = story_info.description
-                cover_path = story_info.cover_path
-                genres = story_info.genres
+async def main():
+    cli = ValvrareScraperCLI()
+    try:
+        await cli.run()
+    except KeyboardInterrupt:
+        console.print("\n[bold red]Chương trình bị dừng bởi người dùng.[/bold red]")
 
-                for fmt in formats_to_export:
-                    file_name = sanitize_filename(ten_chuong)
-                    file_path = os.path.join(current_folder, f"{file_name}.{fmt.lower()}")
-                    if fmt == "PDF":
-                        tao_file_pdf(content_list, file_path, ten_chuong, font_name)
-                    elif fmt == "EPUB":
-                        chapters_data: ChaptersData = [{'title': ten_chuong, 'content': content_list}]
-                        tao_file_epub(file_path, ten_chuong, author, chapters_data, description, cover_path, genres)
-                    elif fmt == "HTML":
-                        tao_file_html(content_list, file_path, ten_chuong)
-                    elif fmt == "MD":
-                        tao_file_md(content_list, file_path, ten_chuong)
-                    elif fmt == "TXT":
-                        tao_file_txt(content_list, file_path, ten_chuong)
 
-    # 2. Gộp theo Volume
-    elif gop_choice_index == 2:
-        volume_contents: Dict[str, List[Dict[str, Any]]] = {}
-        for url in chapter_urls:
-            if url in scraped_content:
-                relative_url = url.replace(base_url, "")
-                volume_name = url_to_volume_map.get(relative_url, "Unknown Volume")
-                if volume_name not in volume_contents:
-                    volume_contents[volume_name] = []
-
-                ten_chuong = url_to_title_map.get(url, url.split("/")[-1])
-                volume_contents[volume_name].append({
-                    'title': ten_chuong,
-                    'content': scraped_content[url]
-                })
-
-        author = story_info.author
-        description = story_info.description
-        cover_path = story_info.cover_path
-        genres = story_info.genres
-
-        for volume_name, chapters_list in volume_contents.items():
-            sanitized_vol_name = sanitize_filename(volume_name)
-            # Volume folder is not strictly needed when merging, but let's keep it clean
-            current_folder = os.path.join(output_folder, sanitized_vol_name)
-            os.makedirs(current_folder, exist_ok=True)
-
-            # Use the full content of the volume for PDF and other simple formats
-            full_volume_content: ContentList = []
-            for chap in chapters_list:
-                full_volume_content.extend(chap['content'])
-
-            for fmt in formats_to_export:
-                file_path = os.path.join(current_folder, f"{sanitized_vol_name}.{fmt.lower()}")
-                if fmt == "PDF":
-                    tao_file_pdf(full_volume_content, file_path, volume_name, font_name)
-                elif fmt == "EPUB":
-                    tao_file_epub(file_path, volume_name, author, chapters_list, description, cover_path, genres)
-                elif fmt == "HTML":
-                    tao_file_html(full_volume_content, file_path, volume_name)
-                elif fmt == "MD":
-                    tao_file_md(full_volume_content, file_path, volume_name)
-                elif fmt == "TXT":
-                    tao_file_txt(full_volume_content, file_path, volume_name)
-
-    # 3. Gộp tất cả
-    elif gop_choice_index == 0:
-        full_story_structure: ChaptersData = []
-        full_content_list_simple: ContentList = []
-
-        # Preserve the original volume and chapter order from chapter_data
-        for volume_info in chapter_data:
-            volume_title = volume_info['volume']
-            chapters_in_volume: List[Dict[str, Any]] = []
-
-            # Filter for selected chapters only
-            for chap_entry in volume_info['chapters']:
-                full_url = base_url + chap_entry['url']
-                if full_url in scraped_content:
-                    chapter_title = chap_entry['title']
-                    content = scraped_content[full_url]
-                    chapters_in_volume.append({'title': chapter_title, 'content': content})
-                    full_content_list_simple.extend(content)
-
-            if chapters_in_volume:
-                full_story_structure.append({'volume': volume_title, 'chapters': chapters_in_volume})
-
-        sanitized_story_name = sanitize_filename(ten_truyen_raw)
-        author = story_info.author
-        description = story_info.description
-        cover_path = story_info.cover_path
-        genres = story_info.genres
-
-        for fmt in formats_to_export:
-            file_path = os.path.join(output_folder, f"{sanitized_story_name}.{fmt.lower()}")
-            if fmt == "PDF":
-                tao_file_pdf(full_content_list_simple, file_path, ten_truyen_raw, font_name)
-            elif fmt == "EPUB":
-                tao_file_epub(file_path, ten_truyen_raw, author, full_story_structure, description, cover_path, genres)
-            elif fmt == "HTML":
-                tao_file_html(full_content_list_simple, file_path, ten_truyen_raw)
-            elif fmt == "MD":
-                tao_file_md(full_content_list_simple, file_path, ten_truyen_raw)
-            elif fmt == "TXT":
-                tao_file_txt(full_content_list_simple, file_path, ten_truyen_raw)
-
-    print("\n--- HOÀN TẤT ---")
-    if skipped_urls:
-        log_file_path = os.path.join(output_folder, "cac_chuong_da_bo_qua.txt")
-        print(f"(!) Cảnh báo: {len(skipped_urls)} chương đã bị bỏ qua do lỗi.")
-        print(f"Đang ghi danh sách các chương bị lỗi vào file: {log_file_path}")
-        with open(log_file_path, "w", encoding="utf-8") as f:
-            for url in skipped_urls:
-                f.write(f"{url}\n")
+if __name__ == "__main__":
+    asyncio.run(main())

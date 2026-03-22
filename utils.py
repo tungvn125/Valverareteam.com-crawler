@@ -1,10 +1,27 @@
 """
 Utility functions for the web novel scraper.
 """
-import os
-import re
+import sys
 from typing import Dict, List, Optional
+from loguru import logger
+import re
+import os
 
+def configure_logger(verbose: bool = False):
+    """Configures the loguru logger with appropriate levels."""
+    logger.remove()  # Remove default handler
+    
+    # Custom format for nice output
+    log_format = (
+        "<green>{time:HH:mm:ss}</green> | "
+        "<level>{level: <8}</level> | "
+        "<cyan>{message}</cyan>"
+    )
+    
+    # Show only INFO and above for non-verbose, DEBUG and above for verbose
+    level = "DEBUG" if verbose else "INFO"
+    
+    logger.add(sys.stderr, level=level, format=log_format, colorize=True)
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",

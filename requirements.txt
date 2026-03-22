@@ -8,6 +8,8 @@ playwright>=1.54.0
 prompt-toolkit>=3.0.43
 reportlab>=4.4.3
 simple-term-menu>=1.6.6
+loguru>=0.7.2
+rich>=13.7.0
 
 # Development dependencies (optional, not required for production use)
 pytest>=8.0.0
