@@ -31,6 +31,13 @@ playwright install chromium-headless-shell
 
 **Yêu cầu:** Python 3.8 trở lên.
 
+**Khả năng tương thích:**
+- **Linux:** Đã test hoạt động tốt (KDE/openSUSE).
+- **Windows:** Chưa test trực tiếp (nhưng có khả năng hoạt động tốt).
+- **macOS:** Chưa test trực tiếp (nhưng sẽ hoạt động tốt vì Playwright hỗ trợ chính thức).
+- **Termux (Android):** Không hoạt động (do Playwright không hỗ trợ).
+- **iOS:** Không hoạt động (giống Android, do giới hạn môi trường không thể chạy Playwright).
+
 ## Cách sử dụng
 
 ### 1. Chế độ Web (Mới & Khuyên dùng)
@@ -42,6 +49,8 @@ Các tham số hỗ trợ:
 - `--port`: Cổng chạy server (mặc định: 8000).
 - `--host`: Host chạy server (mặc định: 127.0.0.1).
 - `--no-browser`: Không tự động mở trình duyệt.
+- `--workers WORKERS`: Số lượng novel tải song song (mặc định: 1).
+
 
 ### 2. Chế độ tương tác (CLI)
 Dành cho người thích làm việc trực tiếp tại terminal:
