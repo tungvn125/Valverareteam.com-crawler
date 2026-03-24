@@ -164,6 +164,12 @@ class ValvrareScraperCLI:
         parser.add_argument('--refresh-session', action='store_true', help="Xóa session cũ.")
         parser.add_argument('--verbose', action='store_true', help="Hiển thị log chi tiết.")
         
+        subparsers = parser.add_subparsers(dest='command', help='Các lệnh bổ sung.')
+        web_parser = subparsers.add_parser('web', help='Khởi chạy giao diện web.')
+        web_parser.add_argument('--host', default='127.0.0.1', help='Host để chạy server (mặc định: 127.0.0.1).')
+        web_parser.add_argument('--port', type=int, default=8000, help='Port để chạy server (mặc định: 8000).')
+        web_parser.add_argument('--no-browser', action='store_true', help='Không tự động mở trình duyệt.')
+
         selection_group = parser.add_mutually_exclusive_group()
         selection_group.add_argument('--all', action='store_true', help="Tải tất cả.")
         selection_group.add_argument('--volumes', nargs='+', type=int, help="Tải các tập cụ thể.")
@@ -270,6 +276,17 @@ class ValvrareScraperCLI:
 
     async def run(self):
         """Main execution flow."""
+        if self.args.command == 'web':
+            from .web import run_web_server
+            import webbrowser
+            
+            url = f"http://{self.args.host}:{self.args.port}"
+            if not self.args.no_browser:
+                webbrowser.open(url)
+            
+            run_web_server(host=self.args.host, port=self.args.port)
+            return
+
         await self.setup_session()
 
         # 1. Get Novel Name
@@ -456,6 +473,15 @@ def main():
         asyncio.run(cli.run())
     except KeyboardInterrupt:
         console.print("\n[bold red]Chương trình bị dừng bởi người dùng.[/bold red]")
+    finally:
+        # Cleanup temporary files
+        for temp_file in ["chapter_list.json", "cover.jpg"]:
+            if os.path.exists(temp_file):
+                try:
+                    os.remove(temp_file)
+                except Exception:
+                    pass
+        logger.info("Đã dọn dẹp file tạm. Hẹn gặp lại!")
 
 
 if __name__ == "__main__":
