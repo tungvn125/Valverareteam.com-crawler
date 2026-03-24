@@ -49,6 +49,25 @@ function addLogEntry(data) {
     logViewer.scrollTop = logViewer.scrollHeight;
 }
 
+const outputPathInput = document.getElementById('outputPathInput');
+const browseBtn = document.getElementById('browseBtn');
+
+// Browse Folder
+browseBtn.onclick = async () => {
+    try {
+        const response = await fetch('/api/browse');
+        const data = await response.json();
+        if (data.path) {
+            outputPathInput.value = data.path;
+        } else if (data.error) {
+            alert(data.error);
+        }
+    } catch (e) {
+        console.error('Failed to open folder dialog', e);
+        alert('Không thể mở hộp thoại chọn thư mục.');
+    }
+};
+
 // Search Handling
 let searchTimeout;
 searchInput.addEventListener('input', () => {
@@ -107,6 +126,7 @@ document.getElementById('downloadForm').onsubmit = async (e) => {
     const slug = document.getElementById('modalSlug').value;
     const tasks = parseInt(document.getElementById('tasksInput').value);
     const skipIllus = document.getElementById('skipIllus').checked;
+    const outputPath = document.getElementById('outputPathInput').value.trim();
 
     if (formats.length === 0) {
         alert('Vui lòng chọn ít nhất một định dạng.');
@@ -117,7 +137,13 @@ document.getElementById('downloadForm').onsubmit = async (e) => {
         const response = await fetch('/api/download', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ slug, formats, tasks, skip_illustrations: skipIllus })
+            body: JSON.stringify({ 
+                slug, 
+                formats, 
+                tasks, 
+                skip_illustrations: skipIllus,
+                output_folder: outputPath || null
+            })
         });
         const data = await response.json();
         createTaskUI(data.task_id, slug);

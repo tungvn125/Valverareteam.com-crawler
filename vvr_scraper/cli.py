@@ -284,7 +284,7 @@ class ValvrareScraperCLI:
             if not self.args.no_browser:
                 webbrowser.open(url)
             
-            run_web_server(host=self.args.host, port=self.args.port)
+            await run_web_server(host=self.args.host, port=self.args.port)
             return
 
         await self.setup_session()

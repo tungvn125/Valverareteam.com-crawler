@@ -4,16 +4,17 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## Mô tả dự án
-**Valvrare Team Web Novel Scraper** là một công cụ dòng lệnh (CLI) mạnh mẽ, được tối ưu hóa để tải web novel từ [Valvrare Team](https://valvrareteam.net). Công cụ hỗ trợ xuất bản ra nhiều định dạng như **EPUB, PDF, HTML, Markdown, và TXT** với hiệu suất cao nhờ kiến trúc bất đồng bộ (Asynchronous).
+**Valvrare Team Web Novel Scraper** là một công cụ mạnh mẽ được tối ưu hóa để tải web novel từ [Valvrare Team](https://valvrareteam.net). Công cụ hỗ trợ xuất bản ra nhiều định dạng như **EPUB, PDF, HTML, Markdown, và TXT** với hiệu suất vượt trội nhờ kiến trúc bất đồng bộ (Asynchronous) và giao diện Web hiện đại.
 
 ## Tính năng nổi bật
-- **Hiệu suất vượt trội:** Tải nội dung chương và hình ảnh minh họa song song (Bulk Download), giảm 80% thời gian chờ so với các bản cũ.
-- **Giao diện hiện đại:** Tích hợp `Rich` mang lại giao diện bảng biểu đẹp mắt và thanh tiến trình (progress bars) trực quan.
-- **Tìm kiếm thông minh:** Tìm kiếm truyện trực tiếp với gợi ý thời gian thực (Live Search) và tự động xử lý slug chính xác.
-- **Làm sạch dữ liệu tự động:** Tự động loại bỏ các hậu tố trạng thái (`+Đang tiến hành`, `+Hoàn thành`...) và chuẩn hóa tên tệp/thư mục.
-- **Vượt rào cản nâng cao:** Hỗ trợ lấy session thủ công (Dynamic Session Capture) để vượt qua Cloudflare hoặc truy cập nội dung yêu cầu đăng nhập.
-- **Metadata chuyên sâu:** Tự động nhúng thể loại, tác giả, mô tả và ảnh bìa vào file EPUB để quản lý dễ dàng trên Calibre.
-- **Logging chuyên nghiệp:** Hệ thống log có cấu trúc với `Loguru`, hỗ trợ chế độ `--verbose` để debug chi tiết.
+- **Giao diện Web Dashboard (`vvrt web`):** Trải nghiệm hiện đại với bảng điều khiển trực quan, cho phép tìm kiếm và quản lý tải xuống ngay trên trình duyệt.
+- **Hiệu suất vượt trội:** Tải nội dung chương và hình ảnh minh họa song song (Bulk Download), giảm 80% thời gian chờ.
+- **Giao diện CLI chuyên nghiệp:** Tích hợp `Rich` mang lại giao diện bảng biểu và thanh tiến trình trực quan ngay tại terminal.
+- **Tìm kiếm thông minh:** Live Search với gợi ý thời gian thực cả trên Web và CLI.
+- **Chọn thư mục bản địa:** Hỗ trợ mở hộp thoại chọn thư mục (File Explorer) trực tiếp từ giao diện Web để chọn nơi lưu truyện.
+- **Vượt rào cản nâng cao:** Hỗ trợ lấy session thủ công (Dynamic Session Capture) để vượt qua Cloudflare hoặc nội dung yêu cầu đăng nhập.
+- **Metadata chuyên sâu:** Tự động nhúng thể loại, tác giả, mô tả và ảnh bìa vào file EPUB.
+- **Logging thời gian thực:** Theo dõi quá trình tải xuống qua WebSockets trên Web hoặc `Loguru` trên CLI.
 
 ## Cài đặt
 
@@ -32,45 +33,44 @@ playwright install chromium-headless-shell
 
 ## Cách sử dụng
 
-Sau khi cài đặt qua pip, bạn có thể sử dụng lệnh `vvrt` từ bất kỳ đâu:
+### 1. Chế độ Web (Mới & Khuyên dùng)
+Khởi chạy giao diện điều khiển hiện đại trên trình duyệt:
+```bash
+vvrt web
+```
+Các tham số hỗ trợ:
+- `--port`: Cổng chạy server (mặc định: 8000).
+- `--host`: Host chạy server (mặc định: 127.0.0.1).
+- `--no-browser`: Không tự động mở trình duyệt.
 
-### 1. Chế độ tương tác (Khuyên dùng)
-Chỉ cần gõ lệnh và làm theo hướng dẫn trên màn hình:
+### 2. Chế độ tương tác (CLI)
+Dành cho người thích làm việc trực tiếp tại terminal:
 ```bash
 vvrt
 ```
 
-### 2. Chế độ dòng lệnh (CLI)
-Dành cho người dùng nâng cao hoặc viết script tự động:
+### 3. Chế độ dòng lệnh (CLI nâng cao)
 ```bash
 # Ví dụ: Tải truyện với định dạng EPUB, gộp tất cả chương, dùng 10 luồng tải
-vvrt "ten-truyen-slug" -f EPUB -g tatca -t 10 --khong-minh-hoa
+vvrt "ten-truyen-slug" -f EPUB -g tatca -t 10 --verbose
 ```
-
-Các tham số chính:
-- `-f, --format`: Định dạng đầu ra (PDF, EPUB, HTML, MD, TXT).
-- `-g, --gop`: Cách gộp file (`rieng`, `volume`, `tatca`).
-- `-t, --tasks`: Số lượng tác vụ song song (mặc định là 5).
-- `--login`: Mở trình duyệt để đăng nhập thủ công/vượt Cloudflare.
-- `--verbose`: Hiển thị log chi tiết để theo dõi quá trình.
 
 ## Xử lý Cloudflare và Đăng nhập
 
-Dự án hỗ trợ chế độ **Session Capture** để vượt qua các biện pháp bảo vệ của website:
+Dự án hỗ trợ chế độ **Session Capture**:
 
 1. Chạy lệnh với cờ `--login`.
 2. Một trình duyệt thực sẽ mở ra, bạn thực hiện đăng nhập hoặc giải Cloudflare.
-3. Khi thấy nội dung truyện đã hiện ra, quay lại terminal và nhấn **Enter**.
-4. Session sẽ được lưu vào `.vvr_session.json` và tự động sử dụng cho các lần sau.
+3. Khi thấy nội dung truyện hiện ra, quay lại terminal và nhấn **Enter**.
+4. Session sẽ được lưu vào `.vvr_session.json` và tự động sử dụng cho cả Web và CLI.
 
 ## Lưu ý
-- **Bản quyền:** Hãy tôn trọng quyền tác giả và chỉ sử dụng nội dung tải về cho mục đích lưu trữ cá nhân.
-- **Lỗi tải:** Các chương gặp lỗi sẽ được ghi nhận vào file `cac_chuong_da_bo_qua.txt` trong thư mục truyện.
-- **Font chữ:** Font hỗ trợ tiếng Việt (DejaVuSans, NotoSerif) sẽ được tự động tải xuống nếu máy bạn chưa có khi xuất file PDF.
+- **Font chữ:** Font hỗ trợ tiếng Việt (DejaVuSans, NotoSerif) sẽ được tự động tải xuống khi xuất file PDF.
+- **Folder Picker:** Trên Linux, tính năng "Browse" thư mục yêu cầu `zenity` (mặc định trên GNOME) hoặc `kdialog` (mặc định trên KDE).
 
 ## Giấy phép
 Dự án được phát hành dưới [Giấy phép MIT](LICENSE).
 
 ## Liên hệ
 - **Email:** notthanhtung@gmail.com
-- **Issue:** Mở issue trên [GitHub repository](https://github.com/tungvn125/Valvrareteam.net-crawler/issues) nếu bạn gặp lỗi hoặc có ý tưởng mới.
+- **Issue:** [GitHub repository issues](https://github.com/tungvn125/Valvrareteam.net-crawler/issues)
