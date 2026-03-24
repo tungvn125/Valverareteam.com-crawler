@@ -1,5 +1,6 @@
 // State
 let socket;
+let selectedTaskId = null;
 const activeTasks = new Map();
 const searchInput = document.getElementById('searchInput');
 const searchResults = document.getElementById('searchResults');
@@ -19,14 +20,14 @@ function initWebSocket() {
     };
 
     socket.onclose = () => {
-        addLogEntry({ time: new Date().toLocaleTimeString(), level: 'ERROR', message: 'WebSocket connection closed. Reconnecting...' });
+        addLogEntry('system', { time: new Date().toLocaleTimeString(), level: 'ERROR', message: 'WebSocket connection closed. Reconnecting...' });
         setTimeout(initWebSocket, 3000);
     };
 }
 
 function handleSocketMessage(data) {
     if (data.type === 'log') {
-        addLogEntry(data);
+        addLogEntry(data.task_id, data);
     } else if (data.type === 'info') {
         updateTask(data.task_id, { title: data.title });
     } else if (data.type === 'status') {
@@ -41,12 +42,38 @@ function handleSocketMessage(data) {
 }
 
 // Log Handling
-function addLogEntry(data) {
+function addLogEntry(taskId, data) {
+    const task = activeTasks.get(taskId);
+    if (!task && taskId !== 'system') return;
+
+    const logMsg = taskId === 'system' ? data : data;
+    
+    if (taskId !== 'system') {
+        task.logs.push(logMsg);
+    }
+
+    // Only render if this task is selected or it's a system message
+    if (selectedTaskId === taskId || (taskId === 'system' && !selectedTaskId)) {
+        renderLogEntry(logMsg);
+    }
+}
+
+function renderLogEntry(data) {
     const entry = document.createElement('div');
     entry.className = `log-entry ${data.level || ''}`;
     entry.innerHTML = `<span class="time">[${data.time}]</span> <span class="level ${data.level}">${data.level}</span> ${data.message}`;
     logViewer.appendChild(entry);
     logViewer.scrollTop = logViewer.scrollHeight;
+}
+
+function refreshLogViewer() {
+    logViewer.innerHTML = '';
+    const task = activeTasks.get(selectedTaskId);
+    if (task) {
+        task.logs.forEach(renderLogEntry);
+    } else {
+        logViewer.innerHTML = '<div class="log-entry system">Chọn một nhiệm vụ để xem nhật ký...</div>';
+    }
 }
 
 const outputPathInput = document.getElementById('outputPathInput');
@@ -162,6 +189,7 @@ function createTaskUI(taskId, title) {
     const taskItem = document.createElement('div');
     taskItem.id = `task-${taskId}`;
     taskItem.className = 'task-item';
+    taskItem.onclick = () => selectTask(taskId);
     taskItem.innerHTML = `
         <div class="task-header">
             <span class="task-title">${title}</span>
@@ -173,30 +201,62 @@ function createTaskUI(taskId, title) {
         <div class="task-status">Đang khởi tạo...</div>
     `;
     taskList.appendChild(taskItem);
-    activeTasks.set(taskId, { id: taskId, title });
+    activeTasks.set(taskId, { id: taskId, title, logs: [], status: 'Đang khởi tạo...', percent: 0 });
+    
+    // Auto-select the first task added
+    if (!selectedTaskId) {
+        selectTask(taskId);
+    }
+}
+
+function selectTask(taskId) {
+    if (selectedTaskId) {
+        const oldEl = document.getElementById(`task-${selectedTaskId}`);
+        if (oldEl) oldEl.classList.remove('selected');
+    }
+    
+    selectedTaskId = taskId;
+    const newEl = document.getElementById(`task-${taskId}`);
+    if (newEl) newEl.classList.add('selected');
+    
+    refreshLogViewer();
 }
 
 function updateTask(taskId, data) {
-    const el = document.getElementById(`task-${taskId}`);
-    if (!el) return;
+    const task = activeTasks.get(taskId);
+    if (!task) return;
 
-    if (data.title) el.querySelector('.task-title').textContent = data.title;
-    if (data.status) el.querySelector('.task-status').textContent = data.status;
+    const el = document.getElementById(`task-${taskId}`);
+    
+    if (data.title) {
+        task.title = data.title;
+        if (el) el.querySelector('.task-title').textContent = data.title;
+    }
+    if (data.status) {
+        task.status = data.status;
+        if (el) el.querySelector('.task-status').textContent = data.status;
+    }
     if (data.percent !== undefined) {
-        el.querySelector('.task-percent').textContent = `${data.percent}%`;
-        el.querySelector('.progress-fill').style.width = `${data.percent}%`;
+        task.percent = data.percent;
+        if (el) {
+            el.querySelector('.task-percent').textContent = `${data.percent}%`;
+            el.querySelector('.progress-fill').style.width = `${data.percent}%`;
+        }
     }
     if (data.error) {
-        el.style.borderLeftColor = 'var(--error)';
-        el.querySelector('.task-percent').style.color = 'var(--error)';
+        if (el) {
+            el.style.borderLeftColor = 'var(--error)';
+            el.querySelector('.task-percent').style.color = 'var(--error)';
+        }
     }
 }
 
 function finishTask(taskId, path) {
     const taskEl = document.getElementById(`task-${taskId}`);
+    const task = activeTasks.get(taskId);
+    
     if (taskEl) taskEl.remove();
 
-    const task = activeTasks.get(taskId);
     const completedItem = document.createElement('div');
     completedItem.className = 'completed-item';
     completedItem.innerHTML = `
@@ -204,6 +264,12 @@ function finishTask(taskId, path) {
         <span>${task ? task.title : 'Nhiệm vụ'} (Đã xong)</span>
     `;
     completedList.prepend(completedItem);
+    
+    if (selectedTaskId === taskId) {
+        selectedTaskId = null;
+        refreshLogViewer();
+    }
+    
     activeTasks.delete(taskId);
 
     if (taskList.children.length === 0) {
