@@ -150,7 +150,7 @@ class ValvrareScraperCLI:
             description="Tải truyện từ Valvrare Team dưới dạng PDF, EPUB, và các định dạng khác.",
             formatter_class=argparse.RawTextHelpFormatter
         )
-        parser.add_argument('ten_truyen', nargs='?', help="Tên truyện cần tải.")
+        parser.add_argument('ten_truyen', nargs='*', help="Tên truyện cần tải (slug). Hoặc dùng 'web' để mở giao diện.")
         parser.add_argument('-o', '--output', dest='output_folder', help="Thư mục đầu ra.")
         parser.add_argument('-f', '--format', nargs='+', default=['EPUB'], 
                            choices=['PDF', 'EPUB', 'HTML', 'MD', 'TXT'], help="Định dạng file.")
@@ -164,12 +164,11 @@ class ValvrareScraperCLI:
         parser.add_argument('--refresh-session', action='store_true', help="Xóa session cũ.")
         parser.add_argument('--verbose', action='store_true', help="Hiển thị log chi tiết.")
         
-        subparsers = parser.add_subparsers(dest='command', help='Các lệnh bổ sung.')
-        web_parser = subparsers.add_parser('web', help='Khởi chạy giao diện web.')
-        web_parser.add_argument('--host', default='127.0.0.1', help='Host để chạy server (mặc định: 127.0.0.1).')
-        web_parser.add_argument('--port', type=int, default=8000, help='Port để chạy server (mặc định: 8000).')
-        web_parser.add_argument('--workers', type=int, default=1, help='Số lượng novel tải song song (mặc định: 1).')
-        web_parser.add_argument('--no-browser', action='store_true', help='Không tự động mở trình duyệt.')
+        # Web-specific arguments (moved to top-level)
+        parser.add_argument('--host', default='127.0.0.1', help='Host cho web server.')
+        parser.add_argument('--port', type=int, default=8000, help='Port cho web server.')
+        parser.add_argument('--workers', type=int, default=1, help='Số lượng novel tải song song (chế độ web).')
+        parser.add_argument('--no-browser', action='store_true', help='Không tự động mở trình duyệt.')
 
         selection_group = parser.add_mutually_exclusive_group()
         selection_group.add_argument('--all', action='store_true', help="Tải tất cả.")
@@ -277,7 +276,8 @@ class ValvrareScraperCLI:
 
     async def run(self):
         """Main execution flow."""
-        if self.args.command == 'web':
+        # Handle 'web' command as a positional argument
+        if self.args.ten_truyen and self.args.ten_truyen[0] == 'web':
             from .web import run_web_server
             import webbrowser
             
@@ -290,16 +290,34 @@ class ValvrareScraperCLI:
 
         await self.setup_session()
 
-        # 1. Get Novel Name
+        # 1. Get Novel Names
         if self.is_cli_mode:
-            name_raw = self.args.ten_truyen
-            if not name_raw:
+            names_raw = self.args.ten_truyen
+            if not names_raw:
+                # Should not happen if is_cli_mode is correctly handled
+                # but if user passed other flags but no slug?
                 logger.error("Tên truyện là bắt buộc ở chế độ CLI.")
                 return
+            
+            total = len(names_raw)
+            for i, name in enumerate(names_raw):
+                if total > 1:
+                    console.print(Panel(f"[bold cyan]Đang xử lý truyện {i+1}/{total}: {name}[/bold cyan]"))
+                try:
+                    await self.process_novel(name)
+                except Exception as e:
+                    logger.error(f"Lỗi khi xử lý '{name}': {e}")
+                    if self.args.verbose:
+                        import traceback
+                        logger.error(traceback.format_exc())
         else:
             name_raw = await InteractiveUI.get_novel_name_interactive(self.token)
-            if not name_raw: return
+            if name_raw:
+                await self.process_novel(name_raw)
 
+    async def process_novel(self, name_raw: str):
+        """Process a single novel download."""
+        self.skipped_urls = []
         # 2. Resolve URL and Info
         story_url = await self.resolve_story_url(name_raw)
         if not story_url:
@@ -308,18 +326,16 @@ class ValvrareScraperCLI:
 
         # Folder name is based on the slug from the URL
         relative_path = story_url.split(f"{BASE_URL}/")[-1]
-        # Folder name should be just the last part for cleanliness, but the slug for fetching info must be the full relative path
         self.output_folder = self.args.output_folder or sanitize_filename(relative_path.split("/")[-1])
         os.makedirs(self.output_folder, exist_ok=True)
 
         async with httpx.AsyncClient(headers=HEADERS, cookies=self.cookies) as client:
-            # Full relative path is used to fetch info
             story_info = await lay_thong_tin_truyen(client, relative_path, verbose=self.args.verbose)
             if not self.is_cli_mode or self.args.verbose:
                 InteractiveUI.display_story_summary(story_info)
 
         # 3. Load Chapter List
-        logger.info("Đang lấy danh sách chương...")
+        logger.info(f"Đang lấy danh sách chương cho '{story_info.title}'...")
         await tao_so_do_cay.get_chapter_tree_list(story_url, output_file="chapter_list.json", session_state=self.session_state)
         with open("chapter_list.json", "r", encoding="utf-8") as f:
             chapter_data = json.load(f)
@@ -347,10 +363,8 @@ class ValvrareScraperCLI:
                 console=console,
                 transient=True
             ) as progress:
-                scrape_task = progress.add_task("[green]Đang tải nội dung chương...", total=len(urls))
+                scrape_task = progress.add_task(f"[green]Đang tải {len(urls)} chương...", total=len(urls))
                 
-                # Note: To show real progress, scrape_chapters would need to be modified.
-                # For now, we show a bar that completes after the call.
                 scraped = await scrape_chapters(
                     browser, urls, export_config['tasks'], 
                     skipped_urls=self.skipped_urls, 
@@ -363,7 +377,7 @@ class ValvrareScraperCLI:
             await browser.close()
 
         # 7. Generate Files
-        logger.info("Bắt đầu tạo file...")
+        logger.info(f"Bắt đầu tạo file cho '{story_info.title}'...")
         await self._generate_files(chapter_data, selected_chaps, scraped, story_info, export_config)
         self._cleanup()
 

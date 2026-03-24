@@ -56,7 +56,7 @@ The application follows a modular, asynchronous architecture:
 
 3. **Advanced CLI Mode:**
    ```bash
-   vvrt "ten-truyen-slug" -f EPUB PDF -g tatca -t 10 --verbose
+   vvrt "slug-1" "slug-2" -f EPUB PDF -g tatca -t 10 --verbose
    ```
 
 ### Testing
