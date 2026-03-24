@@ -168,6 +168,7 @@ class ValvrareScraperCLI:
         web_parser = subparsers.add_parser('web', help='Khởi chạy giao diện web.')
         web_parser.add_argument('--host', default='127.0.0.1', help='Host để chạy server (mặc định: 127.0.0.1).')
         web_parser.add_argument('--port', type=int, default=8000, help='Port để chạy server (mặc định: 8000).')
+        web_parser.add_argument('--workers', type=int, default=1, help='Số lượng novel tải song song (mặc định: 1).')
         web_parser.add_argument('--no-browser', action='store_true', help='Không tự động mở trình duyệt.')
 
         selection_group = parser.add_mutually_exclusive_group()
@@ -284,7 +285,7 @@ class ValvrareScraperCLI:
             if not self.args.no_browser:
                 webbrowser.open(url)
             
-            await run_web_server(host=self.args.host, port=self.args.port)
+            await run_web_server(host=self.args.host, port=self.args.port, num_workers=self.args.workers)
             return
 
         await self.setup_session()
