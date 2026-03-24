@@ -183,6 +183,33 @@ def websocket_sink(message):
 # Add sink to loguru
 logger.add(websocket_sink, level="DEBUG")
 
+# Mount static files
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+if os.path.exists(static_dir):
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+@app.get("/", response_class=HTMLResponse)
+async def get_index():
+    index_path = os.path.join(static_dir, "index.html")
+    if os.path.exists(index_path):
+        with open(index_path, "r", encoding="utf-8") as f:
+            return f.read()
+    return "<h1>Frontend not found</h1>"
+
+@app.get("/style.css")
+async def get_css():
+    css_path = os.path.join(static_dir, "style.css")
+    if os.path.exists(css_path):
+        with open(css_path, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read(), media_type="text/css")
+
+@app.get("/app.js")
+async def get_js():
+    js_path = os.path.join(static_dir, "app.js")
+    if os.path.exists(js_path):
+        with open(js_path, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read(), media_type="application/javascript")
+
 @app.websocket("/ws/tasks")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
