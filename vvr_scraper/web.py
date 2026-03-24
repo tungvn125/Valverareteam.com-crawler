@@ -347,9 +347,10 @@ async def get_js():
         with open(js_path, "r", encoding="utf-8") as f:
             return HTMLResponse(content=f.read(), media_type="application/javascript")
 
-async def run_web_server(host: str = "127.0.0.1", port: int = 8000):
+async def run_web_server(host: str = "127.0.0.1", port: int = 8000, num_workers: int = 1):
     """Starts the Uvicorn server in the current event loop."""
-    logger.info(f"Starting web server at http://{host}:{port}")
+    download_queue.num_workers = num_workers
+    logger.info(f"Starting web server at http://{host}:{port} with {num_workers} workers")
     config = uvicorn.Config(app, host=host, port=port, log_level="info")
     server = uvicorn.Server(config)
     await server.serve()
