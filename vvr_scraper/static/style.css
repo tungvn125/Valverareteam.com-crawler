@@ -303,11 +303,24 @@ h2 {
     cursor: pointer;
 }
 
-#tasksInput {
+#tasksInput, .text-input {
     padding: 8px 12px;
     border-radius: 6px;
     border: 1px solid #ddd;
-    width: 80px;
+}
+
+.input-with-button {
+    display: flex;
+    gap: 10px;
+}
+
+.input-with-button .text-input {
+    flex: 1;
+}
+
+.input-with-button button {
+    white-space: nowrap;
+    padding: 8px 15px;
 }
 
 .modal-actions {

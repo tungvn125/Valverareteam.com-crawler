@@ -3,16 +3,17 @@ FastAPI web server for the Valvrare Team Scraper.
 """
 import asyncio
 import os
-from typing import List, Optional
+import uuid
+from typing import List, Optional, Dict, Any
 
 import httpx
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
+from pydantic import BaseModel
 from loguru import logger
 import json
-from pydantic import BaseModel
 
 from .scraper_core import lay_thong_tin_truyen, scrape_chapters
 from .exporter import (
@@ -27,121 +28,8 @@ from playwright.async_api import async_playwright
 
 app = FastAPI(title="Valvrare Team Scraper Web UI")
 
-class DownloadRequest(BaseModel):
-    slug: str
-    formats: List[str] = ["EPUB"]
-    grouping: str = "tatca"
-    tasks: int = 5
-    skip_illustrations: bool = False
-
-active_tasks = {}
-
-async def run_scrape_task(req: DownloadRequest, task_id: str):
-    """Orchestrates the scraping task and sends progress via WebSocket."""
-    try:
-        await manager.broadcast({"type": "status", "task_id": task_id, "status": "Resolving story..."})
-        
-        # 1. Resolve Info
-        session_state = load_session(".vvr_session.json")
-        cookies = {}
-        if session_state and 'cookies' in session_state:
-            for c in session_state['cookies']:
-                cookies[c['name']] = c['value']
-        
-        async with httpx.AsyncClient(headers=HEADERS, cookies=cookies) as client:
-            story_info = await lay_thong_tin_truyen(client, req.slug)
-            
-        await manager.broadcast({"type": "info", "task_id": task_id, "title": story_info.title})
-        
-        # 2. Get Chapter List
-        story_url = f"{BASE_URL}/{req.slug}"
-        await get_chapter_tree_list(story_url, output_file=f"chapters_{task_id}.json", session_state=session_state)
-        with open(f"chapters_{task_id}.json", "r", encoding="utf-8") as f:
-            chapter_data = json.load(f)
-        os.remove(f"chapters_{task_id}.json")
-
-        # 3. Filter chapters
-        selected_chaps = [c for v in chapter_data for c in v['chapters']]
-        if req.skip_illustrations:
-            # Basic filtering for illustrations (naive)
-            selected_chaps = [c for c in selected_chaps if "Minh họa" not in c['title']]
-
-        urls = [f"{BASE_URL}{c['url']}" for c in selected_chaps]
-        
-        # 4. Scrape with Progress
-        token = get_token_from_state(session_state)
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
-            
-            # Note: We wrap the process to send progress
-            scraped = {}
-            total = len(urls)
-            
-            # Simple wrapper to track progress
-            async def track_progress(browser, urls, concurrent_tasks, session_state, token):
-                semaphore = asyncio.Semaphore(concurrent_tasks)
-                
-                async def process_url(url, idx):
-                    async with semaphore:
-                        from .scraper_core import lay_chuong_httpx, lay_chuong_voi_hinh_anh
-                        content = None
-                        async with httpx.AsyncClient(headers=HEADERS, cookies=cookies, follow_redirects=True) as client:
-                            content = await lay_chuong_httpx(client, url, token=token)
-                        if not content:
-                            content = await lay_chuong_voi_hinh_anh(browser, url, session_state=session_state)
-                        
-                        if content:
-                            scraped[url] = content
-                        
-                        percent = int(((idx + 1) / total) * 100)
-                        await manager.broadcast({
-                            "type": "progress", 
-                            "task_id": task_id, 
-                            "percent": percent,
-                            "msg": f"Downloaded {idx+1}/{total} chapters"
-                        })
-
-                tasks = [process_url(url, i) for i, url in enumerate(urls)]
-                await asyncio.gather(*tasks)
-
-            await track_progress(browser, urls, req.tasks, session_state, token)
-            await browser.close()
-
-        # 5. Export
-        await manager.broadcast({"type": "status", "task_id": task_id, "status": "Exporting files..."})
-        output_folder = sanitize_filename(story_info.title)
-        os.makedirs(output_folder, exist_ok=True)
-        
-        # Tat ca mode by default for simplicity in web ui
-        full_flat = []
-        for url in urls:
-            if url in scraped:
-                full_flat.extend(scraped[url])
-        
-        for fmt in req.formats:
-            fpath = os.path.join(output_folder, f"{sanitize_filename(story_info.title)}.{fmt.lower()}")
-            if fmt == "PDF": await tao_file_pdf(full_flat, fpath, story_info.title)
-            elif fmt == "EPUB": await tao_file_epub(fpath, story_info.title, story_info.author, [{'title': 'All Chapters', 'content': full_flat}], story_info.description, story_info.cover_path, story_info.genres)
-            elif fmt == "HTML": await tao_file_html(full_flat, fpath, story_info.title)
-            elif fmt == "MD": await tao_file_md(full_flat, fpath, story_info.title)
-            elif fmt == "TXT": await tao_file_txt(full_flat, fpath, story_info.title)
-
-        await manager.broadcast({"type": "complete", "task_id": task_id, "path": output_folder})
-        logger.success(f"Task {task_id} completed: {story_info.title}")
-    except Exception as e:
-        logger.exception(f"Task {task_id} failed: {e}")
-        await manager.broadcast({"type": "error", "task_id": task_id, "error": str(e)})
-    finally:
-        if task_id in active_tasks:
-            del active_tasks[task_id]
-
-@app.post("/api/download")
-async def download_novel(req: DownloadRequest):
-    import uuid
-    task_id = str(uuid.uuid4())[:8]
-    active_tasks[task_id] = req
-    asyncio.create_task(run_scrape_task(req, task_id))
-    return {"task_id": task_id}
+BASE_URL = "https://valvrareteam.net"
+SSR_API_URL = "https://val-ssr-2kzit.ondigitalocean.app/api/novels/search"
 
 class ConnectionManager:
     def __init__(self):
@@ -152,7 +40,8 @@ class ConnectionManager:
         self.active_connections.append(websocket)
 
     def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
 
     async def broadcast(self, message: dict):
         for connection in self.active_connections:
@@ -172,7 +61,6 @@ def websocket_sink(message):
         "message": record["message"],
         "time": record["time"].strftime("%H:%M:%S")
     }
-    # We need to run this in the app's event loop
     try:
         loop = asyncio.get_event_loop()
         if loop.is_running():
@@ -182,6 +70,206 @@ def websocket_sink(message):
 
 # Add sink to loguru
 logger.add(websocket_sink, level="DEBUG")
+
+class DownloadRequest(BaseModel):
+    slug: str
+    formats: List[str] = ["EPUB"]
+    grouping: str = "tatca"
+    tasks: int = 5
+    skip_illustrations: bool = False
+    output_folder: Optional[str] = None
+
+active_tasks = {}
+
+async def run_scrape_task(req: DownloadRequest, task_id: str):
+    """Orchestrates the scraping task and sends progress via WebSocket."""
+    try:
+        await manager.broadcast({"type": "status", "task_id": task_id, "status": "Resolving story..."})
+        
+        session_state = load_session(".vvr_session.json")
+        cookies = {}
+        if session_state and 'cookies' in session_state:
+            for c in session_state['cookies']:
+                cookies[c['name']] = c['value']
+        
+        async with httpx.AsyncClient(headers=HEADERS, cookies=cookies) as client:
+            story_info = await lay_thong_tin_truyen(client, req.slug)
+            
+        await manager.broadcast({"type": "info", "task_id": task_id, "title": story_info.title})
+        
+        story_url = f"{BASE_URL}/{req.slug}"
+        chapter_data = await get_chapter_tree_list(story_url, output_file=f"chapters_{task_id}.json", session_state=session_state)
+
+        if not chapter_data:
+            if os.path.exists(f"chapters_{task_id}.json"):
+                with open(f"chapters_{task_id}.json", "r", encoding="utf-8") as f:
+                    chapter_data = json.load(f)
+            else:
+                raise Exception("Could not retrieve chapter list. Please check if the novel exists or try again.")
+
+        if os.path.exists(f"chapters_{task_id}.json"):
+            os.remove(f"chapters_{task_id}.json")
+
+        selected_chaps = [c for v in chapter_data for c in v['chapters']]
+        if req.skip_illustrations:
+            selected_chaps = [c for c in selected_chaps if "Minh họa" not in c['title']]
+
+        urls = [f"{BASE_URL}{c['url']}" for c in selected_chaps]
+        total = len(urls)
+        
+        token = get_token_from_state(session_state)
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            scraped = {}
+            semaphore = asyncio.Semaphore(req.tasks)
+            
+            async def process_url(url, idx):
+                async with semaphore:
+                    from .scraper_core import lay_chuong_httpx, lay_chuong_voi_hinh_anh
+                    content = None
+                    async with httpx.AsyncClient(headers=HEADERS, cookies=cookies, follow_redirects=True) as client:
+                        content = await lay_chuong_httpx(client, url, token=token)
+                    if not content:
+                        content = await lay_chuong_voi_hinh_anh(browser, url, session_state=session_state)
+                    
+                    if content:
+                        scraped[url] = content
+                    
+                    percent = int(((idx + 1) / total) * 100)
+                    await manager.broadcast({
+                        "type": "progress", 
+                        "task_id": task_id, 
+                        "percent": percent,
+                        "msg": f"Downloaded {idx+1}/{total} chapters"
+                    })
+
+            tasks = [process_url(url, i) for i, url in enumerate(urls)]
+            await asyncio.gather(*tasks)
+            await browser.close()
+
+        await manager.broadcast({"type": "status", "task_id": task_id, "status": "Exporting files..."})
+        
+        # Use provided output folder or default to sanitized title
+        output_folder = req.output_folder or sanitize_filename(story_info.title)
+        os.makedirs(output_folder, exist_ok=True)
+        
+        full_flat = []
+        for url in urls:
+            if url in scraped:
+                full_flat.extend(scraped[url])
+        
+        for fmt in req.formats:
+            fpath = os.path.join(output_folder, f"{sanitize_filename(story_info.title)}.{fmt.lower()}")
+            if fmt == "PDF": await tao_file_pdf(full_flat, fpath, story_info.title)
+            elif fmt == "EPUB": await tao_file_epub(fpath, story_info.title, story_info.author, [{'title': 'All Chapters', 'content': full_flat}], story_info.description, story_info.cover_path, story_info.genres)
+            elif fmt == "HTML": await tao_file_html(full_flat, fpath, story_info.title)
+            elif fmt == "MD": await tao_file_md(full_flat, fpath, story_info.title)
+            elif fmt == "TXT": await tao_file_txt(full_flat, fpath, story_info.title)
+
+        await manager.broadcast({"type": "complete", "task_id": task_id, "path": output_folder})
+        logger.success(f"Task {task_id} completed: {story_info.title}")
+    except Exception as e:
+        import traceback
+        logger.error(f"Task {task_id} failed: {e}")
+        logger.error(traceback.format_exc())
+        await manager.broadcast({"type": "error", "task_id": task_id, "error": str(e)})
+    finally:
+        if task_id in active_tasks:
+            del active_tasks[task_id]
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
+
+@app.get("/api/search")
+async def search_novels(q: str = Query(..., min_length=3)):
+    """Proxies search requests to the Valvrare Team API."""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            headers = {
+                "User-Agent": HEADERS["User-Agent"],
+                "Origin": BASE_URL,
+                "Referer": f"{BASE_URL}/",
+                "Accept": "application/json, text/plain, */*"
+            }
+            url = f"{SSR_API_URL}?title={q}"
+            response = await client.get(url, headers=headers)
+            response.raise_for_status()
+            results = response.json()
+            
+            for item in results:
+                title = item.get('title', '').strip()
+                _id = item.get('_id', '')
+                if title and _id:
+                    item['slug'] = "truyen/" + normalize_vietnamese_url(title) + "-" + _id[-8:]
+            return results
+    except Exception as e:
+        logger.error(f"Search error: {e}")
+        return []
+
+@app.get("/api/browse")
+async def browse_folder():
+    """Opens a native folder selection dialog on the host machine with fallbacks."""
+    import os
+    import subprocess
+
+    # 1. Try zenity (common on Linux)
+    try:
+        proc = subprocess.run(
+            ['zenity', '--file-selection', '--directory', '--title=Chọn thư mục đầu ra'],
+            capture_output=True, text=True
+        )
+        if proc.returncode == 0 and proc.stdout.strip():
+            return {"path": os.path.abspath(proc.stdout.strip())}
+    except FileNotFoundError:
+        pass
+
+    # 2. Try kdialog (KDE fallback)
+    try:
+        proc = subprocess.run(
+            ['kdialog', '--getexistingdirectory', '.', '--title', 'Chọn thư mục đầu ra'],
+            capture_output=True, text=True
+        )
+        if proc.returncode == 0 and proc.stdout.strip():
+            return {"path": os.path.abspath(proc.stdout.strip())}
+    except FileNotFoundError:
+        pass
+
+    # 3. Try tkinter (System fallback)
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes('-topmost', True)
+        folder_selected = filedialog.askdirectory()
+        root.destroy()
+        if folder_selected:
+            return {"path": os.path.abspath(folder_selected)}
+    except ImportError:
+        logger.error("Tkinter not found. Please install it (e.g., sudo zypper install python3-tk)")
+        return {"error": "Tính năng này yêu cầu 'python3-tk' hoặc 'zenity'. Vui lòng cài đặt qua package manager của bạn."}
+    except Exception as e:
+        logger.error(f"Error opening folder dialog: {e}")
+        return {"error": str(e)}
+
+    return {"path": None}
+
+@app.post("/api/download")
+async def download_novel(req: DownloadRequest):
+    task_id = str(uuid.uuid4())[:8]
+    active_tasks[task_id] = req
+    asyncio.create_task(run_scrape_task(req, task_id))
+    return {"task_id": task_id}
+
+@app.websocket("/ws/tasks")
+async def websocket_endpoint(websocket: WebSocket):
+    await manager.connect(websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
 
 # Mount static files
 static_dir = os.path.join(os.path.dirname(__file__), "static")
@@ -210,51 +298,9 @@ async def get_js():
         with open(js_path, "r", encoding="utf-8") as f:
             return HTMLResponse(content=f.read(), media_type="application/javascript")
 
-@app.websocket("/ws/tasks")
-async def websocket_endpoint(websocket: WebSocket):
-    await manager.connect(websocket)
-    try:
-        while True:
-            await websocket.receive_text()
-    except WebSocketDisconnect:
-        manager.disconnect(websocket)
-
-@app.get("/health")
-SSR_API_URL = "https://val-ssr-2kzit.ondigitalocean.app/api/novels/search"
-
-@app.get("/health")
-async def health_check():
-    return {"status": "ok"}
-
-@app.get("/api/search")
-async def search_novels(q: str = Query(..., min_length=3)):
-    """Proxies search requests to the Valvrare Team API."""
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            headers = {
-                "User-Agent": HEADERS["User-Agent"],
-                "Origin": BASE_URL,
-                "Referer": f"{BASE_URL}/",
-                "Accept": "application/json, text/plain, */*"
-            }
-            url = f"{SSR_API_URL}?title={q}"
-            response = await client.get(url, headers=headers)
-            response.raise_for_status()
-            results = response.json()
-            
-            # Add slug to results for the UI
-            for item in results:
-                title = item.get('title', '').strip()
-                _id = item.get('_id', '')
-                if title and _id:
-                    item['slug'] = normalize_vietnamese_url(title) + "-" + _id[-8:]
-            
-            return results
-    except Exception as e:
-        logger.error(f"Search error: {e}")
-        return []
-
-def run_web_server(host: str = "127.0.0.1", port: int = 8000):
-    """Starts the Uvicorn server."""
+async def run_web_server(host: str = "127.0.0.1", port: int = 8000):
+    """Starts the Uvicorn server in the current event loop."""
     logger.info(f"Starting web server at http://{host}:{port}")
-    uvicorn.run(app, host=host, port=port)
+    config = uvicorn.Config(app, host=host, port=port, log_level="info")
+    server = uvicorn.Server(config)
+    await server.serve()
