@@ -102,8 +102,10 @@ manager = ConnectionManager()
 def websocket_sink(message):
     """Loguru sink that broadcasts logs via WebSocket."""
     record = message.record
+    task_id = record["extra"].get("task_id", "system")
     log_msg = {
         "type": "log",
+        "task_id": task_id,
         "level": record["level"].name,
         "message": record["message"],
         "time": record["time"].strftime("%H:%M:%S")
