@@ -5,6 +5,7 @@ import asyncio
 import os
 import uuid
 from typing import List, Optional, Dict, Any
+from contextlib import asynccontextmanager
 
 import httpx
 import uvicorn
@@ -26,7 +27,53 @@ from .session_manager import load_session, save_session
 from .tao_so_do_cay import get_chapter_tree_list
 from playwright.async_api import async_playwright
 
-app = FastAPI(title="Valvrare Team Scraper Web UI")
+class DownloadManager:
+    def __init__(self, num_workers: int = 1):
+        self.queue = asyncio.Queue()
+        self.workers = []
+        self.num_workers = num_workers
+
+    async def start_workers(self):
+        logger.info(f"Starting {self.num_workers} download workers...")
+        for _ in range(self.num_workers):
+            worker = asyncio.create_task(self.worker_loop())
+            self.workers.append(worker)
+
+    async def stop_workers(self):
+        logger.info("Stopping download workers...")
+        for worker in self.workers:
+            worker.cancel()
+        await asyncio.gather(*self.workers, return_exceptions=True)
+
+    async def worker_loop(self):
+        while True:
+            try:
+                req, task_id = await self.queue.get()
+                # Use contextualize to bind task_id to logs in this worker
+                with logger.contextualize(task_id=task_id):
+                    await run_scrape_task(req, task_id)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Worker encountered error: {e}")
+            finally:
+                self.queue.task_done()
+
+    async def add_task(self, req: "DownloadRequest", task_id: str):
+        await manager.broadcast({"type": "status", "task_id": task_id, "status": "In Queue..."})
+        await self.queue.put((req, task_id))
+
+download_queue = DownloadManager(num_workers=1)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    await download_queue.start_workers()
+    yield
+    # Shutdown
+    await download_queue.stop_workers()
+
+app = FastAPI(title="Valvrare Team Scraper Web UI", lifespan=lifespan)
 
 BASE_URL = "https://valvrareteam.net"
 SSR_API_URL = "https://val-ssr-2kzit.ondigitalocean.app/api/novels/search"
@@ -259,7 +306,7 @@ async def browse_folder():
 async def download_novel(req: DownloadRequest):
     task_id = str(uuid.uuid4())[:8]
     active_tasks[task_id] = req
-    asyncio.create_task(run_scrape_task(req, task_id))
+    await download_queue.add_task(req, task_id)
     return {"task_id": task_id}
 
 @app.websocket("/ws/tasks")
