@@ -51,8 +51,8 @@ vvrt
 
 ### 3. Chế độ dòng lệnh (CLI nâng cao)
 ```bash
-# Ví dụ: Tải truyện với định dạng EPUB, gộp tất cả chương, dùng 10 luồng tải
-vvrt "ten-truyen-slug" -f EPUB -g tatca -t 10 --verbose
+# Ví dụ: Tải cùng lúc nhiều truyện với định dạng EPUB, dùng 10 luồng tải
+vvrt slug-truyen-1 slug-truyen-2 -f EPUB -g tatca -t 10 --verbose
 ```
 
 ## Xử lý Cloudflare và Đăng nhập
