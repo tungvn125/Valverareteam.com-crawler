@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**Purpose:** This project is a high-performance, asynchronous command-line and web-based tool designed to scrape and download web novels from [Valvrare Team](https://valvrareteam.net). It allows users to export stories into multiple formats including **EPUB, PDF, HTML, Markdown, and TXT**, with a focus on speed, reliable content extraction, and a modern user experience.
+**Purpose:** This project is a high-performance, asynchronous command-line and web-based tool designed to scrape and download web novels from [Valvrare Team](https://valvrareteam.net). It allows users to export stories into multiple formats including **EPUB, PDF, HTML, Markdown, TXT, and MP3 (Audiobook)**, with a focus on speed, reliable content extraction, and a modern user experience.
 
 **Main Technologies:**
 - **Python (3.8+):** The core programming language.
@@ -12,6 +12,7 @@
 - **WebSockets:** Provides real-time log streaming and progress updates from the scraper to the Web UI.
 - **BeautifulSoup4 & lxml:** Used for parsing HTML and XML (sitemaps).
 - **EbookLib & reportlab:** Used for generating EPUB and PDF output files, respectively.
+- **VieNeu & numpy:** AI-powered Vietnamese text-to-speech synthesis (TTS) for generating high-quality audiobooks.
 - **Loguru & Rich:** Used for structured logging and professional terminal UI elements.
 
 **Architecture:**
@@ -22,7 +23,7 @@ The application follows a modular, asynchronous architecture:
     2. **WebSocket Manager:** Broadcasts real-time logs and progress updates to connected clients.
     3. **Background Tasks:** Orchestrates scraping logic without blocking the web server.
 - **`vvr_scraper/scraper_core.py`:** Implements a **Hybrid Scraping Architecture** (Fast Mode via SSR fallback and Reliable Mode via Playwright).
-- **`vvr_scraper/exporter.py`:** Handles asynchronous exports with concurrent image downloading.
+- **`vvr_scraper/exporter.py`:** Handles asynchronous exports with concurrent image downloading and **lazy-loaded AI audiobook generation** (TTS).
 - **`vvr_scraper/static/`:** Contains the Vanilla HTML/CSS/JS frontend for the Web Dashboard.
 
 ## Building and Running

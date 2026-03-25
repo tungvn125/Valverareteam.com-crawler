@@ -8,6 +8,8 @@ from io import BytesIO
 from typing import List, Dict, Any, Union, cast, Optional
 
 import httpx
+# Heavy AI libraries (numpy, vieneu) are lazy-loaded inside tao_file_mp3 
+# to ensure a fast cold start for the CLI and Web UI.
 from ebooklib import epub
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -278,3 +280,62 @@ async def tao_file_txt(content_list: ContentList, filename: str, title: str = "C
         elif item.type == 'image': txt += f"[Ảnh: {item.data}]\n\n"
     with open(filename, 'w', encoding='utf-8') as f: f.write(txt)
     logger.info(f"Tạo file Text thành công: {filename}")
+
+
+async def tao_file_mp3(content_list: ContentList, filename: str, title: str = "Chương truyện") -> None:
+    """AI-Powered Audiobook generation using VieNeu with chunked processing."""
+    # 1. SILENCE HEAVY WARNINGS BEFORE IMPORTING
+    import os
+    import warnings
+    # Suppress heavy framework logs and warnings to keep the terminal clean,
+    # but let PyTorch/Tensorflow decide hardware usage (CPU vs GPU) automatically.
+    os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+    warnings.filterwarnings("ignore", category=UserWarning)
+
+    # 2. LAZY LOAD HEAVY LIBRARIES
+    try:
+        import numpy as np
+        from vieneu import Vieneu
+    except ImportError:
+        logger.error("Vieneu or numpy not found. Please run 'pip install vieneu numpy' to use TTS.")
+        return
+
+    logger.info(f"Đang tạo file Audiobook: {filename} (Sử dụng VieNeu AI)")
+    
+    # 3. Prepare text chunks
+    chunks = [title]
+    for item in _normalize_content_list(content_list):
+        if item.type == 'text':
+            text = item.data.strip()
+            if text:
+                if len(text) > 2000:
+                    subchunks = [text[i:i+2000] for i in range(0, len(text), 2000)]
+                    chunks.extend(subchunks)
+                else:
+                    chunks.append(text)
+
+    # 4. Synthesize each chunk
+    try:
+        def run_tts_chunked():
+            tts = Vieneu()
+            voice_data = tts.get_preset_voice("Tuyen")
+            audio_segments = []
+            
+            total_chunks = len(chunks)
+            for i, chunk in enumerate(chunks):
+                if not chunk.strip():
+                    continue
+                logger.debug(f"Synthesizing chunk {i+1}/{total_chunks}...")
+                audio = tts.infer(text=chunk, voice=voice_data)
+                audio_segments.append(audio)
+            
+            if audio_segments:
+                logger.debug("Merging audio segments...")
+                merged_audio = np.concatenate(audio_segments)
+                tts.save(merged_audio, filename)
+            
+        await asyncio.to_thread(run_tts_chunked)
+        logger.info(f"Tạo file Audiobook thành công: {filename}")
+    except Exception as e:
+        logger.error(f"Lỗi khi tạo Audiobook: {e}")
+        raise e

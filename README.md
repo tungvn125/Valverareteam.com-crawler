@@ -14,6 +14,7 @@
 - **Chọn thư mục bản địa:** Hỗ trợ mở hộp thoại chọn thư mục (File Explorer) trực tiếp từ giao diện Web để chọn nơi lưu truyện.
 - **Vượt rào cản nâng cao:** Hỗ trợ lấy session thủ công (Dynamic Session Capture) để vượt qua Cloudflare hoặc nội dung yêu cầu đăng nhập.
 - **Metadata chuyên sâu:** Tự động nhúng thể loại, tác giả, mô tả và ảnh bìa vào file EPUB.
+- **Audiobook (TTS) tích hợp:** Sử dụng trí tuệ nhân tạo (AI-Powered) từ thư viện `VieNeu` để chuyển đổi truyện chữ thành định dạng âm thanh (.wav/mp3) chất lượng cao.
 - **Logging thời gian thực:** Theo dõi quá trình tải xuống qua WebSockets trên Web hoặc `Loguru` trên CLI.
 
 ## Cài đặt
