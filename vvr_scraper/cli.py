@@ -23,7 +23,7 @@ from rich.panel import Panel
 from . import tao_so_do_cay
 from .scraper_core import lay_thong_tin_truyen, scrape_chapters
 from .exporter import (
-    tao_file_epub, tao_file_pdf, tao_file_html, tao_file_md, tao_file_txt,
+    tao_file_epub, tao_file_pdf, tao_file_html, tao_file_md, tao_file_txt, tao_file_mp3,
     ContentList, ChaptersData
 )
 from .utils import (
@@ -400,11 +400,11 @@ class ValvrareScraperCLI:
             await tao_so_do_cay.get_chapter_tree_folder(url=story_url, output_file=tree_path, cookies=self.cookies)
             create_folders_from_tree(tree_path, self.output_folder)
 
-        format_items = ["PDF", "EPUB", "HTML", "Markdown (.md)", "Text (.txt)"]
+        format_items = ["PDF", "EPUB", "HTML", "Markdown (.md)", "Text (.txt)", "MP3 (Audiobook)"]
         f_idxs = InteractiveUI.show_menu(format_items, "Chọn định dạng file", multi_select=True)
         if not f_idxs: return {}
         
-        mapping = {"PDF": "PDF", "EPUB": "EPUB", "HTML": "HTML", "Markdown (.md)": "MD", "Text (.txt)": "TXT"}
+        mapping = {"PDF": "PDF", "EPUB": "EPUB", "HTML": "HTML", "Markdown (.md)": "MD", "Text (.txt)": "TXT", "MP3 (Audiobook)": "MP3"}
         formats = [mapping[format_items[i]] for i in f_idxs]
         
         font = 'DejaVuSans'
@@ -471,6 +471,7 @@ class ValvrareScraperCLI:
             elif fmt == "HTML": await tao_file_html(content, fpath, title)
             elif fmt == "MD": await tao_file_md(content, fpath, title)
             elif fmt == "TXT": await tao_file_txt(content, fpath, title)
+            elif fmt == "MP3": await tao_file_mp3(content, fpath, title)
 
     def _cleanup(self):
         logger.success("--- HOÀN TẤT ---")
