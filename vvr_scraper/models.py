@@ -13,6 +13,8 @@ class StoryInfo:
     description: str
     genres: List[str] = None
     cover_path: Optional[str] = None
+    total_chapters: str = "Unknown"
+    word_count: str = "Unknown"
 
 
 @dataclass
@@ -50,7 +52,9 @@ def story_info_to_dict(info: StoryInfo) -> StoryInfoDict:
         "author": info.author,
         "description": info.description,
         "genres": info.genres or [],
-        "cover_path": info.cover_path
+        "cover_path": info.cover_path,
+        "total_chapters": info.total_chapters,
+        "word_count": info.word_count
     }
 
 
@@ -61,5 +65,7 @@ def dict_to_story_info(data: StoryInfoDict) -> StoryInfo:
         author=data.get("author") or "Unknown Author",
         description=data.get("description") or "No Description",
         genres=data.get("genres") or [],
-        cover_path=data.get("cover_path")
+        cover_path=data.get("cover_path"),
+        total_chapters=data.get("total_chapters") or "Unknown",
+        word_count=data.get("word_count") or "Unknown"
     )
