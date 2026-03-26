@@ -27,3 +27,7 @@ memory/
 dist/
 build/
 .env.worktrees/
+client_secrets.json
+.youtube_token.json
+*.mp4
+*.mp3
