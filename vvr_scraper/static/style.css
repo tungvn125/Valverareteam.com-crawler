@@ -487,3 +487,131 @@ h2 {
     background: #ddd;
     border-radius: 10px;
 }
+
+/* Selection Modal Specifics */
+.selection-modal-content {
+    max-width: 700px;
+    height: 80vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.selection-search {
+    margin-bottom: 15px;
+}
+
+#chapterSearchInput {
+    width: 100%;
+    padding: 10px 15px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    outline: none;
+    font-size: 0.95rem;
+}
+
+#chapterSearchInput:focus {
+    border-color: var(--primary);
+}
+
+.chapter-tree-container {
+    flex: 1;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 15px;
+    background: #fcfdfd;
+}
+
+.loading-msg {
+    text-align: center;
+    padding: 40px;
+    color: var(--text-muted);
+}
+
+.volume-item {
+    margin-bottom: 15px;
+}
+
+.volume-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 700;
+    color: #444;
+    padding: 8px;
+    background: #f0f7f7;
+    border-radius: 6px;
+    margin-bottom: 8px;
+    cursor: pointer;
+}
+
+.volume-header:hover {
+    background: #e8f3f3;
+}
+
+.volume-header input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+
+.chapter-list {
+    padding-left: 25px;
+}
+
+.chapter-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 8px;
+    border-radius: 4px;
+    transition: background 0.1s;
+    font-size: 0.9rem;
+}
+
+.chapter-item:hover {
+    background: #f5f9f9;
+}
+
+.chapter-item input[type="checkbox"] {
+    width: 14px;
+    height: 14px;
+    cursor: pointer;
+}
+
+.chapter-item.locked {
+    opacity: 0.5;
+    color: #888;
+}
+
+.chapter-item.locked input[type="checkbox"] {
+    cursor: not-allowed;
+}
+
+.chapter-item.hidden {
+    display: none;
+}
+
+.volume-item.hidden {
+    display: none;
+}
+
+.selection-footer {
+    margin-top: 20px;
+    padding-top: 15px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.selection-stats {
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: var(--text-muted);
+}
+
+#selectedChaptersCount {
+    color: var(--primary);
+    font-weight: 700;
+}

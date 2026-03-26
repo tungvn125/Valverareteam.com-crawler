@@ -8,6 +8,14 @@ const taskList = document.getElementById('taskList');
 const completedList = document.getElementById('completedList');
 const logViewer = document.getElementById('logViewer');
 const downloadModal = document.getElementById('downloadModal');
+const selectionModal = document.getElementById('selectionModal');
+const chapterTreeContainer = document.getElementById('chapterTreeContainer');
+const chapterSearchInput = document.getElementById('chapterSearchInput');
+
+let currentTreeData = [];
+let selectedUrls = new Set();
+let currentSlug = '';
+let currentTitle = '';
 
 // Init WebSocket
 function initWebSocket() {
@@ -185,13 +193,177 @@ async function openPreviewModal(item) {
 
     document.getElementById('selectChaptersBtn').onclick = () => {
         closePreviewModal();
-        openDownloadModal(item);
+        openSelectionModal(item);
     };
 }
 
 function closePreviewModal() {
     document.getElementById('previewModal').style.display = 'none';
 }
+
+async function openSelectionModal(item) {
+    currentSlug = item.slug;
+    currentTitle = item.title;
+    selectionModal.style.display = 'flex';
+    chapterTreeContainer.innerHTML = '<div class="loading-msg">Đang tải danh sách chương...</div>';
+    chapterSearchInput.value = '';
+    selectedUrls.clear();
+    
+    try {
+        const response = await fetch(`/api/chapters?slug=${encodeURIComponent(item.slug)}`);
+        currentTreeData = await response.json();
+        renderChapterTree(currentTreeData);
+    } catch (e) {
+        console.error('Failed to fetch chapters', e);
+        chapterTreeContainer.innerHTML = '<div class="loading-msg">Không thể tải danh sách chương.</div>';
+    }
+}
+
+function closeSelectionModal() {
+    selectionModal.style.display = 'none';
+}
+
+function renderChapterTree(data) {
+    chapterTreeContainer.innerHTML = '';
+    let totalChapters = 0;
+
+    data.forEach((volume, vIdx) => {
+        const volumeEl = document.createElement('div');
+        volumeEl.className = 'volume-item';
+        volumeEl.dataset.index = vIdx;
+
+        const volumeHeader = document.createElement('div');
+        volumeHeader.className = 'volume-header';
+        
+        const volumeCheckbox = document.createElement('input');
+        volumeCheckbox.type = 'checkbox';
+        volumeCheckbox.id = `vol-${vIdx}`;
+        
+        const volumeTitle = document.createElement('label');
+        volumeTitle.htmlFor = `vol-${vIdx}`;
+        volumeTitle.textContent = volume.volume;
+
+        volumeHeader.appendChild(volumeCheckbox);
+        volumeHeader.appendChild(volumeTitle);
+        volumeEl.appendChild(volumeHeader);
+
+        const chapterList = document.createElement('div');
+        chapterList.className = 'chapter-list';
+
+        volume.chapters.forEach((chapter, cIdx) => {
+            totalChapters++;
+            const chapterEl = document.createElement('div');
+            chapterEl.className = 'chapter-item';
+            if (chapter.locked) chapterEl.classList.add('locked');
+
+            const chapterCheckbox = document.createElement('input');
+            chapterCheckbox.type = 'checkbox';
+            chapterCheckbox.id = `chap-${vIdx}-${cIdx}`;
+            chapterCheckbox.dataset.url = chapter.url;
+            chapterCheckbox.disabled = !!chapter.locked;
+            
+            // Auto-select unlocked chapters by default
+            if (!chapter.locked) {
+                chapterCheckbox.checked = true;
+                selectedUrls.add(chapter.url);
+            }
+
+            const chapterLabel = document.createElement('label');
+            chapterLabel.htmlFor = `chap-${vIdx}-${cIdx}`;
+            chapterLabel.textContent = chapter.title;
+
+            chapterCheckbox.onchange = () => {
+                if (chapterCheckbox.checked) {
+                    selectedUrls.add(chapter.url);
+                } else {
+                    selectedUrls.delete(chapter.url);
+                }
+                updateSelectionStats(totalChapters);
+                updateVolumeCheckbox(volumeCheckbox, chapterList);
+            };
+
+            chapterEl.appendChild(chapterCheckbox);
+            chapterEl.appendChild(chapterLabel);
+            chapterList.appendChild(chapterEl);
+        });
+
+        volumeCheckbox.onchange = () => {
+            const chks = chapterList.querySelectorAll('input[type="checkbox"]:not(:disabled)');
+            chks.forEach(chk => {
+                chk.checked = volumeCheckbox.checked;
+                if (chk.checked) {
+                    selectedUrls.add(chk.dataset.url);
+                } else {
+                    selectedUrls.delete(chk.dataset.url);
+                }
+            });
+            updateSelectionStats(totalChapters);
+        };
+
+        // Initial volume checkbox state
+        updateVolumeCheckbox(volumeCheckbox, chapterList);
+
+        volumeEl.appendChild(chapterList);
+        chapterTreeContainer.appendChild(volumeEl);
+    });
+
+    document.getElementById('totalChaptersCount').textContent = totalChapters;
+    updateSelectionStats(totalChapters);
+}
+
+function updateVolumeCheckbox(volChk, chapList) {
+    const chks = chapList.querySelectorAll('input[type="checkbox"]:not(:disabled)');
+    const checked = chapList.querySelectorAll('input[type="checkbox"]:checked:not(:disabled)');
+    
+    if (chks.length === 0) {
+        volChk.checked = false;
+        volChk.disabled = true;
+        return;
+    }
+    
+    volChk.checked = chks.length === checked.length;
+    volChk.indeterminate = checked.length > 0 && checked.length < chks.length;
+}
+
+function updateSelectionStats(total) {
+    document.getElementById('selectedChaptersCount').textContent = selectedUrls.size;
+}
+
+// Chapter Search/Filter
+chapterSearchInput.addEventListener('input', () => {
+    const query = chapterSearchInput.value.toLowerCase().trim();
+    const volumeItems = chapterTreeContainer.querySelectorAll('.volume-item');
+    
+    volumeItems.forEach(volItem => {
+        const chapters = volItem.querySelectorAll('.chapter-item');
+        let hasVisibleChapter = false;
+        
+        chapters.forEach(chapItem => {
+            const title = chapItem.querySelector('label').textContent.toLowerCase();
+            if (title.includes(query)) {
+                chapItem.classList.remove('hidden');
+                hasVisibleChapter = true;
+            } else {
+                chapItem.classList.add('hidden');
+            }
+        });
+        
+        if (hasVisibleChapter || volItem.querySelector('.volume-header label').textContent.toLowerCase().includes(query)) {
+            volItem.classList.remove('hidden');
+        } else {
+            volItem.classList.add('hidden');
+        }
+    });
+});
+
+document.getElementById('confirmSelectionBtn').onclick = () => {
+    if (selectedUrls.size === 0) {
+        alert('Vui lòng chọn ít nhất một chương.');
+        return;
+    }
+    closeSelectionModal();
+    openDownloadModal({ title: currentTitle, slug: currentSlug });
+};
 
 function openDownloadModal(item) {
     document.getElementById('modalTitle').textContent = `Tải: ${item.title}`;
@@ -226,11 +398,12 @@ document.getElementById('downloadForm').onsubmit = async (e) => {
                 formats, 
                 tasks, 
                 skip_illustrations: skipIllus,
-                output_folder: outputPath || null
+                output_folder: outputPath || null,
+                selected_urls: Array.from(selectedUrls)
             })
         });
         const data = await response.json();
-        createTaskUI(data.task_id, slug);
+        createTaskUI(data.task_id, currentTitle || slug);
         closeModal();
     } catch (e) {
         alert('Không thể bắt đầu tải xuống.');

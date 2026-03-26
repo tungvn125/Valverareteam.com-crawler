@@ -85,6 +85,28 @@
         </div>
     </div>
 
+    <!-- Selection Modal -->
+    <div id="selectionModal" class="modal">
+        <div class="modal-content selection-modal-content">
+            <h2>Chọn chương để tải</h2>
+            <div class="selection-search">
+                <input type="text" id="chapterSearchInput" placeholder="Tìm chương..." autocomplete="off">
+            </div>
+            <div id="chapterTreeContainer" class="chapter-tree-container">
+                <div class="loading-msg">Đang tải danh sách chương...</div>
+            </div>
+            <div class="selection-footer">
+                <div class="selection-stats">
+                    Đã chọn: <span id="selectedChaptersCount">0</span> / <span id="totalChaptersCount">0</span> chương
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary" onclick="closeSelectionModal()">Quay lại</button>
+                    <button type="button" id="confirmSelectionBtn" class="btn-primary">Tùy chọn tải →</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Modal for Download Options -->
     <div id="downloadModal" class="modal">
         <div class="modal-content">
