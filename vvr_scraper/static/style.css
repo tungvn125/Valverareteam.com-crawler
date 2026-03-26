@@ -57,6 +57,11 @@ header {
     align-items: center;
 }
 
+.header-actions {
+    display: flex;
+    gap: 12px;
+}
+
 header h1 {
     font-size: 1.5rem;
     font-weight: 600;
@@ -272,12 +277,45 @@ h2 {
 .task-header {
     display: flex;
     justify-content: space-between;
+    align-items: center;
     margin-bottom: 10px;
     font-size: 0.95rem;
 }
 
+.task-controls {
+    display: flex;
+    gap: 8px;
+}
+
+.task-controls button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1rem;
+    padding: 2px 5px;
+    border-radius: 4px;
+    transition: background 0.2s;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.task-controls button:hover {
+    background: var(--border);
+    color: var(--primary);
+}
+
+.task-controls .cancel-btn:hover {
+    color: var(--error);
+}
+
 .task-title {
     font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 60%;
 }
 
 .task-percent {

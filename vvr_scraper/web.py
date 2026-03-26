@@ -43,7 +43,17 @@ class DownloadManager:
         logger.info("Stopping download workers...")
         for worker in self.workers:
             worker.cancel()
-        await asyncio.gather(*self.workers, return_exceptions=True)
+        if self.workers:
+            await asyncio.gather(*self.workers, return_exceptions=True)
+            self.workers = []
+
+    async def update_workers(self, new_num: int):
+        if new_num == self.num_workers:
+            return
+        logger.info(f"Updating download workers from {self.num_workers} to {new_num}...")
+        await self.stop_workers()
+        self.num_workers = new_num
+        await self.start_workers()
 
     async def worker_loop(self):
         while True:
@@ -137,6 +147,28 @@ class DownloadRequest(BaseModel):
     skip_illustrations: bool = False
     output_folder: Optional[str] = None
     selected_urls: Optional[List[str]] = None
+
+class Settings(BaseModel):
+    num_workers: int = 1
+    default_output_folder: str = ""
+
+SETTINGS_FILE = "vvr_settings.json"
+
+def load_vvr_settings() -> Settings:
+    if os.path.exists(SETTINGS_FILE):
+        try:
+            with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+                return Settings(**json.load(f))
+        except Exception as e:
+            logger.error(f"Error loading settings: {e}")
+    return Settings()
+
+def save_vvr_settings(settings: Settings):
+    try:
+        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+            json.dump(settings.dict(), f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.error(f"Error saving settings: {e}")
 
 active_tasks = {}
 active_tasks_futures: Dict[str, asyncio.Task] = {}
@@ -419,9 +451,26 @@ async def get_story_info(slug: str):
         logger.error(f"Error fetching story info: {e}")
         return {"error": str(e)}
 
+@app.get("/api/settings")
+async def get_settings():
+    return load_vvr_settings()
+
+@app.post("/api/settings")
+async def update_settings(settings: Settings):
+    save_vvr_settings(settings)
+    await download_queue.update_workers(settings.num_workers)
+    return {"status": "ok"}
+
 @app.post("/api/download")
 async def download_novel(req: DownloadRequest):
     task_id = str(uuid.uuid4())[:8]
+    
+    # Use default output folder if not provided
+    if not req.output_folder:
+        settings = load_vvr_settings()
+        if settings.default_output_folder:
+            req.output_folder = os.path.join(settings.default_output_folder, sanitize_filename(req.slug.split('/')[-1]))
+
     active_tasks[task_id] = req
     await download_queue.add_task(req, task_id)
     return {"task_id": task_id}
@@ -462,8 +511,12 @@ async def get_js():
         with open(js_path, "r", encoding="utf-8") as f:
             return HTMLResponse(content=f.read(), media_type="application/javascript")
 
-async def run_web_server(host: str = "127.0.0.1", port: int = 8000, num_workers: int = 1):
+async def run_web_server(host: str = "127.0.0.1", port: int = 8000, num_workers: Optional[int] = None):
     """Starts the Uvicorn server in the current event loop."""
+    if num_workers is None:
+        settings = load_vvr_settings()
+        num_workers = settings.num_workers
+    
     download_queue.num_workers = num_workers
     logger.info(f"Starting web server at http://{host}:{port} with {num_workers} workers")
     config = uvicorn.Config(app, host=host, port=port, log_level="info")

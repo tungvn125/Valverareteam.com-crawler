@@ -464,6 +464,11 @@ function createTaskUI(taskId, title) {
     taskItem.innerHTML = `
         <div class="task-header">
             <span class="task-title">${title}</span>
+            <div class="task-controls">
+                <button class="pause-btn" title="Tạm dừng">⏸</button>
+                <button class="resume-btn" title="Tiếp tục" style="display:none">▶</button>
+                <button class="cancel-btn" title="Hủy bỏ">✕</button>
+            </div>
             <span class="task-percent">0%</span>
         </div>
         <div class="progress-bar">
@@ -471,6 +476,21 @@ function createTaskUI(taskId, title) {
         </div>
         <div class="task-status">Đang khởi tạo...</div>
     `;
+
+    // Add control event listeners
+    taskItem.querySelector('.pause-btn').onclick = (e) => {
+        e.stopPropagation();
+        pauseTask(taskId);
+    };
+    taskItem.querySelector('.resume-btn').onclick = (e) => {
+        e.stopPropagation();
+        resumeTask(taskId);
+    };
+    taskItem.querySelector('.cancel-btn').onclick = (e) => {
+        e.stopPropagation();
+        cancelTask(taskId);
+    };
+
     taskList.appendChild(taskItem);
     activeTasks.set(taskId, { id: taskId, title, logs: [], status: 'Đang khởi tạo...', percent: 0 });
     
@@ -512,7 +532,21 @@ function updateTask(taskId, data) {
     }
     if (data.status) {
         task.status = data.status;
-        if (el) el.querySelector('.task-status').textContent = data.status;
+        if (el) {
+            el.querySelector('.task-status').textContent = data.status;
+            
+            // UI state based on status
+            const pauseBtn = el.querySelector('.pause-btn');
+            const resumeBtn = el.querySelector('.resume-btn');
+            
+            if (data.status.includes('Paused') || data.status.includes('Tạm dừng')) {
+                if (pauseBtn) pauseBtn.style.display = 'none';
+                if (resumeBtn) resumeBtn.style.display = 'inline-block';
+            } else if (data.status !== 'Hoàn thành') {
+                if (pauseBtn) pauseBtn.style.display = 'inline-block';
+                if (resumeBtn) resumeBtn.style.display = 'none';
+            }
+        }
     }
     if (data.percent !== undefined) {
         task.percent = data.percent;
@@ -528,6 +562,107 @@ function updateTask(taskId, data) {
         }
     }
 }
+
+async function pauseTask(taskId) {
+    try {
+        await fetch(`/api/tasks/${taskId}/pause`, { method: 'POST' });
+        updateTask(taskId, { status: 'Pausing...' });
+    } catch (e) {
+        console.error('Failed to pause task', e);
+    }
+}
+
+async function resumeTask(taskId) {
+    try {
+        await fetch(`/api/tasks/${taskId}/resume`, { method: 'POST' });
+        updateTask(taskId, { status: 'Resuming...' });
+    } catch (e) {
+        console.error('Failed to resume task', e);
+    }
+}
+
+async function cancelTask(taskId) {
+    if (!confirm('Bạn có chắc chắn muốn hủy nhiệm vụ này?')) return;
+    try {
+        await fetch(`/api/tasks/${taskId}/cancel`, { method: 'POST' });
+        const el = document.getElementById(`task-${taskId}`);
+        if (el) el.remove();
+        activeTasks.delete(taskId);
+        if (selectedTaskId === taskId) {
+            selectedTaskId = null;
+            refreshLogViewer();
+        }
+    } catch (e) {
+        console.error('Failed to cancel task', e);
+    }
+}
+
+// Settings Logic
+const settingsBtn = document.getElementById('settingsBtn');
+const settingsModal = document.getElementById('settingsModal');
+const settingsForm = document.getElementById('settingsForm');
+const browseDefaultBtn = document.getElementById('browseDefaultBtn');
+
+settingsBtn.onclick = async () => {
+    await fetchSettings();
+    settingsModal.style.display = 'flex';
+};
+
+function closeSettingsModal() {
+    settingsModal.style.display = 'none';
+}
+
+async function fetchSettings() {
+    try {
+        const response = await fetch('/api/settings');
+        const data = await response.json();
+        document.getElementById('globalNumWorkers').value = data.num_workers || 1;
+        document.getElementById('defaultOutputFolder').value = data.default_output_folder || '';
+        
+        // Update the download form's default output path if it's empty
+        if (!document.getElementById('outputPathInput').value && data.default_output_folder) {
+            document.getElementById('outputPathInput').value = data.default_output_folder;
+        }
+    } catch (e) {
+        console.error('Failed to fetch settings', e);
+    }
+}
+
+settingsForm.onsubmit = async (e) => {
+    e.preventDefault();
+    const num_workers = parseInt(document.getElementById('globalNumWorkers').value);
+    const default_output_folder = document.getElementById('defaultOutputFolder').value.trim();
+
+    try {
+        const response = await fetch('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ num_workers, default_output_folder })
+        });
+        if (response.ok) {
+            closeSettingsModal();
+        } else {
+            alert('Lỗi khi lưu cài đặt.');
+        }
+    } catch (e) {
+        console.error('Failed to save settings', e);
+        alert('Không thể lưu cài đặt.');
+    }
+};
+
+browseDefaultBtn.onclick = async () => {
+    try {
+        const response = await fetch('/api/browse');
+        const data = await response.json();
+        if (data.path) {
+            document.getElementById('defaultOutputFolder').value = data.path;
+        } else if (data.error) {
+            alert(data.error);
+        }
+    } catch (e) {
+        console.error('Failed to open folder dialog', e);
+    }
+};
 
 function finishTask(taskId, path) {
     const taskEl = document.getElementById(`task-${taskId}`);
@@ -557,6 +692,7 @@ function finishTask(taskId, path) {
 
 // Initial Load
 initWebSocket();
+fetchSettings();
 
 // Close results when clicking outside
 document.addEventListener('click', (e) => {
