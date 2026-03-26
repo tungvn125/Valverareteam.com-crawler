@@ -2,6 +2,7 @@
 Core scraping functions for the web novel scraper.
 """
 import asyncio
+import re
 from typing import Dict, List, Optional, Any
 
 import httpx
@@ -46,6 +47,42 @@ async def lay_thong_tin_truyen(client: httpx.AsyncClient, ten_truyen: str, verbo
     genre_elements = soup.select(".rd-genre-tag")
     genres = [genre.get_text(strip=True) for genre in genre_elements]
 
+    # Extract stats (Total Chapters and Word Count)
+    total_chapters = "Unknown"
+    word_count = "Unknown"
+    
+    # Try .rd-stats-item first
+    stats_items = soup.select(".rd-stats-item")
+    for item in stats_items:
+        text = item.get_text(" ", strip=True)
+        if "Chương" in text:
+            match = re.search(r'(\d+[\d.,]*)', text)
+            if match:
+                total_chapters = match.group(1)
+        elif "Số chữ" in text:
+            match = re.search(r'(\d+[\d.,]*)', text)
+            if match:
+                word_count = match.group(1)
+
+    # Fallback to .rd-info-row
+    if total_chapters == "Unknown" or word_count == "Unknown":
+        for row in soup.select(".rd-info-row"):
+            label_elem = row.select_one(".rd-info-label")
+            value_elem = row.select_one(".rd-info-value")
+            if label_elem and value_elem:
+                label_text = label_elem.get_text(strip=True)
+                value_text = value_elem.get_text(strip=True)
+                if "Số chữ" in label_text:
+                    word_count = value_text
+                elif "Chương" in label_text:
+                    total_chapters = value_text
+
+    # Fallback to .rd-chapter-count-overlay
+    if total_chapters == "Unknown":
+        chapter_count_overlay = soup.select_one(".rd-chapter-count-value")
+        if chapter_count_overlay:
+            total_chapters = chapter_count_overlay.get_text(strip=True)
+
     cover_path = None
     image_url_element = soup.select_one("img.rd-cover-image")
     if image_url_element and 'src' in image_url_element.attrs:
@@ -66,7 +103,9 @@ async def lay_thong_tin_truyen(client: httpx.AsyncClient, ten_truyen: str, verbo
         author=author,
         description=description,
         genres=genres,
-        cover_path=cover_path
+        cover_path=cover_path,
+        total_chapters=total_chapters,
+        word_count=word_count
     )
 
 

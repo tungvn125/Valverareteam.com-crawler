@@ -307,6 +307,7 @@ class TestScrapingIntegration:
     async def test_lay_thong_tin_truyen_structure(self):
         """Test story info scraping with mocked response"""
         from vvr_scraper.scraper_core import lay_thong_tin_truyen
+        from unittest.mock import MagicMock, patch, AsyncMock
         import httpx
 
         mock_html = """
@@ -316,6 +317,8 @@ class TestScrapingIntegration:
             <div class="rd-description-content">Story description</div>
             <span class="rd-genre-tag">Action</span>
             <span class="rd-genre-tag">Fantasy</span>
+            <div class="rd-stats-item">Chương: 320</div>
+            <div class="rd-stats-item">Số chữ: 1.250.000</div>
         </html>
         """
 
@@ -336,6 +339,46 @@ class TestScrapingIntegration:
             assert result.author == 'Author Name'
             assert result.description == 'Story description'
             assert result.genres == ['Action', 'Fantasy']
+            assert result.total_chapters == '320'
+            assert result.word_count == '1.250.000'
+
+    @pytest.mark.asyncio
+    async def test_lay_thong_tin_truyen_fallback(self):
+        """Test story info scraping with fallback selectors"""
+        from vvr_scraper.scraper_core import lay_thong_tin_truyen
+        from unittest.mock import MagicMock, patch, AsyncMock
+        import httpx
+
+        mock_html = """
+        <html>
+            <h1 class="rd-novel-title">Test Story</h1>
+            <span class="rd-author-name">Author Name</span>
+            <div class="rd-description-content">Story description</div>
+            <div class="rd-info-row">
+                <div class="rd-info-label">Số chữ:</div>
+                <div class="rd-info-value">50.000</div>
+            </div>
+            <div class="rd-chapter-count-overlay">
+                <div class="rd-chapter-count-value">10</div>
+            </div>
+        </html>
+        """
+
+        mock_response = MagicMock()
+        mock_response.text = mock_html
+        mock_response.status_code = 200
+        mock_response.raise_for_status = MagicMock()
+
+        with patch('httpx.AsyncClient') as MockClient:
+            instance = MockClient.return_value
+            instance.get = AsyncMock(return_value=mock_response)
+            instance.__aenter__ = AsyncMock(return_value=instance)
+            instance.__aexit__ = AsyncMock(return_value=None)
+
+            result = await lay_thong_tin_truyen(instance, "test-story")
+
+            assert result.total_chapters == '10'
+            assert result.word_count == '50.000'
 
 
 # =============================================================================
