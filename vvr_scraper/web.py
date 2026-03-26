@@ -3,6 +3,7 @@ FastAPI web server for the Valvrare Team Scraper.
 """
 import asyncio
 import os
+import re
 import uuid
 from typing import List, Optional, Dict, Any
 from contextlib import asynccontextmanager
@@ -528,6 +529,110 @@ async def get_js():
     if os.path.exists(js_path):
         with open(js_path, "r", encoding="utf-8") as f:
             return HTMLResponse(content=f.read(), media_type="application/javascript")
+
+@app.get("/api/library")
+async def get_library():
+    """Returns all entries from the library database."""
+    return await app.state.db.get_all_novels()
+
+@app.post("/api/library/check")
+async def check_library_updates():
+    """Checks for updates for all novels in the library."""
+    novels = await app.state.db.get_all_novels()
+    session_state = load_session(".vvr_session.json")
+    cookies = {}
+    if session_state and 'cookies' in session_state:
+        for c in session_state['cookies']:
+            cookies[c['name']] = c['value']
+            
+    async with httpx.AsyncClient(headers=HEADERS, cookies=cookies, timeout=20.0) as client:
+        async def check_novel(novel):
+            slug = novel['slug']
+            try:
+                story_info = await lay_thong_tin_truyen(client, slug)
+                server_count_str = story_info.total_chapters
+                # Parse server_count to integer
+                server_count = 0
+                match = re.search(r'(\d+[\d.,]*)', server_count_str)
+                if match:
+                    server_count = int(match.group(1).replace('.', '').replace(',', ''))
+                
+                last_count = novel.get('last_chapter_count') or 0
+                status = novel.get('status', 'synced')
+                
+                if server_count > last_count:
+                    status = 'update_available'
+                else:
+                    status = 'synced'
+                
+                # Update DB with new count if it's higher
+                await app.state.db.update_novel_status(slug, status, max(server_count, last_count))
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 404:
+                    await app.state.db.update_novel_status(slug, 'unavailable')
+            except Exception as e:
+                logger.error(f"Error checking update for {slug}: {e}")
+
+        # Check updates concurrently
+        await asyncio.gather(*[check_novel(n) for n in novels])
+    
+    return await app.state.db.get_all_novels()
+
+@app.post("/api/library/scan")
+async def scan_library():
+    """Scans for existing download folders containing .vvr_checkpoint.json."""
+    settings = load_vvr_settings()
+    scan_path = settings.default_output_folder or "."
+    if not os.path.exists(scan_path):
+        return {"error": f"Scan path {scan_path} does not exist"}
+    
+    found_count = 0
+    for root, dirs, files in os.walk(scan_path):
+        if ".vvr_checkpoint.json" in files:
+            checkpoint_path = os.path.join(root, ".vvr_checkpoint.json")
+            try:
+                with open(checkpoint_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if isinstance(data, dict) and "slug" in data and "title" in data:
+                        # Chapter count from checkpoint
+                        chapter_count = len(data.get("scraped", {}))
+                        await app.state.db.upsert_novel({
+                            "title": data["title"],
+                            "slug": data["slug"],
+                            "last_chapter_count": chapter_count,
+                            "output_folder": root,
+                            "status": "synced"
+                        })
+                        found_count += 1
+            except Exception as e:
+                logger.error(f"Error reading checkpoint at {checkpoint_path}: {e}")
+    
+    return {"status": "ok", "found": found_count}
+
+@app.post("/api/batch-import")
+async def batch_import(urls: List[str]):
+    """Accepts a list of URLs/slugs and adds them to the download queue."""
+    added_count = 0
+    settings = load_vvr_settings()
+    for url in urls:
+        # Extract slug from URL if it's a full URL
+        slug = url.replace(BASE_URL + "/", "").strip("/")
+        if not slug:
+            continue
+        
+        task_id = str(uuid.uuid4())[:8]
+        req = DownloadRequest(slug=slug)
+        
+        # Use default output folder if configured
+        if settings.default_output_folder:
+            folder_name = sanitize_filename(slug.split('/')[-1])
+            req.output_folder = os.path.join(settings.default_output_folder, folder_name)
+            
+        active_tasks[task_id] = req
+        await download_queue.add_task(req, task_id)
+        added_count += 1
+        
+    return {"status": "ok", "added": added_count}
 
 async def run_web_server(host: str = "127.0.0.1", port: int = 8000, num_workers: Optional[int] = None):
     """Starts the Uvicorn server in the current event loop."""
