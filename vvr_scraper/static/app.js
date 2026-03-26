@@ -128,7 +128,7 @@ function displaySearchResults(results) {
                 <span class="title">${item.title}</span>
                 <span class="meta">${item.author} | ${item.status} | ${item.totalChapters} chương</span>
             `;
-            div.onclick = () => openDownloadModal(item);
+            div.onclick = () => openPreviewModal(item);
             searchResults.appendChild(div);
         });
     }
@@ -136,6 +136,63 @@ function displaySearchResults(results) {
 }
 
 // Modal Handling
+async function openPreviewModal(item) {
+    const previewModal = document.getElementById('previewModal');
+    
+    // Reset/Loading state
+    document.getElementById('previewTitle').textContent = item.title;
+    document.getElementById('previewAuthor').textContent = item.author;
+    document.getElementById('previewStatus').textContent = item.status || '-';
+    document.getElementById('previewTotalChapters').textContent = item.totalChapters || '-';
+    document.getElementById('previewCover').src = 'https://via.placeholder.com/140x200?text=Loading...';
+    document.getElementById('previewGenres').innerHTML = '';
+    document.getElementById('previewWordCount').textContent = '-';
+    document.getElementById('previewViews').textContent = '-';
+    document.getElementById('previewDescContent').textContent = 'Đang tải thông tin...';
+    
+    previewModal.style.display = 'flex';
+    searchResults.style.display = 'none';
+
+    try {
+        const response = await fetch(`/api/story_info?slug=${encodeURIComponent(item.slug)}`);
+        const data = await response.json();
+        
+        if (data.error) throw new Error(data.error);
+
+        document.getElementById('previewAuthor').textContent = data.author;
+        document.getElementById('previewTotalChapters').textContent = data.total_chapters;
+        document.getElementById('previewWordCount').textContent = data.word_count;
+        document.getElementById('previewDescContent').textContent = data.description;
+        
+        // Try to find a real cover URL if possible (though scraper_core saves it locally)
+        // For now keep placeholder or a fallback
+        document.getElementById('previewCover').src = 'https://via.placeholder.com/140x200?text=VVR+T';
+
+        const genresList = document.getElementById('previewGenres');
+        genresList.innerHTML = '';
+        if (data.genres) {
+            data.genres.forEach(genre => {
+                const span = document.createElement('span');
+                span.className = 'genre-tag';
+                span.textContent = genre;
+                genresList.appendChild(span);
+            });
+        }
+    } catch (e) {
+        console.error('Failed to fetch story info', e);
+        document.getElementById('previewDescContent').textContent = 'Không thể tải thông tin chi tiết.';
+    }
+
+    document.getElementById('selectChaptersBtn').onclick = () => {
+        closePreviewModal();
+        openDownloadModal(item);
+    };
+}
+
+function closePreviewModal() {
+    document.getElementById('previewModal').style.display = 'none';
+}
+
 function openDownloadModal(item) {
     document.getElementById('modalTitle').textContent = `Tải: ${item.title}`;
     document.getElementById('modalSlug').value = item.slug;

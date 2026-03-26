@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Valvrare Team Scraper Web UI</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1><span>VVRT</span> Web Dashboard</h1>
+        </div>
+    </header>
+
+    <main class="container">
+        <!-- Search Section -->
+        <section class="search-section">
+            <div class="search-container">
+                <input type="text" id="searchInput" placeholder="Tìm truyện (ví dụ: 'Toàn Chức Pháp Sư')..." autocomplete="off">
+                <div id="searchResults" class="search-results"></div>
+            </div>
+        </section>
+
+        <div class="dashboard-grid">
+            <!-- Active Tasks -->
+            <section class="tasks-card">
+                <h2>Tiến trình tải</h2>
+                <div id="taskList" class="task-list">
+                    <p class="empty-msg">Chưa có nhiệm vụ nào.</p>
+                </div>
+
+                <div class="completed-section">
+                    <h3>Hoàn thành gần đây</h3>
+                    <div id="completedList" class="completed-list"></div>
+                </div>
+            </section>
+
+            <!-- Logs -->
+            <section class="logs-card">
+                <h2>Nhật ký hoạt động</h2>
+                <div id="logViewer" class="log-viewer">
+                    <div class="log-entry system">Sẵn sàng. Đang chờ nhiệm vụ...</div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Preview Modal -->
+    <div id="previewModal" class="modal">
+        <div class="modal-content preview-modal-content">
+            <div class="preview-header">
+                <div class="preview-cover">
+                    <img id="previewCover" src="" alt="Cover">
+                </div>
+                <div class="preview-info">
+                    <h2 id="previewTitle">Tên truyện</h2>
+                    <p class="preview-author">Tác giả: <span id="previewAuthor">-</span></p>
+                    <p class="preview-status">Trạng thái: <span id="previewStatus">-</span></p>
+                    <div id="previewGenres" class="genres-list"></div>
+                </div>
+            </div>
+            <div class="preview-stats">
+                <div class="stat-item">
+                    <span class="stat-label">Chương</span>
+                    <span id="previewTotalChapters" class="stat-value">-</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Chữ</span>
+                    <span id="previewWordCount" class="stat-value">-</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Lượt xem</span>
+                    <span id="previewViews" class="stat-value">-</span>
+                </div>
+            </div>
+            <div class="preview-description">
+                <h3>Nội dung</h3>
+                <div id="previewDescContent" class="desc-content"></div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn-secondary" onclick="closePreviewModal()">Hủy</button>
+                <button type="button" id="selectChaptersBtn" class="btn-primary">Chọn chương →</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for Download Options -->
+    <div id="downloadModal" class="modal">
+        <div class="modal-content">
+            <h2 id="modalTitle">Tải truyện</h2>
+            <form id="downloadForm">
+                <input type="hidden" id="modalSlug">
+                <div class="form-group">
+                    <label>Định dạng:</label>
+                    <div class="checkbox-group">
+                        <label><input type="checkbox" name="format" value="EPUB" checked> EPUB</label>
+                        <label><input type="checkbox" name="format" value="PDF"> PDF</label>
+                        <label><input type="checkbox" name="format" value="HTML"> HTML</label>
+                        <label><input type="checkbox" name="format" value="MD"> Markdown</label>
+                        <label><input type="checkbox" name="format" value="TXT"> Text</label>
+                        <label><input type="checkbox" name="format" value="MP3"> MP3 (Audiobook)</label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Số tác vụ song song:</label>
+                    <input type="number" id="tasksInput" value="5" min="1" max="20">
+                </div>
+                <div class="form-group">
+                    <label>Thư mục đầu ra (để trống để tự động):</label>
+                    <div class="input-with-button">
+                        <input type="text" id="outputPathInput" placeholder="Ví dụ: /home/user/Truyen/..." class="text-input">
+                        <button type="button" id="browseBtn" class="btn-secondary">Browse...</button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label><input type="checkbox" id="skipIllus"> Bỏ qua minh họa</label>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary" onclick="closeModal()">Hủy</button>
+                    <button type="submit" class="btn-primary">Bắt đầu tải</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
