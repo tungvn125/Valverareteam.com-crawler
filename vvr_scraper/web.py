@@ -127,6 +127,7 @@ class DownloadRequest(BaseModel):
     tasks: int = 5
     skip_illustrations: bool = False
     output_folder: Optional[str] = None
+    selected_urls: Optional[List[str]] = None
 
 active_tasks = {}
 
@@ -146,24 +147,29 @@ async def run_scrape_task(req: DownloadRequest, task_id: str):
             
         await manager.broadcast({"type": "info", "task_id": task_id, "title": story_info.title})
         
-        story_url = f"{BASE_URL}/{req.slug}"
-        chapter_data = await get_chapter_tree_list(story_url, output_file=f"chapters_{task_id}.json", session_state=session_state)
+        if req.selected_urls:
+            urls = req.selected_urls
+            logger.info(f"Using {len(urls)} selected URLs for download")
+        else:
+            story_url = f"{BASE_URL}/{req.slug}"
+            chapter_data = await get_chapter_tree_list(story_url, output_file=f"chapters_{task_id}.json", session_state=session_state)
 
-        if not chapter_data:
+            if not chapter_data:
+                if os.path.exists(f"chapters_{task_id}.json"):
+                    with open(f"chapters_{task_id}.json", "r", encoding="utf-8") as f:
+                        chapter_data = json.load(f)
+                else:
+                    raise Exception("Could not retrieve chapter list. Please check if the novel exists or try again.")
+
             if os.path.exists(f"chapters_{task_id}.json"):
-                with open(f"chapters_{task_id}.json", "r", encoding="utf-8") as f:
-                    chapter_data = json.load(f)
-            else:
-                raise Exception("Could not retrieve chapter list. Please check if the novel exists or try again.")
+                os.remove(f"chapters_{task_id}.json")
 
-        if os.path.exists(f"chapters_{task_id}.json"):
-            os.remove(f"chapters_{task_id}.json")
+            selected_chaps = [c for v in chapter_data for c in v['chapters']]
+            if req.skip_illustrations:
+                selected_chaps = [c for c in selected_chaps if "Minh họa" not in c['title']]
 
-        selected_chaps = [c for v in chapter_data for c in v['chapters']]
-        if req.skip_illustrations:
-            selected_chaps = [c for c in selected_chaps if "Minh họa" not in c['title']]
-
-        urls = [f"{BASE_URL}{c['url']}" for c in selected_chaps]
+            urls = [f"{BASE_URL}{c['url']}" for c in selected_chaps]
+        
         total = len(urls)
         
         token = get_token_from_state(session_state)
@@ -304,6 +310,13 @@ async def browse_folder():
         return {"error": str(e)}
 
     return {"path": None}
+
+@app.get("/api/chapters")
+async def get_chapters(slug: str):
+    story_url = f"{BASE_URL}/{slug}"
+    session_state = load_session(".vvr_session.json")
+    chapter_data = await get_chapter_tree_list(story_url, session_state=session_state)
+    return chapter_data
 
 @app.post("/api/download")
 async def download_novel(req: DownloadRequest):
