@@ -12,6 +12,22 @@ const selectionModal = document.getElementById('selectionModal');
 const chapterTreeContainer = document.getElementById('chapterTreeContainer');
 const chapterSearchInput = document.getElementById('chapterSearchInput');
 
+// Theme Logic
+const themeToggle = document.getElementById('themeToggle');
+const savedTheme = localStorage.getItem('theme');
+
+if (savedTheme) {
+    document.body.classList.toggle('dark-theme', savedTheme === 'dark');
+} else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+    document.body.classList.add('dark-theme');
+}
+
+themeToggle.onclick = () => {
+    document.body.classList.toggle('dark-theme');
+    const theme = document.body.classList.contains('dark-theme') ? 'dark' : 'light';
+    localStorage.setItem('theme', theme);
+};
+
 let currentTreeData = [];
 let selectedUrls = new Set();
 let currentSlug = '';
