@@ -23,6 +23,10 @@ const libraryGrid = document.getElementById('libraryGrid');
 const librarySearchInput = document.getElementById('librarySearchInput');
 const checkUpdatesBtn = document.getElementById('checkUpdatesBtn');
 const scanFoldersBtn = document.getElementById('scanFoldersBtn');
+const batchImportBtn = document.getElementById('batchImportBtn');
+const batchImportModal = document.getElementById('batchImportModal');
+const batchImportUrls = document.getElementById('batchImportUrls');
+const startBatchDownloadBtn = document.getElementById('startBatchDownloadBtn');
 const libraryStats = document.getElementById('libraryStats');
 
 // Theme Logic
@@ -449,6 +453,52 @@ function openDownloadModal(item) {
 function closeModal() {
     downloadModal.style.display = 'none';
 }
+
+function openBatchImportModal() {
+    batchImportModal.style.display = 'flex';
+    batchImportUrls.value = '';
+}
+
+function closeBatchImportModal() {
+    batchImportModal.style.display = 'none';
+}
+
+batchImportBtn.onclick = openBatchImportModal;
+
+startBatchDownloadBtn.onclick = async () => {
+    const content = batchImportUrls.value.trim();
+    if (!content) {
+        alert('Vui lòng nhập ít nhất một URL hoặc Slug.');
+        return;
+    }
+
+    const items = content.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+    
+    startBatchDownloadBtn.disabled = true;
+    startBatchDownloadBtn.textContent = 'Đang xử lý...';
+
+    try {
+        const response = await fetch('/api/batch-import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ items })
+        });
+        
+        const data = await response.json();
+        if (response.ok) {
+            alert(`Đã thêm ${data.count} truyện vào hàng chờ.`);
+            closeBatchImportModal();
+        } else {
+            alert('Lỗi: ' + (data.error || 'Không thể nhập hàng loạt.'));
+        }
+    } catch (e) {
+        console.error('Batch import failed', e);
+        alert('Không thể kết nối đến máy chủ.');
+    } finally {
+        startBatchDownloadBtn.disabled = false;
+        startBatchDownloadBtn.textContent = 'Bắt đầu tải';
+    }
+};
 
 document.getElementById('downloadForm').onsubmit = async (e) => {
     e.preventDefault();
