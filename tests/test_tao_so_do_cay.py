@@ -326,8 +326,8 @@ class TestGetChapterTreeList:
             mock_browser.new_context.assert_called_with(storage_state=session_state, user_agent=HEADERS.get("User-Agent"))
 
     @pytest.mark.asyncio
-    async def test_filters_minh_hoa_chapters(self, tmp_path):
-        """Test that 'minh-hoa' (illustration) chapters are filtered out"""
+    async def test_includes_minh_hoa_chapters(self, tmp_path):
+        """Test that 'minh-hoa' (illustration) chapters are NOT filtered out"""
         mock_html = """
         <html>
             <div class="module-container">
@@ -351,9 +351,40 @@ class TestGetChapterTreeList:
             self._setup_mock_playwright(mock_playwright, mock_html)
             result = await get_chapter_tree_list("https://example.com/story", output_file)
 
-            assert len(result[0]['chapters']) == 2
+            assert len(result[0]['chapters']) == 3
             urls = [c['url'] for c in result[0]['chapters']]
-            assert '/chap-2-minh-hoa' not in urls
+            assert '/chap-2-minh-hoa' in urls
+
+    @pytest.mark.asyncio
+    async def test_detects_locked_chapters(self, tmp_path):
+        """Test that locked chapters are correctly detected"""
+        mock_html = """
+        <html>
+            <div class="module-container">
+                <h3 class="module-title">Volume 1</h3>
+                <div class="module-chapter-item chapter-mode-published">
+                    <a class="chapter-title-link" href="/chap-1">Chương 1</a>
+                </div>
+                <div class="module-chapter-item locked-chapter">
+                    <a class="chapter-title-link" href="/chap-2">Chương 2</a>
+                </div>
+                <div class="module-chapter-item chapter-mode-protected">
+                    <a class="chapter-title-link" href="/chap-3">Chương 3</a>
+                </div>
+            </div>
+        </html>
+        """
+
+        output_file = str(tmp_path / "chapters_locked.json")
+
+        with patch('vvr_scraper.tao_so_do_cay.async_playwright') as mock_playwright:
+            self._setup_mock_playwright(mock_playwright, mock_html)
+            result = await get_chapter_tree_list("https://example.com/story", output_file)
+
+            chapters = result[0]['chapters']
+            assert chapters[0]['locked'] == False
+            assert chapters[1]['locked'] == True
+            assert chapters[2]['locked'] == True
 
     @pytest.mark.asyncio
     async def test_handles_missing_href(self, tmp_path):
