@@ -165,24 +165,46 @@ main {
     color: var(--text-muted);
 }
 
-/* Dashboard Grid */
-.dashboard-grid {
-    display: grid;
-    grid-template-columns: 1fr 1.5fr;
-    gap: 30px;
+/* Dashboard Layout */
+.dashboard-container {
+    display: flex;
+    max-width: 1400px;
+    margin: 30px auto;
+    padding: 0 20px;
+    gap: 20px;
+    height: calc(100vh - 150px);
+}
+
+.sidebar {
+    flex: 0 0 320px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.main-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
 @media (max-width: 900px) {
-    .dashboard-grid {
-        grid-template-columns: 1fr;
+    .dashboard-container {
+        flex-direction: column;
+        height: auto;
+    }
+    .sidebar {
+        flex: 1;
     }
 }
 
 section {
     background-color: var(--card);
-    padding: 25px;
+    padding: 20px;
     border-radius: 16px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+    margin-bottom: 20px;
 }
 
 h2 {
@@ -194,8 +216,29 @@ h2 {
 }
 
 /* Task List */
+.tasks-card {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
+}
+
 .task-list {
-    margin-bottom: 30px;
+    flex: 1;
+    overflow-y: auto;
+    margin-bottom: 20px;
+    padding-right: 5px;
+}
+
+.task-list::-webkit-scrollbar {
+    width: 6px;
+}
+.task-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+.task-list::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 10px;
 }
 
 .empty-msg {
@@ -286,17 +329,54 @@ h2 {
 }
 
 /* Log Viewer */
+.logs-card {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.logs-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.logs-header h2 {
+    margin-bottom: 0;
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.selected-task-info {
+    font-size: 0.9rem;
+    color: var(--primary);
+    font-weight: 600;
+}
+
 .log-viewer {
     background-color: var(--bg);
     border: 1px solid var(--border);
     padding: 15px;
     border-radius: 12px;
-    height: 400px;
+    flex: 1;
     overflow-y: auto;
     font-family: 'SF Mono', 'Fira Code', 'Courier New', monospace;
     font-size: 0.8rem;
     color: var(--text);
     line-height: 1.6;
+}
+
+.log-viewer::-webkit-scrollbar {
+    width: 6px;
+}
+.log-viewer::-webkit-scrollbar-track {
+    background: transparent;
+}
+.log-viewer::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 10px;
 }
 
 .log-entry {

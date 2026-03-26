@@ -90,13 +90,38 @@ function renderLogEntry(data) {
     logViewer.scrollTop = logViewer.scrollHeight;
 }
 
-function refreshLogViewer() {
+async function refreshLogViewer() {
     logViewer.innerHTML = '';
+    if (!selectedTaskId) {
+        logViewer.innerHTML = '<div class="log-entry system">Chọn một nhiệm vụ để xem nhật ký...</div>';
+        return;
+    }
+
     const task = activeTasks.get(selectedTaskId);
-    if (task) {
+    if (!task) return;
+
+    // First render what we have in memory
+    if (task.logs && task.logs.length > 0) {
         task.logs.forEach(renderLogEntry);
     } else {
-        logViewer.innerHTML = '<div class="log-entry system">Chọn một nhiệm vụ để xem nhật ký...</div>';
+        logViewer.innerHTML = '<div class="log-entry system">Đang tải nhật ký...</div>';
+    }
+
+    // Then fetch full history from server
+    const currentSelectedId = selectedTaskId;
+    try {
+        const response = await fetch(`/api/tasks/${selectedTaskId}/logs`);
+        if (response.ok) {
+            const logs = await response.json();
+            // Ensure we're still on the same task when request returns
+            if (currentSelectedId === selectedTaskId) {
+                task.logs = logs;
+                logViewer.innerHTML = '';
+                task.logs.forEach(renderLogEntry);
+            }
+        }
+    } catch (e) {
+        console.error('Failed to fetch logs', e);
     }
 }
 
@@ -460,14 +485,21 @@ function selectTask(taskId) {
         const oldEl = document.getElementById(`task-${selectedTaskId}`);
         if (oldEl) oldEl.classList.remove('selected');
     }
-    
+
     selectedTaskId = taskId;
     const newEl = document.getElementById(`task-${taskId}`);
     if (newEl) newEl.classList.add('selected');
-    
+
+    const task = activeTasks.get(taskId);
+    const infoEl = document.getElementById('selectedTaskInfo');
+    if (task && infoEl) {
+        infoEl.textContent = `Đang xem: ${task.title}`;
+    } else if (infoEl) {
+        infoEl.textContent = '';
+    }
+
     refreshLogViewer();
 }
-
 function updateTask(taskId, data) {
     const task = activeTasks.get(taskId);
     if (!task) return;
