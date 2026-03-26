@@ -26,6 +26,7 @@ from .utils import (
 from .session_manager import load_session, save_session
 from .tao_so_do_cay import get_chapter_tree_list
 from playwright.async_api import async_playwright
+from .db import DatabaseManager
 
 class DownloadManager:
     def __init__(self, num_workers: int = 1):
@@ -78,6 +79,8 @@ download_queue = DownloadManager(num_workers=1)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
+    app.state.db = DatabaseManager()
+    await app.state.db.init_db()
     await download_queue.start_workers()
     yield
     # Shutdown
