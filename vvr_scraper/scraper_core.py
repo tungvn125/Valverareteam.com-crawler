@@ -2,7 +2,9 @@
 Core scraping functions for the web novel scraper.
 """
 import asyncio
+import os
 import re
+import tempfile
 from typing import Dict, List, Optional, Any
 
 import httpx
@@ -84,16 +86,18 @@ async def lay_thong_tin_truyen(client: httpx.AsyncClient, ten_truyen: str, verbo
             total_chapters = chapter_count_overlay.get_text(strip=True)
 
     cover_path = None
+    cover_url = None
     image_url_element = soup.select_one("img.rd-cover-image")
     if image_url_element and 'src' in image_url_element.attrs:
-        image_url = image_url_element['src']
-        if image_url:
+        cover_url = image_url_element['src']
+        if cover_url:
             try:
-                response = await client.get(image_url, timeout=30.0)
+                response = await client.get(cover_url, timeout=30.0)
                 response.raise_for_status()
-                cover_path = "cover.jpg"
+                # Use a unique temp file to avoid race conditions in multi-download
+                fd, cover_path = tempfile.mkstemp(suffix='.jpg', prefix='vvr_cover_')
                 logger.info(f"Đã tải ảnh bìa: {cover_path}")
-                with open(cover_path, "wb") as f:
+                with os.fdopen(fd, 'wb') as f:
                     f.write(response.content)
             except Exception as e:
                 logger.warning(f"Không thể tải ảnh bìa: {e}")
@@ -105,6 +109,7 @@ async def lay_thong_tin_truyen(client: httpx.AsyncClient, ten_truyen: str, verbo
         slug=ten_truyen,
         genres=genres,
         cover_path=cover_path,
+        cover_url=cover_url,
         total_chapters=total_chapters,
         word_count=word_count
     )
@@ -197,21 +202,38 @@ async def scrape_chapters(
     skipped_urls: Optional[List[str]] = None,
     session_state: Optional[Dict[str, Any]] = None,
     verbose: bool = False,
-    token: Optional[str] = None
+    token: Optional[str] = None,
+    pre_scraped: Optional[Dict[str, List[ContentItem]]] = None,
+    on_chapter_done: Optional[Any] = None,
 ) -> Dict[str, List[ContentItem]]:
     """
     Scrape multiple chapters concurrently.
     Uses a hybrid approach:
-    1. Try HTTTPX (Fast) first.
+    1. Try HTTPX (Fast) first.
     2. Fallback to Playwright (Reliable) if HTTPX fails or returns empty.
+
+    Args:
+        browser: Playwright browser instance.
+        urls: List of chapter URLs to scrape.
+        concurrent_tasks: Max concurrent scraping tasks.
+        skipped_urls: List to append failed URLs to (mutated in-place).
+        session_state: Playwright storage state for authenticated sessions.
+        verbose: Enable debug logging.
+        token: JWT token for authenticated API requests.
+        pre_scraped: Previously scraped content to skip (e.g. from checkpoint).
+        on_chapter_done: Optional async callback(url, content, index, total)
+                         called after each chapter is processed (success or skip).
     """
     semaphore = asyncio.Semaphore(concurrent_tasks)
     scraped_content: Dict[str, List[ContentItem]] = {}
     if skipped_urls is None:
-        skipped_urls_local: List[str] = []
-        skipped_urls = skipped_urls_local
-    else:
-        skipped_urls_local = skipped_urls
+        skipped_urls = []
+
+    # Pre-load already scraped content (from checkpoint)
+    if pre_scraped:
+        for url, content in pre_scraped.items():
+            if url in urls:
+                scraped_content[url] = content
 
     # Convert session_state to httpx cookies
     cookies = {}
@@ -219,7 +241,15 @@ async def scrape_chapters(
         for c in session_state['cookies']:
             cookies[c['name']] = c['value']
 
-    async def process_url(browser: Browser, url: str) -> None:
+    total = len(urls)
+
+    async def process_url(url: str, idx: int) -> None:
+        # Skip if already scraped (from checkpoint)
+        if url in scraped_content:
+            if on_chapter_done:
+                await on_chapter_done(url, scraped_content[url], idx, total)
+            return
+
         async with semaphore:
             content = None
             # 1. Try Fast Mode (HTTPX)
@@ -228,16 +258,18 @@ async def scrape_chapters(
             
             # 2. Try Reliable Mode (Playwright) if Fast Mode failed
             if not content:
-                if verbose:
-                    print(f"[*] Fast-scrape failed or empty for {url}. Falling back to Playwright...")
+                logger.debug(f"Fast-scrape failed for {url}. Falling back to Playwright...")
                 content = await lay_chuong_voi_hinh_anh(browser, url, session_state=session_state, verbose=verbose)
             
             if content:
                 scraped_content[url] = content
             else:
                 skipped_urls.append(url)
-                print(f"(!) Thất bại sau cả 2 phương thức: {url}")
+                logger.warning(f"Thất bại sau cả 2 phương thức: {url}")
 
-    tasks = [process_url(browser, url) for url in urls]
+            if on_chapter_done:
+                await on_chapter_done(url, content, idx, total)
+
+    tasks = [process_url(url, i) for i, url in enumerate(urls)]
     await asyncio.gather(*tasks)
     return scraped_content

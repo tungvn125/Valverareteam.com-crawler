@@ -810,7 +810,7 @@ function filterLibrary() {
         let statusClass = 'synced';
         let statusText = 'Đã khớp';
         
-        if (novel.update_available) {
+        if (novel.status === 'update_available') {
             statusClass = 'update-available';
             statusText = 'Có chương mới';
         } else if (novel.status === 'unavailable') {
@@ -828,7 +828,7 @@ function filterLibrary() {
                 <div class="card-author">${novel.author || 'Ẩn danh'}</div>
                 <div class="card-meta">
                     <span>${novel.last_chapter_count || 0} chương</span>
-                    <span title="${novel.local_path || 'Chưa có đường dẫn'}">${novel.local_path ? '📂' : ''}</span>
+                    <span title="${novel.output_folder || 'Chưa có đường dẫn'}">${novel.output_folder ? '📂' : ''}</span>
                 </div>
             </div>
             <div class="card-actions">
@@ -856,7 +856,7 @@ function filterLibrary() {
 function updateLibraryStats() {
     if (!libraryStats) return;
     const total = libraryData.length;
-    const updates = libraryData.filter(n => n.update_available).length;
+    const updates = libraryData.filter(n => n.status === 'update_available').length;
     libraryStats.innerHTML = `
         <p>Tổng số truyện: <strong>${total}</strong></p>
         <p>Cần cập nhật: <strong style="color:var(--primary)">${updates}</strong></p>

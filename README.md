@@ -41,7 +41,7 @@ playwright install chromium-headless-shell
 
 ## Cách sử dụng
 
-### 1. Chế độ Web (Mới & Khuyên dùng)
+### 1. Chế độ Web (Mới & UNSTABLE)
 Khởi chạy giao diện điều khiển hiện đại trên trình duyệt:
 ```bash
 vvrt web

@@ -17,6 +17,7 @@ memory/
 *.html
 *.md
 *.txt
+*.db
 !README.md
 !LICENSE
 !requirements.txt
