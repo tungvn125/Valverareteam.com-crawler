@@ -505,6 +505,8 @@ async def get_story_info(slug: str):
                 "genres": story_info.genres,
                 "total_chapters": story_info.total_chapters,
                 "word_count": story_info.word_count,
+                "views": story_info.views,
+                "cover_url": story_info.cover_url,
                 "cover_path": story_info.cover_path
             }
     except Exception as e:
