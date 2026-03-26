@@ -100,7 +100,7 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 def websocket_sink(message):
-    """Loguru sink that broadcasts logs via WebSocket."""
+    """Loguru sink that broadcasts logs via WebSocket and buffers them."""
     record = message.record
     task_id = record["extra"].get("task_id", "system")
     log_msg = {
@@ -110,6 +110,15 @@ def websocket_sink(message):
         "message": record["message"],
         "time": record["time"].strftime("%H:%M:%S")
     }
+    
+    # Buffer logs
+    if task_id != "system":
+        if task_id not in task_log_buffers:
+            task_log_buffers[task_id] = []
+        task_log_buffers[task_id].append(log_msg)
+        if len(task_log_buffers[task_id]) > 1000:
+            task_log_buffers[task_id].pop(0)
+
     try:
         loop = asyncio.get_event_loop()
         if loop.is_running():
@@ -130,9 +139,12 @@ class DownloadRequest(BaseModel):
     selected_urls: Optional[List[str]] = None
 
 active_tasks = {}
+active_tasks_futures: Dict[str, asyncio.Task] = {}
+task_log_buffers: Dict[str, List[dict]] = {}
 
 async def run_scrape_task(req: DownloadRequest, task_id: str):
     """Orchestrates the scraping task and sends progress via WebSocket."""
+    active_tasks_futures[task_id] = asyncio.current_task()
     try:
         await manager.broadcast({"type": "status", "task_id": task_id, "status": "Resolving story..."})
         
@@ -147,6 +159,18 @@ async def run_scrape_task(req: DownloadRequest, task_id: str):
             
         await manager.broadcast({"type": "info", "task_id": task_id, "title": story_info.title})
         
+        output_folder = req.output_folder or sanitize_filename(story_info.title)
+        os.makedirs(output_folder, exist_ok=True)
+        checkpoint_file = os.path.join(output_folder, ".vvr_checkpoint.json")
+        checkpoint = {}
+        if os.path.exists(checkpoint_file):
+            try:
+                with open(checkpoint_file, "r", encoding="utf-8") as f:
+                    checkpoint = json.load(f)
+                logger.info(f"Loaded checkpoint for task {task_id}. Skipping {len(checkpoint)} chapters.")
+            except Exception as e:
+                logger.error(f"Error loading checkpoint: {e}")
+
         if req.selected_urls:
             urls = req.selected_urls
             logger.info(f"Using {len(urls)} selected URLs for download")
@@ -176,9 +200,24 @@ async def run_scrape_task(req: DownloadRequest, task_id: str):
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
             scraped = {}
+            # Pre-load from checkpoint
+            for url, content in checkpoint.items():
+                if url in urls:
+                    scraped[url] = content
+
             semaphore = asyncio.Semaphore(req.tasks)
             
             async def process_url(url, idx):
+                if url in scraped:
+                    percent = int(((idx + 1) / total) * 100)
+                    await manager.broadcast({
+                        "type": "progress", 
+                        "task_id": task_id, 
+                        "percent": percent,
+                        "msg": f"Resumed {idx+1}/{total} chapters (from checkpoint)"
+                    })
+                    return
+
                 async with semaphore:
                     from .scraper_core import lay_chuong_httpx, lay_chuong_voi_hinh_anh
                     content = None
@@ -189,6 +228,10 @@ async def run_scrape_task(req: DownloadRequest, task_id: str):
                     
                     if content:
                         scraped[url] = content
+                        # Update checkpoint immediately
+                        checkpoint[url] = content
+                        with open(checkpoint_file, "w", encoding="utf-8") as f:
+                            json.dump(checkpoint, f, ensure_ascii=False, indent=2)
                     
                     percent = int(((idx + 1) / total) * 100)
                     await manager.broadcast({
@@ -204,10 +247,6 @@ async def run_scrape_task(req: DownloadRequest, task_id: str):
 
         await manager.broadcast({"type": "status", "task_id": task_id, "status": "Exporting files..."})
         
-        # Use provided output folder or default to sanitized title
-        output_folder = req.output_folder or sanitize_filename(story_info.title)
-        os.makedirs(output_folder, exist_ok=True)
-        
         full_flat = []
         for url in urls:
             if url in scraped:
@@ -222,20 +261,57 @@ async def run_scrape_task(req: DownloadRequest, task_id: str):
             elif fmt == "TXT": await tao_file_txt(full_flat, fpath, story_info.title)
             elif fmt == "MP3": await tao_file_mp3(full_flat, fpath, story_info.title)
 
+        # Cleanup checkpoint on successful completion
+        if os.path.exists(checkpoint_file):
+            os.remove(checkpoint_file)
+
         await manager.broadcast({"type": "complete", "task_id": task_id, "path": output_folder})
         logger.success(f"Task {task_id} completed: {story_info.title}")
+    except asyncio.CancelledError:
+        logger.info(f"Task {task_id} was paused/cancelled.")
+        await manager.broadcast({"type": "status", "task_id": task_id, "status": "Paused"})
+        raise
     except Exception as e:
         import traceback
         logger.error(f"Task {task_id} failed: {e}")
         logger.error(traceback.format_exc())
         await manager.broadcast({"type": "error", "task_id": task_id, "error": str(e)})
     finally:
-        if task_id in active_tasks:
-            del active_tasks[task_id]
+        if task_id in active_tasks_futures:
+            del active_tasks_futures[task_id]
 
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}
+
+@app.get("/api/tasks/{task_id}/logs")
+async def get_task_logs(task_id: str):
+    return task_log_buffers.get(task_id, [])
+
+@app.post("/api/tasks/{task_id}/pause")
+async def pause_task(task_id: str):
+    if task_id in active_tasks_futures:
+        active_tasks_futures[task_id].cancel()
+        return {"status": "pausing"}
+    return {"status": "not_running"}
+
+@app.post("/api/tasks/{task_id}/resume")
+async def resume_task(task_id: str):
+    if task_id in active_tasks:
+        req = active_tasks[task_id]
+        await download_queue.add_task(req, task_id)
+        return {"status": "resuming"}
+    return {"status": "task_not_found", "error": "Task request not found in active_tasks. Cannot resume."}
+
+@app.post("/api/tasks/{task_id}/cancel")
+async def cancel_task(task_id: str):
+    if task_id in active_tasks_futures:
+        active_tasks_futures[task_id].cancel()
+    if task_id in active_tasks:
+        del active_tasks[task_id]
+    if task_id in task_log_buffers:
+        del task_log_buffers[task_id]
+    return {"status": "cancelled"}
 
 @app.get("/api/search")
 async def search_novels(q: str = Query(..., min_length=3)):
