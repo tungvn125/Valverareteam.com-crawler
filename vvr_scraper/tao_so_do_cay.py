@@ -156,19 +156,27 @@ async def get_chapter_tree_list(url: str, output_file: str = "chapter_list.json"
                         # Find link - try both specific class and any anchor tag
                         link_element = chapter.find('a', class_='chapter-title-link') or chapter.find('a')
 
+                        # Check for locked status
+                        classes = chapter.get('class', [])
+                        is_locked = 'locked-chapter' in classes or 'chapter-mode-protected' in classes
+
                         if link_element and 'href' in link_element.attrs:
                             chapter_link = link_element['href']
                             chapter_title = link_element.get_text(strip=True)
-                            if "minh-hoa" not in chapter_link:
-                                chapters_list.append({
-                                    "title": chapter_title,
-                                    "url": chapter_link
-                                })
+                            
+                            chapters_list.append({
+                                "title": chapter_title,
+                                "url": chapter_link,
+                                "locked": is_locked
+                            })
                         else:
-                            # If we still can't find it, log the classes for debug
-                            classes = chapter.get('class', [])
-                            if 'locked-chapter' in classes or 'chapter-mode-protected' in classes:
-                                print(f"[Cảnh báo] Chương này vẫn bị khóa (locked): {chapter.get_text(strip=True)}")
+                            # If we still can't find it, but it's locked, we still want to show it
+                            if is_locked:
+                                chapters_list.append({
+                                    "title": chapter.get_text(strip=True),
+                                    "url": "",
+                                    "locked": True
+                                })
                             else:
                                 print(f"Cant find link for chapter: {chapter}")
                     except Exception:
