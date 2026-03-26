@@ -10,10 +10,15 @@
     <header>
         <div class="container header-content">
             <h1><span>VVRT</span> Web Dashboard</h1>
-            <button id="themeToggle" class="theme-toggle" title="Chuyển chế độ sáng/tối">
-                <svg class="sun" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" fill-rule="evenodd" clip-rule="evenodd"></path></svg>
-                <svg class="moon" fill="currentColor" viewBox="0 0 20 20"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path></svg>
-            </button>
+            <div class="header-actions">
+                <button id="themeToggle" class="theme-toggle" title="Chuyển chế độ sáng/tối">
+                    <svg class="sun" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" fill-rule="evenodd" clip-rule="evenodd"></path></svg>
+                    <svg class="moon" fill="currentColor" viewBox="0 0 20 20"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path></svg>
+                </button>
+                <button id="settingsBtn" class="theme-toggle" title="Cài đặt">
+                    <svg fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M11.423 3.007a.75.75 0 01.577.3l.532.798c.22.33.565.52.935.532l.96.031a.75.75 0 01.716.716l.031.96c.012.37.202.715.532.935l.798.532a.75.75 0 01.3 1.154l-.532.798c-.22.33-.31.717-.253 1.084l.144.949a.75.75 0 01-.583.853l-.941.143a1.076 1.076 0 00-.814.654l-.372.875a.75.75 0 01-.892.428l-.919-.247a1.076 1.076 0 00-1.008.204l-.744.593a.75.75 0 01-1.026-.067l-.657-.657a1.076 1.076 0 00-1.027-.267l-.92.246a.75.75 0 01-.892-.428l-.372-.875a1.076 1.076 0 00-.814-.654l-.941-.143a.75.75 0 01-.583-.853l.144-.949a1.076 1.076 0 00-.253-1.084l-.532-.798a.75.75 0 01.3-1.154l.798-.532c.33-.22.52-.565.532-.935l.031-.96a.75.75 0 01.716-.716l.96-.031c.37-.012.715-.202.935-.532l.532-.798a.75.75 0 011.154-.3l.798.532c.33.22.717.31 1.084.253l.949-.144a.75.75 0 01.853.583l.143.941a1.076 1.076 0 00.654.814l.875.372a.75.75 0 01.428.892l-.247.919a1.076 1.076 0 00.204 1.008l.593.744a.75.75 0 01-.067 1.026l-.657.657a1.076 1.076 0 00-.267 1.027l.246.92a.75.75 0 01-.428.892l-.875.372a1.076 1.076 0 00-.654.814l-.143.941a.75.75 0 01-.853.583l-.949-.144a1.076 1.076 0 00-1.084.253l-.798.532a.75.75 0 01-1.154-.3l-.532-.798a1.076 1.076 0 00-.935-.532l-.96-.031a.75.75 0 01-.716-.716l-.031-.96a1.076 1.076 0 00-.532-.935l-.798-.532a.75.75 0 01-.3-1.154l.532-.798c.22-.33.31-.717.253-1.084l-.144-.949a.75.75 0 01.583-.853l.941-.143c.373-.057.697-.3.814-.654l.372-.875a.75.75 0 01.892-.428l.919.247c.394.106.814.027 1.008-.204l.744-.593a.75.75 0 011.026.067l.657.657c.306.306.753.407 1.027.267l.92-.246a.75.75 0 01.892.428l.372.875c.117.354.441.597.814.654l.941.143a.75.75 0 01.583.853l-.144.949c-.057.367.033.754.253 1.084l.532.798a.75.75 0 01-.3 1.154l-.798.532c-.33.22-.52.565-.532.935l-.031.96a.75.75 0 01-.716.716l-.96.031c-.37.012-.715.202-.935.532l-.532.798a.75.75 0 01-1.154.3l-.798-.532a1.076 1.076 0 00-1.084-.253l-.949.144a.75.75 0 01-.853-.583l-.143-.941a1.076 1.076 0 00-.654-.814l-.875-.372a.75.75 0 01-.428-.892l.247-.919a1.076 1.076 0 00-.204-1.008l-.593-.744a.75.75 0 01.067-1.026l.657-.657c.306-.306.39-.768.267-1.027l-.246-.92a.75.75 0 01.428-.892l.875-.372a1.076 1.076 0 00.654-.814l.143-.941a.75.75 0 01.853-.583l.949.144c.367.057.754-.033 1.084-.253l.798-.532z" clip-rule="evenodd" /><path d="M10 7a3 3 0 100 6 3 3 0 000-6z" /></svg>
+                </button>
+            </div>
         </div>
     </header>
 
@@ -150,6 +155,31 @@
                 <div class="modal-actions">
                     <button type="button" class="btn-secondary" onclick="closeModal()">Hủy</button>
                     <button type="submit" class="btn-primary">Bắt đầu tải</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="modal">
+        <div class="modal-content">
+            <h2>Cài đặt hệ thống</h2>
+            <form id="settingsForm">
+                <div class="form-group">
+                    <label>Số luồng tải song song (Worker):</label>
+                    <input type="number" id="globalNumWorkers" value="1" min="1" max="10">
+                    <small>Số lượng truyện có thể tải cùng lúc.</small>
+                </div>
+                <div class="form-group">
+                    <label>Thư mục đầu ra mặc định:</label>
+                    <div class="input-with-button">
+                        <input type="text" id="defaultOutputFolder" placeholder="Ví dụ: /home/user/Truyen/..." class="text-input">
+                        <button type="button" id="browseDefaultBtn" class="btn-secondary">Browse...</button>
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary" onclick="closeSettingsModal()">Hủy</button>
+                    <button type="submit" class="btn-primary">Lưu cài đặt</button>
                 </div>
             </form>
         </div>
