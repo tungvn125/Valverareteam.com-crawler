@@ -102,6 +102,7 @@ async def lay_thong_tin_truyen(client: httpx.AsyncClient, ten_truyen: str, verbo
         title=title,
         author=author,
         description=description,
+        slug=ten_truyen,
         genres=genres,
         cover_path=cover_path,
         total_chapters=total_chapters,

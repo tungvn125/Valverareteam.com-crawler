@@ -15,6 +15,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from loguru import logger
 import json
+from datetime import datetime
 
 from .scraper_core import lay_thong_tin_truyen, scrape_chapters
 from .exporter import (
@@ -197,12 +198,17 @@ async def run_scrape_task(req: DownloadRequest, task_id: str):
         output_folder = req.output_folder or sanitize_filename(story_info.title)
         os.makedirs(output_folder, exist_ok=True)
         checkpoint_file = os.path.join(output_folder, ".vvr_checkpoint.json")
-        checkpoint = {}
+        checkpoint = {"slug": req.slug, "title": story_info.title, "scraped": {}}
         if os.path.exists(checkpoint_file):
             try:
                 with open(checkpoint_file, "r", encoding="utf-8") as f:
-                    checkpoint = json.load(f)
-                logger.info(f"Loaded checkpoint for task {task_id}. Skipping {len(checkpoint)} chapters.")
+                    data = json.load(f)
+                    if isinstance(data, dict) and "scraped" in data:
+                        checkpoint = data
+                    else:
+                        # Migration for old checkpoints that only stored the 'scraped' dict
+                        checkpoint["scraped"] = data
+                logger.info(f"Loaded checkpoint for task {task_id}. Skipping {len(checkpoint['scraped'])} chapters.")
             except Exception as e:
                 logger.error(f"Error loading checkpoint: {e}")
 
@@ -236,7 +242,7 @@ async def run_scrape_task(req: DownloadRequest, task_id: str):
             browser = await p.chromium.launch(headless=True)
             scraped = {}
             # Pre-load from checkpoint
-            for url, content in checkpoint.items():
+            for url, content in checkpoint.get("scraped", {}).items():
                 if url in urls:
                     scraped[url] = content
 
@@ -264,7 +270,9 @@ async def run_scrape_task(req: DownloadRequest, task_id: str):
                     if content:
                         scraped[url] = content
                         # Update checkpoint immediately
-                        checkpoint[url] = content
+                        checkpoint["scraped"][url] = content
+                        checkpoint["slug"] = req.slug
+                        checkpoint["title"] = story_info.title
                         with open(checkpoint_file, "w", encoding="utf-8") as f:
                             json.dump(checkpoint, f, ensure_ascii=False, indent=2)
                     
@@ -296,9 +304,16 @@ async def run_scrape_task(req: DownloadRequest, task_id: str):
             elif fmt == "TXT": await tao_file_txt(full_flat, fpath, story_info.title)
             elif fmt == "MP3": await tao_file_mp3(full_flat, fpath, story_info.title)
 
-        # Cleanup checkpoint on successful completion
-        if os.path.exists(checkpoint_file):
-            os.remove(checkpoint_file)
+        # Update library DB with latest stats
+        await app.state.db.upsert_novel({
+            "title": story_info.title,
+            "slug": req.slug,
+            "author": story_info.author,
+            "last_chapter_count": len(urls),
+            "last_downloaded_at": datetime.now().isoformat(),
+            "output_folder": output_folder,
+            "formats": ",".join(req.formats)
+        })
 
         await manager.broadcast({"type": "complete", "task_id": task_id, "path": output_folder})
         logger.success(f"Task {task_id} completed: {story_info.title}")
