@@ -318,6 +318,31 @@ async def get_chapters(slug: str):
     chapter_data = await get_chapter_tree_list(story_url, session_state=session_state)
     return chapter_data
 
+@app.get("/api/story_info")
+async def get_story_info(slug: str):
+    """Fetches detailed story information."""
+    try:
+        session_state = load_session(".vvr_session.json")
+        cookies = {}
+        if session_state and 'cookies' in session_state:
+            for c in session_state['cookies']:
+                cookies[c['name']] = c['value']
+        
+        async with httpx.AsyncClient(headers=HEADERS, cookies=cookies) as client:
+            story_info = await lay_thong_tin_truyen(client, slug)
+            return {
+                "title": story_info.title,
+                "author": story_info.author,
+                "description": story_info.description,
+                "genres": story_info.genres,
+                "total_chapters": story_info.total_chapters,
+                "word_count": story_info.word_count,
+                "cover_path": story_info.cover_path
+            }
+    except Exception as e:
+        logger.error(f"Error fetching story info: {e}")
+        return {"error": str(e)}
+
 @app.post("/api/download")
 async def download_novel(req: DownloadRequest):
     task_id = str(uuid.uuid4())[:8]
