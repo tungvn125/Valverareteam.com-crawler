@@ -24,39 +24,84 @@
 
     <main class="dashboard-container">
         <aside class="sidebar">
-            <!-- Active Tasks -->
-            <section class="tasks-card">
-                <h2>Tiến trình tải</h2>
-                <div id="taskList" class="task-list">
-                    <p class="empty-msg">Chưa có nhiệm vụ nào.</p>
-                </div>
+            <nav class="sidebar-nav">
+                <button id="navSearch" class="nav-item active">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                    Tìm truyện
+                </button>
+                <button id="navLibrary" class="nav-item">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>
+                    Thư viện
+                </button>
+            </nav>
 
-                <div class="completed-section">
-                    <h3>Hoàn thành gần đây</h3>
-                    <div id="completedList" class="completed-list"></div>
-                </div>
-            </section>
+            <div id="tasksView">
+                <!-- Active Tasks -->
+                <section class="tasks-card">
+                    <h2>Tiến trình tải</h2>
+                    <div id="taskList" class="task-list">
+                        <p class="empty-msg">Chưa có nhiệm vụ nào.</p>
+                    </div>
+
+                    <div class="completed-section">
+                        <h3>Hoàn thành gần đây</h3>
+                        <div id="completedList" class="completed-list"></div>
+                    </div>
+                </section>
+            </div>
+
+            <div id="libraryActionsView" style="display:none">
+                <section class="tasks-card">
+                    <h2>Thao tác thư viện</h2>
+                    <div class="sidebar-actions">
+                        <button id="checkUpdatesBtn" class="btn-primary w-100 mb-10">Kiểm tra cập nhật</button>
+                        <button id="scanFoldersBtn" class="btn-secondary w-100">Quét thư mục local</button>
+                    </div>
+                    <div class="library-stats-card">
+                        <h3>Thống kê</h3>
+                        <div id="libraryStats">
+                            <p>Đang tải dữ liệu...</p>
+                        </div>
+                    </div>
+                </section>
+            </div>
         </aside>
 
         <div class="main-content">
-            <!-- Search Section -->
-            <section class="search-section">
-                <div class="search-container">
-                    <input type="text" id="searchInput" placeholder="Tìm truyện (ví dụ: 'Toàn Chức Pháp Sư')..." autocomplete="off">
-                    <div id="searchResults" class="search-results"></div>
-                </div>
-            </section>
+            <div id="searchView">
+                <!-- Search Section -->
+                <section class="search-section">
+                    <div class="search-container">
+                        <input type="text" id="searchInput" placeholder="Tìm truyện (ví dụ: 'Toàn Chức Pháp Sư')..." autocomplete="off">
+                        <div id="searchResults" class="search-results"></div>
+                    </div>
+                </section>
 
-            <!-- Logs -->
-            <section class="logs-card">
-                <div class="logs-header">
-                    <h2>Nhật ký hoạt động</h2>
-                    <div id="selectedTaskInfo" class="selected-task-info"></div>
-                </div>
-                <div id="logViewer" class="log-viewer">
-                    <div class="log-entry system">Sẵn sàng. Đang chờ nhiệm vụ...</div>
-                </div>
-            </section>
+                <!-- Logs -->
+                <section class="logs-card">
+                    <div class="logs-header">
+                        <h2>Nhật ký hoạt động</h2>
+                        <div id="selectedTaskInfo" class="selected-task-info"></div>
+                    </div>
+                    <div id="logViewer" class="log-viewer">
+                        <div class="log-entry system">Sẵn sàng. Đang chờ nhiệm vụ...</div>
+                    </div>
+                </section>
+            </div>
+
+            <div id="libraryView" style="display:none">
+                <section class="library-section">
+                    <div class="library-header">
+                        <h2>Thư viện & Lịch sử</h2>
+                        <div class="library-controls">
+                            <input type="text" id="librarySearchInput" placeholder="Lọc theo tên hoặc tác giả..." class="text-input">
+                        </div>
+                    </div>
+                    <div id="libraryGrid" class="library-grid">
+                        <!-- Novel cards populated by JS -->
+                    </div>
+                </section>
+            </div>
         </div>
     </main>
 

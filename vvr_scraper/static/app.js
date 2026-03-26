@@ -12,6 +12,19 @@ const selectionModal = document.getElementById('selectionModal');
 const chapterTreeContainer = document.getElementById('chapterTreeContainer');
 const chapterSearchInput = document.getElementById('chapterSearchInput');
 
+// Navigation elements
+const navSearch = document.getElementById('navSearch');
+const navLibrary = document.getElementById('navLibrary');
+const tasksView = document.getElementById('tasksView');
+const libraryActionsView = document.getElementById('libraryActionsView');
+const searchView = document.getElementById('searchView');
+const libraryView = document.getElementById('libraryView');
+const libraryGrid = document.getElementById('libraryGrid');
+const librarySearchInput = document.getElementById('librarySearchInput');
+const checkUpdatesBtn = document.getElementById('checkUpdatesBtn');
+const scanFoldersBtn = document.getElementById('scanFoldersBtn');
+const libraryStats = document.getElementById('libraryStats');
+
 // Theme Logic
 const themeToggle = document.getElementById('themeToggle');
 const savedTheme = localStorage.getItem('theme');
@@ -26,6 +39,26 @@ themeToggle.onclick = () => {
     document.body.classList.toggle('dark-theme');
     const theme = document.body.classList.contains('dark-theme') ? 'dark' : 'light';
     localStorage.setItem('theme', theme);
+};
+
+// Tab Switching
+navSearch.onclick = () => {
+    navSearch.classList.add('active');
+    navLibrary.classList.remove('active');
+    searchView.style.display = 'block';
+    libraryView.style.display = 'none';
+    tasksView.style.display = 'block';
+    libraryActionsView.style.display = 'none';
+};
+
+navLibrary.onclick = () => {
+    navSearch.classList.remove('active');
+    navLibrary.classList.add('active');
+    searchView.style.display = 'none';
+    libraryView.style.display = 'block';
+    tasksView.style.display = 'none';
+    libraryActionsView.style.display = 'block';
+    renderLibrary();
 };
 
 let currentTreeData = [];
@@ -689,6 +722,130 @@ function finishTask(taskId, path) {
         taskList.innerHTML = '<p class="empty-msg">Chưa có nhiệm vụ nào.</p>';
     }
 }
+
+// Library Management
+let libraryData = [];
+
+async function renderLibrary() {
+    libraryGrid.innerHTML = '<div class="loading-msg">Đang tải thư viện...</div>';
+    
+    try {
+        const response = await fetch('/api/library');
+        libraryData = await response.json();
+        filterLibrary();
+        updateLibraryStats();
+    } catch (e) {
+        console.error('Failed to fetch library', e);
+        libraryGrid.innerHTML = '<div class="error-msg">Không thể tải thư viện.</div>';
+    }
+}
+
+function filterLibrary() {
+    const query = librarySearchInput.value.toLowerCase().trim();
+    const filtered = libraryData.filter(novel => 
+        novel.title.toLowerCase().includes(query) || 
+        (novel.author && novel.author.toLowerCase().includes(query))
+    );
+    
+    libraryGrid.innerHTML = '';
+    if (filtered.length === 0) {
+        libraryGrid.innerHTML = '<div class="empty-msg">Không tìm thấy truyện nào.</div>';
+        return;
+    }
+    
+    filtered.forEach(novel => {
+        const card = document.createElement('div');
+        card.className = 'novel-card';
+        
+        let statusClass = 'synced';
+        let statusText = 'Đã khớp';
+        
+        if (novel.update_available) {
+            statusClass = 'update-available';
+            statusText = 'Có chương mới';
+        } else if (novel.status === 'unavailable') {
+            statusClass = 'unavailable';
+            statusText = 'Mất link';
+        }
+        
+        card.innerHTML = `
+            <div class="card-cover">
+                <img src="${novel.cover_url || 'https://via.placeholder.com/180x240?text=No+Cover'}" alt="${novel.title}" onerror="this.src='https://via.placeholder.com/180x240?text=No+Cover'">
+                <span class="status-badge ${statusClass}">${statusText}</span>
+            </div>
+            <div class="card-info">
+                <div class="card-title" title="${novel.title}">${novel.title}</div>
+                <div class="card-author">${novel.author || 'Ẩn danh'}</div>
+                <div class="card-meta">
+                    <span>${novel.last_chapter_count || 0} chương</span>
+                    <span title="${novel.local_path || 'Chưa có đường dẫn'}">${novel.local_path ? '📂' : ''}</span>
+                </div>
+            </div>
+            <div class="card-actions">
+                <button class="btn-primary btn-sm update-novel-btn" data-slug="${novel.slug}">Cập nhật</button>
+                <button class="btn-secondary btn-sm preview-novel-btn">Chi tiết</button>
+            </div>
+        `;
+        
+        card.querySelector('.update-novel-btn').onclick = (e) => {
+            e.stopPropagation();
+            openPreviewModal(novel);
+        };
+        
+        card.querySelector('.preview-novel-btn').onclick = (e) => {
+            e.stopPropagation();
+            openPreviewModal(novel);
+        };
+        
+        card.onclick = () => openPreviewModal(novel);
+        
+        libraryGrid.appendChild(card);
+    });
+}
+
+function updateLibraryStats() {
+    if (!libraryStats) return;
+    const total = libraryData.length;
+    const updates = libraryData.filter(n => n.update_available).length;
+    libraryStats.innerHTML = `
+        <p>Tổng số truyện: <strong>${total}</strong></p>
+        <p>Cần cập nhật: <strong style="color:var(--primary)">${updates}</strong></p>
+    `;
+}
+
+checkUpdatesBtn.onclick = async () => {
+    checkUpdatesBtn.disabled = true;
+    checkUpdatesBtn.textContent = 'Đang kiểm tra...';
+    try {
+        const response = await fetch('/api/library/check', { method: 'POST' });
+        const data = await response.json();
+        alert(`Đã kiểm tra xong. Tìm thấy ${data.updates_found} bản cập nhật mới.`);
+        renderLibrary();
+    } catch (e) {
+        alert('Lỗi khi kiểm tra cập nhật.');
+    } finally {
+        checkUpdatesBtn.disabled = false;
+        checkUpdatesBtn.textContent = 'Kiểm tra cập nhật';
+    }
+};
+
+scanFoldersBtn.onclick = async () => {
+    scanFoldersBtn.disabled = true;
+    scanFoldersBtn.textContent = 'Đang quét...';
+    try {
+        const response = await fetch('/api/library/scan', { method: 'POST' });
+        const data = await response.json();
+        alert(`Đã quét xong. Đã thêm ${data.added} truyện mới, cập nhật ${data.updated} truyện.`);
+        renderLibrary();
+    } catch (e) {
+        alert('Lỗi khi quét thư mục.');
+    } finally {
+        scanFoldersBtn.disabled = false;
+        scanFoldersBtn.textContent = 'Quét thư mục local';
+    }
+};
+
+librarySearchInput.oninput = filterLibrary;
 
 // Initial Load
 initWebSocket();

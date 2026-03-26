@@ -170,30 +170,199 @@ main {
     color: var(--text-muted);
 }
 
-/* Dashboard Layout */
-.dashboard-container {
-    display: flex;
-    max-width: 1400px;
-    margin: 30px auto;
-    padding: 0 20px;
-    gap: 20px;
-    height: calc(100vh - 150px);
-}
-
-.sidebar {
-    flex: 0 0 320px;
+/* Sidebar Nav */
+.sidebar-nav {
     display: flex;
     flex-direction: column;
+    gap: 8px;
+    margin-bottom: 25px;
+}
+
+.nav-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 20px;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 0.95rem;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: left;
+    width: 100%;
+}
+
+.nav-item:hover {
+    background: var(--bg);
+    color: var(--primary);
+}
+
+.nav-item.active {
+    background: var(--primary);
+    color: white;
+}
+
+.nav-item svg {
+    width: 20px;
+    height: 20px;
+}
+
+/* Sidebar Library Actions */
+.sidebar-actions {
+    margin-bottom: 20px;
+}
+
+.library-stats-card h3 {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 10px;
+}
+
+.library-stats-card p {
+    font-size: 0.9rem;
+    margin-bottom: 5px;
+}
+
+/* Library View */
+.library-section {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
     overflow: hidden;
 }
 
-.main-content {
+.library-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.library-header h2 {
+    margin-bottom: 0;
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+#libraryGrid {
+    flex: 1;
+    overflow-y: auto;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 20px;
+    padding-bottom: 20px;
+}
+
+.novel-card {
+    background: var(--card);
+    border-radius: 12px;
+    overflow: hidden;
+    transition: transform 0.2s, box-shadow 0.2s;
+    border: 1px solid var(--border);
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    cursor: pointer;
+}
+
+.novel-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+}
+
+.card-cover {
+    width: 100%;
+    height: 240px;
+    overflow: hidden;
+    position: relative;
+    background-color: var(--bg);
+}
+
+.card-cover img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.status-badge {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: white;
+    text-transform: uppercase;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    z-index: 5;
+}
+
+.status-badge.synced { background-color: var(--success); }
+.status-badge.update-available { background-color: var(--primary); }
+.status-badge.unavailable { background-color: var(--error); }
+
+.card-info {
+    padding: 12px;
     flex: 1;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
 }
 
+.card-title {
+    font-weight: 700;
+    font-size: 0.9rem;
+    margin-bottom: 4px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    line-height: 1.3;
+    color: var(--text);
+}
+
+.card-author {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.card-meta {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: auto;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+}
+
+.card-actions {
+    padding: 10px;
+    display: flex;
+    gap: 8px;
+}
+
+.btn-sm {
+    padding: 6px 10px;
+    font-size: 0.75rem;
+    border-radius: 20px;
+    flex: 1;
+}
+
+/* Utils */
+.w-100 { width: 100%; }
+.mb-10 { margin-bottom: 10px; }
+
+/* Dashboard Layout Adjustments */
 @media (max-width: 900px) {
     .dashboard-container {
         flex-direction: column;
@@ -201,6 +370,10 @@ main {
     }
     .sidebar {
         flex: 1;
+        height: auto;
+    }
+    .main-content {
+        height: 80vh;
     }
 }
 
