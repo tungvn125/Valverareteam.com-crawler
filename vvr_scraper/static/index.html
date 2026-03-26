@@ -17,16 +17,8 @@
         </div>
     </header>
 
-    <main class="container">
-        <!-- Search Section -->
-        <section class="search-section">
-            <div class="search-container">
-                <input type="text" id="searchInput" placeholder="Tìm truyện (ví dụ: 'Toàn Chức Pháp Sư')..." autocomplete="off">
-                <div id="searchResults" class="search-results"></div>
-            </div>
-        </section>
-
-        <div class="dashboard-grid">
+    <main class="dashboard-container">
+        <aside class="sidebar">
             <!-- Active Tasks -->
             <section class="tasks-card">
                 <h2>Tiến trình tải</h2>
@@ -39,10 +31,23 @@
                     <div id="completedList" class="completed-list"></div>
                 </div>
             </section>
+        </aside>
+
+        <div class="main-content">
+            <!-- Search Section -->
+            <section class="search-section">
+                <div class="search-container">
+                    <input type="text" id="searchInput" placeholder="Tìm truyện (ví dụ: 'Toàn Chức Pháp Sư')..." autocomplete="off">
+                    <div id="searchResults" class="search-results"></div>
+                </div>
+            </section>
 
             <!-- Logs -->
             <section class="logs-card">
-                <h2>Nhật ký hoạt động</h2>
+                <div class="logs-header">
+                    <h2>Nhật ký hoạt động</h2>
+                    <div id="selectedTaskInfo" class="selected-task-info"></div>
+                </div>
                 <div id="logViewer" class="log-viewer">
                     <div class="log-entry system">Sẵn sàng. Đang chờ nhiệm vụ...</div>
                 </div>
