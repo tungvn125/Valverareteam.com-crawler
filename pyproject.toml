@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vvr-scraper"
-version = "1.4.0"
+version = "1.5.1"
 description = "Công cụ tải web novel từ Valvrare Team (Async, Web UI & Download Queue)"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 license = {text = "MIT"}
 authors = [
     {name = "Valvrare Team Crawler Contributors"}
