@@ -49,22 +49,41 @@ async def lay_thong_tin_truyen(client: httpx.AsyncClient, ten_truyen: str, verbo
     genre_elements = soup.select(".rd-genre-tag")
     genres = [genre.get_text(strip=True) for genre in genre_elements]
 
-    # Extract stats (Total Chapters and Word Count)
+    # Extract stats (Total Chapters, Word Count, Views)
     total_chapters = "Unknown"
     word_count = "Unknown"
+    views = "-"
     
-    # Try .rd-stats-item first
-    stats_items = soup.select(".rd-stats-item")
-    for item in stats_items:
-        text = item.get_text(" ", strip=True)
-        if "Chương" in text:
-            match = re.search(r'(\d+[\d.,]*)', text)
-            if match:
-                total_chapters = match.group(1)
-        elif "Số chữ" in text:
-            match = re.search(r'(\d+[\d.,]*)', text)
-            if match:
-                word_count = match.group(1)
+    # Try .rd-stat-item first (modern Next.js structure)
+    stat_items = soup.select(".rd-stat-item")
+    for item in stat_items:
+        val_elem = item.select_one(".rd-stat-value")
+        lab_elem = item.select_one(".rd-stat-label")
+        if val_elem and lab_elem:
+            val = val_elem.get_text(strip=True)
+            lab = lab_elem.get_text(strip=True)
+            if "Lượt xem" in lab:
+                views = val
+            elif "Từ" in lab or "Số chữ" in lab:
+                word_count = val
+
+    # Try .rd-stats-item (legacy fallback)
+    if total_chapters == "Unknown" or word_count == "Unknown" or views == "-":
+        legacy_stats = soup.select(".rd-stats-item")
+        for item in legacy_stats:
+            text = item.get_text(" ", strip=True)
+            if "Chương" in text:
+                match = re.search(r'(\d+[\d.,]*)', text)
+                if match:
+                    total_chapters = match.group(1)
+            elif "Số chữ" in text or "Từ" in text:
+                match = re.search(r'(\d+[\d.,]*)', text)
+                if match:
+                    word_count = match.group(1)
+            elif "Lượt xem" in text:
+                match = re.search(r'(\d+[\d.,]*)', text)
+                if match:
+                    views = match.group(1)
 
     # Fallback to .rd-info-row
     if total_chapters == "Unknown" or word_count == "Unknown":
@@ -74,10 +93,12 @@ async def lay_thong_tin_truyen(client: httpx.AsyncClient, ten_truyen: str, verbo
             if label_elem and value_elem:
                 label_text = label_elem.get_text(strip=True)
                 value_text = value_elem.get_text(strip=True)
-                if "Số chữ" in label_text:
+                if "Số chữ" in label_text or "Từ" in label_text:
                     word_count = value_text
                 elif "Chương" in label_text:
                     total_chapters = value_text
+                elif "Lượt xem" in label_text:
+                    views = value_text
 
     # Fallback to .rd-chapter-count-overlay
     if total_chapters == "Unknown":
@@ -88,19 +109,29 @@ async def lay_thong_tin_truyen(client: httpx.AsyncClient, ten_truyen: str, verbo
     cover_path = None
     cover_url = None
     image_url_element = soup.select_one("img.rd-cover-image")
-    if image_url_element and 'src' in image_url_element.attrs:
-        cover_url = image_url_element['src']
-        if cover_url:
-            try:
-                response = await client.get(cover_url, timeout=30.0)
-                response.raise_for_status()
-                # Use a unique temp file to avoid race conditions in multi-download
-                fd, cover_path = tempfile.mkstemp(suffix='.jpg', prefix='vvr_cover_')
-                logger.info(f"Đã tải ảnh bìa: {cover_path}")
-                with os.fdopen(fd, 'wb') as f:
-                    f.write(response.content)
-            except Exception as e:
-                logger.warning(f"Không thể tải ảnh bìa: {e}")
+    if image_url_element:
+        if 'src' in image_url_element.attrs:
+            cover_url = image_url_element['src']
+        elif 'srcset' in image_url_element.attrs:
+            # Fallback for dynamic images
+            cover_url = image_url_element['srcset'].split(',')[0].split(' ')[0]
+
+    if cover_url:
+        try:
+            # Prepend base URL if relative (though usually absolute with B-CDN)
+            if cover_url.startswith('/'):
+                from .web import BASE_URL
+                cover_url = f"{BASE_URL}{cover_url}"
+                
+            response = await client.get(cover_url, timeout=30.0)
+            response.raise_for_status()
+            # Use a unique temp file to avoid race conditions in multi-download
+            fd, cover_path = tempfile.mkstemp(suffix='.jpg', prefix='vvr_cover_')
+            logger.info(f"Đã tải ảnh bìa: {cover_path}")
+            with os.fdopen(fd, 'wb') as f:
+                f.write(response.content)
+        except Exception as e:
+            logger.warning(f"Không thể tải ảnh bìa: {e}")
 
     return StoryInfo(
         title=title,
@@ -111,7 +142,8 @@ async def lay_thong_tin_truyen(client: httpx.AsyncClient, ten_truyen: str, verbo
         cover_path=cover_path,
         cover_url=cover_url,
         total_chapters=total_chapters,
-        word_count=word_count
+        word_count=word_count,
+        views=views
     )
 
 

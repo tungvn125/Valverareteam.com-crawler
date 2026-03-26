@@ -17,6 +17,7 @@ class StoryInfo:
     cover_url: Optional[str] = None
     total_chapters: str = "Unknown"
     word_count: str = "Unknown"
+    views: str = "-"
 
 
 @dataclass
@@ -58,7 +59,8 @@ def story_info_to_dict(info: StoryInfo) -> StoryInfoDict:
         "cover_path": info.cover_path,
         "cover_url": info.cover_url,
         "total_chapters": info.total_chapters,
-        "word_count": info.word_count
+        "word_count": info.word_count,
+        "views": info.views
     }
 
 
@@ -73,5 +75,6 @@ def dict_to_story_info(data: StoryInfoDict) -> StoryInfo:
         cover_path=data.get("cover_path"),
         cover_url=data.get("cover_url"),
         total_chapters=data.get("total_chapters") or "Unknown",
-        word_count=data.get("word_count") or "Unknown"
+        word_count=data.get("word_count") or "Unknown",
+        views=data.get("views") or "-"
     )

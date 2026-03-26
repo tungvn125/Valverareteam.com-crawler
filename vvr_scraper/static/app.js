@@ -248,11 +248,19 @@ async function openPreviewModal(item) {
         document.getElementById('previewAuthor').textContent = data.author;
         document.getElementById('previewTotalChapters').textContent = data.total_chapters;
         document.getElementById('previewWordCount').textContent = data.word_count;
+        document.getElementById('previewViews').textContent = data.views;
         document.getElementById('previewDescContent').textContent = data.description;
         
-        // Try to find a real cover URL if possible (though scraper_core saves it locally)
-        // For now keep placeholder or a fallback
-        document.getElementById('previewCover').src = 'https://via.placeholder.com/140x200?text=VVR+T';
+        // Use real cover URL if available
+        if (data.cover_url) {
+            const coverImg = document.getElementById('previewCover');
+            coverImg.src = data.cover_url;
+            coverImg.onerror = () => {
+                coverImg.src = 'https://via.placeholder.com/140x200?text=No+Cover';
+            };
+        } else {
+            document.getElementById('previewCover').src = 'https://via.placeholder.com/140x200?text=VVR+T';
+        }
 
         const genresList = document.getElementById('previewGenres');
         genresList.innerHTML = '';
