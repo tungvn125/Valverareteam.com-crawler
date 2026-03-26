@@ -55,7 +55,8 @@
                     <h2>Thao tác thư viện</h2>
                     <div class="sidebar-actions">
                         <button id="checkUpdatesBtn" class="btn-primary w-100 mb-10">Kiểm tra cập nhật</button>
-                        <button id="scanFoldersBtn" class="btn-secondary w-100">Quét thư mục local</button>
+                        <button id="scanFoldersBtn" class="btn-secondary w-100 mb-10">Quét thư mục local</button>
+                        <button id="batchImportBtn" class="btn-secondary w-100">Nhập hàng loạt</button>
                     </div>
                     <div class="library-stats-card">
                         <h3>Thống kê</h3>
@@ -227,6 +228,22 @@
                     <button type="submit" class="btn-primary">Lưu cài đặt</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Batch Import Modal -->
+    <div id="batchImportModal" class="modal">
+        <div class="modal-content">
+            <h2>Nhập danh sách truyện</h2>
+            <div class="form-group">
+                <label>Nhập danh sách URL hoặc Slug (mỗi dòng một mục):</label>
+                <textarea id="batchImportUrls" rows="10" class="text-input" placeholder="https://valvrareteam.net/truyen/...
+..."></textarea>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn-secondary" onclick="closeBatchImportModal()">Hủy</button>
+                <button type="button" id="startBatchDownloadBtn" class="btn-primary">Bắt đầu tải</button>
+            </div>
         </div>
     </div>
 
