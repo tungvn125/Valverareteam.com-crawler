@@ -7,15 +7,13 @@
 **Valvrare Team Web Novel Scraper** là một công cụ mạnh mẽ được tối ưu hóa để tải web novel từ [Valvrare Team](https://valvrareteam.net). Công cụ hỗ trợ xuất bản ra nhiều định dạng như **EPUB, PDF, HTML, Markdown, và TXT** với hiệu suất vượt trội nhờ kiến trúc bất đồng bộ (Asynchronous) và giao diện Web hiện đại.
 
 ## Tính năng nổi bật
-- **Giao diện Web Dashboard (`vvrt web`):** Trải nghiệm hiện đại với bảng điều khiển trực quan, cho phép tìm kiếm và quản lý tải xuống ngay trên trình duyệt.
-- **Hiệu suất vượt trội:** Tải nội dung chương và hình ảnh minh họa song song (Bulk Download), giảm 80% thời gian chờ.
-- **Giao diện CLI chuyên nghiệp:** Tích hợp `Rich` mang lại giao diện bảng biểu và thanh tiến trình trực quan ngay tại terminal.
-- **Tìm kiếm thông minh:** Live Search với gợi ý thời gian thực cả trên Web và CLI.
-- **Chọn thư mục bản địa:** Hỗ trợ mở hộp thoại chọn thư mục (File Explorer) trực tiếp từ giao diện Web để chọn nơi lưu truyện.
-- **Vượt rào cản nâng cao:** Hỗ trợ lấy session thủ công (Dynamic Session Capture) để vượt qua Cloudflare hoặc nội dung yêu cầu đăng nhập.
-- **Metadata chuyên sâu:** Tự động nhúng thể loại, tác giả, mô tả và ảnh bìa vào file EPUB.
-- **Audiobook (TTS) tích hợp:** Sử dụng trí tuệ nhân tạo (AI-Powered) từ thư viện `VieNeu` để chuyển đổi truyện chữ thành định dạng âm thanh (.wav/mp3) chất lượng cao.
-- **Logging thời gian thực:** Theo dõi quá trình tải xuống qua WebSockets trên Web hoặc `Loguru` trên CLI.
+- **Web Dashboard & CLI:** Giao diện Web hiện đại hoặc terminal chuyên nghiệp với Rich — tùy bạn chọn.
+- **Xuất đa định dạng:** EPUB (có mục lục Tập/Chương, ảnh bìa), PDF, HTML, Markdown, TXT, MP3 (AI TTS).
+- **Batch Import & Download Queue:** Tải hàng loạt truyện với hàng đợi đa luồng, hỗ trợ pause/resume/cancel.
+- **Checkpoint & Resume:** Tự động lưu tiến trình — nếu bị gián đoạn, tiếp tục từ chương cuối đã tải.
+- **Thư viện truyện:** Theo dõi lịch sử tải, kiểm tra chương mới, quét thư mục hiện có.
+- **Hybrid Scraping:** Fast Mode (SSR) + Reliable Mode (Playwright), tự động dừng nếu >30% chương thất bại.
+- **Session Capture:** Vượt Cloudflare và nội dung yêu cầu đăng nhập bằng phiên trình duyệt thực.
 
 ## Cài đặt
 
@@ -30,7 +28,7 @@ Sau khi cài đặt, bạn cần cài đặt trình duyệt cho Playwright:
 playwright install chromium-headless-shell
 ```
 
-**Yêu cầu:** Python 3.8 trở lên.
+**Yêu cầu:** Python 3.9 trở lên.
 
 **Khả năng tương thích:**
 - **Linux:** Đã test hoạt động tốt (KDE/openSUSE).
@@ -41,7 +39,7 @@ playwright install chromium-headless-shell
 
 ## Cách sử dụng
 
-### 1. Chế độ Web (Mới & UNSTABLE)
+### 1. Chế độ Web (Khuyến nghị)
 Khởi chạy giao diện điều khiển hiện đại trên trình duyệt:
 ```bash
 vvrt web
@@ -51,7 +49,6 @@ Các tham số hỗ trợ:
 - `--host`: Host chạy server (mặc định: 127.0.0.1).
 - `--no-browser`: Không tự động mở trình duyệt.
 - `--workers WORKERS`: Số lượng novel tải song song (mặc định: 1).
-
 
 ### 2. Chế độ tương tác (CLI)
 Dành cho người thích làm việc trực tiếp tại terminal:
@@ -65,6 +62,9 @@ vvrt
 vvrt slug-truyen-1 slug-truyen-2 -f EPUB -g tatca -t 10 --verbose
 ```
 
+### 4. Batch Import (Web UI)
+Trên giao diện Web Dashboard, sử dụng chức năng **Batch Import** để nhập danh sách URL hoặc slug, mỗi dòng một truyện. Tất cả sẽ được thêm vào hàng đợi và tải lần lượt.
+
 ## Xử lý Cloudflare và Đăng nhập
 
 Dự án hỗ trợ chế độ **Session Capture**:
@@ -76,7 +76,8 @@ Dự án hỗ trợ chế độ **Session Capture**:
 
 ## Lưu ý
 - **Font chữ:** Font hỗ trợ tiếng Việt (DejaVuSans, NotoSerif) sẽ được tự động tải xuống khi xuất file PDF.
-- **Folder Picker:** Trên Linux, tính năng "Browse" thư mục yêu cầu `zenity` (mặc định trên GNOME) hoặc `kdialog` (mặc định trên KDE).
+- **Folder Picker:** Trên Linux, tính năng "Browse" thư mục yêu cầu `zenity` (mặc định trên GNOME) hoặc `kdialog` (mặc định trên KDE), hoặc `python3-tk`.
+- **Thư viện truyện:** Dữ liệu thư viện được lưu tại `vvr_library.db` (SQLite). File này được tạo tự động khi khởi chạy Web Dashboard.
 
 ## Giấy phép
 Dự án được phát hành dưới [Giấy phép MIT](LICENSE).
