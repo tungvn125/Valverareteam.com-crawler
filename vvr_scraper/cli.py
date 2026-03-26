@@ -376,9 +376,26 @@ class ValvrareScraperCLI:
                 
             await browser.close()
 
+        # Check failure rate — abort if too many chapters failed
+        failed_count = len(urls) - len(scraped)
+        failure_rate = failed_count / len(urls) if urls else 0
+        if failure_rate > 0.3:
+            logger.error(
+                f"Quá nhiều chương tải thất bại: {failed_count}/{len(urls)} "
+                f"({failure_rate:.0%}). Hủy xuất file."
+            )
+            return
+
         # 7. Generate Files
         logger.info(f"Bắt đầu tạo file cho '{story_info.title}'...")
         await self._generate_files(chapter_data, selected_chaps, scraped, story_info, export_config)
+        
+        # Clean up temp cover file
+        if story_info.cover_path and os.path.exists(story_info.cover_path):
+            try:
+                os.remove(story_info.cover_path)
+            except OSError:
+                pass
         self._cleanup()
 
     async def _get_export_config(self, story_url: str) -> Dict:
@@ -491,7 +508,7 @@ def main():
         console.print("\n[bold red]Chương trình bị dừng bởi người dùng.[/bold red]")
     finally:
         # Cleanup temporary files
-        for temp_file in ["chapter_list.json", "cover.jpg"]:
+        for temp_file in ["chapter_list.json"]:
             if os.path.exists(temp_file):
                 try:
                     os.remove(temp_file)

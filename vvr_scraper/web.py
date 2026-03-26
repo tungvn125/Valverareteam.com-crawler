@@ -153,6 +153,9 @@ class DownloadRequest(BaseModel):
     output_folder: Optional[str] = None
     selected_urls: Optional[List[str]] = None
 
+class BatchImportRequest(BaseModel):
+    items: List[str]
+
 class Settings(BaseModel):
     num_workers: int = 1
     default_output_folder: str = ""
@@ -199,7 +202,7 @@ async def run_scrape_task(req: DownloadRequest, task_id: str):
         output_folder = req.output_folder or sanitize_filename(story_info.title)
         os.makedirs(output_folder, exist_ok=True)
         checkpoint_file = os.path.join(output_folder, ".vvr_checkpoint.json")
-        checkpoint = {"slug": req.slug, "title": story_info.title, "scraped": {}}
+        checkpoint = {"slug": req.slug, "title": story_info.title, "cover_url": story_info.cover_url, "scraped": {}}
         if os.path.exists(checkpoint_file):
             try:
                 with open(checkpoint_file, "r", encoding="utf-8") as f:
@@ -210,96 +213,123 @@ async def run_scrape_task(req: DownloadRequest, task_id: str):
                         # Migration for old checkpoints that only stored the 'scraped' dict
                         checkpoint["scraped"] = data
                 logger.info(f"Loaded checkpoint for task {task_id}. Skipping {len(checkpoint['scraped'])} chapters.")
-            except Exception as e:
-                logger.error(f"Error loading checkpoint: {e}")
+            except (json.JSONDecodeError, Exception) as e:
+                logger.warning(f"Corrupt checkpoint detected, starting fresh: {e}")
+                try:
+                    os.remove(checkpoint_file)
+                except OSError:
+                    pass
 
-        if req.selected_urls:
-            urls = req.selected_urls
-            logger.info(f"Using {len(urls)} selected URLs for download")
-        else:
-            story_url = f"{BASE_URL}/{req.slug}"
-            chapter_data = await get_chapter_tree_list(story_url, output_file=f"chapters_{task_id}.json", session_state=session_state)
+        # Always fetch the chapter tree (needed for proper titles and structure)
+        story_url = f"{BASE_URL}/{req.slug}"
+        chapter_data = await get_chapter_tree_list(story_url, output_file=f"chapters_{task_id}.json", session_state=session_state)
 
-            if not chapter_data:
-                if os.path.exists(f"chapters_{task_id}.json"):
-                    with open(f"chapters_{task_id}.json", "r", encoding="utf-8") as f:
-                        chapter_data = json.load(f)
-                else:
-                    raise Exception("Could not retrieve chapter list. Please check if the novel exists or try again.")
-
+        if not chapter_data:
             if os.path.exists(f"chapters_{task_id}.json"):
-                os.remove(f"chapters_{task_id}.json")
+                with open(f"chapters_{task_id}.json", "r", encoding="utf-8") as f:
+                    chapter_data = json.load(f)
+            else:
+                raise Exception("Could not retrieve chapter list. Please check if the novel exists or try again.")
 
-            selected_chaps = [c for v in chapter_data for c in v['chapters']]
-            if req.skip_illustrations:
-                selected_chaps = [c for c in selected_chaps if "Minh họa" not in c['title']]
+        if os.path.exists(f"chapters_{task_id}.json"):
+            os.remove(f"chapters_{task_id}.json")
 
-            urls = [f"{BASE_URL}{c['url']}" for c in selected_chaps]
+        # Build URL list — filter by selected_urls if provided
+        selected_set = None
+        if req.selected_urls:
+            selected_set = set(
+                url if url.startswith("http") else f"{BASE_URL}{url}"
+                for url in req.selected_urls
+            )
+
+        all_chaps = [c for v in chapter_data for c in v['chapters']]
+        if req.skip_illustrations:
+            all_chaps = [c for c in all_chaps if "Minh họa" not in c['title']]
+
+        if selected_set:
+            urls = [f"{BASE_URL}{c['url']}" for c in all_chaps if f"{BASE_URL}{c['url']}" in selected_set]
+        else:
+            urls = [f"{BASE_URL}{c['url']}" for c in all_chaps]
+
+        logger.info(f"Using {len(urls)} URLs for download")
         
         total = len(urls)
         
         token = get_token_from_state(session_state)
+        
+        # Build pre-scraped dict from checkpoint
+        pre_scraped = {}
+        for url, content in checkpoint.get("scraped", {}).items():
+            if url in urls:
+                pre_scraped[url] = content
+
+        # Checkpoint + progress callback
+        async def on_chapter_done(url, content, idx, total):
+            if content:
+                # Save to checkpoint (convert ContentItem to dict for JSON)
+                from dataclasses import asdict
+                checkpoint["scraped"][url] = [
+                    asdict(item) if hasattr(item, '__dataclass_fields__') else item
+                    for item in content
+                ]
+                checkpoint["slug"] = req.slug
+                checkpoint["title"] = story_info.title
+                with open(checkpoint_file, "w", encoding="utf-8") as f:
+                    json.dump(checkpoint, f, ensure_ascii=False, indent=2)
+
+            percent = int(((idx + 1) / total) * 100)
+            is_resumed = url in pre_scraped
+            msg = f"Resumed {idx+1}/{total} chapters (from checkpoint)" if is_resumed else f"Downloaded {idx+1}/{total} chapters"
+            await manager.broadcast({
+                "type": "progress",
+                "task_id": task_id,
+                "percent": percent,
+                "msg": msg
+            })
+
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
-            scraped = {}
-            # Pre-load from checkpoint
-            for url, content in checkpoint.get("scraped", {}).items():
-                if url in urls:
-                    scraped[url] = content
-
-            semaphore = asyncio.Semaphore(req.tasks)
-            
-            async def process_url(url, idx):
-                if url in scraped:
-                    percent = int(((idx + 1) / total) * 100)
-                    await manager.broadcast({
-                        "type": "progress", 
-                        "task_id": task_id, 
-                        "percent": percent,
-                        "msg": f"Resumed {idx+1}/{total} chapters (from checkpoint)"
-                    })
-                    return
-
-                async with semaphore:
-                    from .scraper_core import lay_chuong_httpx, lay_chuong_voi_hinh_anh
-                    content = None
-                    async with httpx.AsyncClient(headers=HEADERS, cookies=cookies, follow_redirects=True) as client:
-                        content = await lay_chuong_httpx(client, url, token=token)
-                    if not content:
-                        content = await lay_chuong_voi_hinh_anh(browser, url, session_state=session_state)
-                    
-                    if content:
-                        scraped[url] = content
-                        # Update checkpoint immediately
-                        checkpoint["scraped"][url] = content
-                        checkpoint["slug"] = req.slug
-                        checkpoint["title"] = story_info.title
-                        with open(checkpoint_file, "w", encoding="utf-8") as f:
-                            json.dump(checkpoint, f, ensure_ascii=False, indent=2)
-                    
-                    percent = int(((idx + 1) / total) * 100)
-                    await manager.broadcast({
-                        "type": "progress", 
-                        "task_id": task_id, 
-                        "percent": percent,
-                        "msg": f"Downloaded {idx+1}/{total} chapters"
-                    })
-
-            tasks = [process_url(url, i) for i, url in enumerate(urls)]
-            await asyncio.gather(*tasks)
+            scraped = await scrape_chapters(
+                browser, urls,
+                concurrent_tasks=req.tasks,
+                session_state=session_state,
+                token=token,
+                pre_scraped=pre_scraped,
+                on_chapter_done=on_chapter_done,
+            )
             await browser.close()
+
+        # Check failure rate — abort if too many chapters failed
+        failed_count = total - len(scraped)
+        failure_rate = failed_count / total if total > 0 else 0
+        if failure_rate > 0.3:
+            error_msg = (
+                f"Quá nhiều chương tải thất bại: {failed_count}/{total} "
+                f"({failure_rate:.0%}). Hủy xuất file."
+            )
+            logger.error(error_msg)
+            raise Exception(error_msg)
 
         await manager.broadcast({"type": "status", "task_id": task_id, "status": "Exporting files..."})
         
+        # Build proper volume/chapter structure for EPUB (same as CLI)
         full_flat = []
-        for url in urls:
-            if url in scraped:
-                full_flat.extend(scraped[url])
+        full_structure = []
+        urls_set = set(urls)
+        for v_info in chapter_data:
+            v_chaps = []
+            for c_entry in v_info['chapters']:
+                f_url = f"{BASE_URL}{c_entry['url']}"
+                if f_url in urls_set and f_url in scraped:
+                    v_chaps.append({'title': c_entry['title'], 'content': scraped[f_url]})
+                    full_flat.extend(scraped[f_url])
+            if v_chaps:
+                full_structure.append({'volume': v_info['volume'], 'chapters': v_chaps})
         
         for fmt in req.formats:
             fpath = os.path.join(output_folder, f"{sanitize_filename(story_info.title)}.{fmt.lower()}")
             if fmt == "PDF": await tao_file_pdf(full_flat, fpath, story_info.title)
-            elif fmt == "EPUB": await tao_file_epub(fpath, story_info.title, story_info.author, [{'title': 'All Chapters', 'content': full_flat}], story_info.description, story_info.cover_path, story_info.genres)
+            elif fmt == "EPUB": await tao_file_epub(fpath, story_info.title, story_info.author, full_structure, story_info.description, story_info.cover_path, story_info.genres)
             elif fmt == "HTML": await tao_file_html(full_flat, fpath, story_info.title)
             elif fmt == "MD": await tao_file_md(full_flat, fpath, story_info.title)
             elif fmt == "TXT": await tao_file_txt(full_flat, fpath, story_info.title)
@@ -313,8 +343,19 @@ async def run_scrape_task(req: DownloadRequest, task_id: str):
             "last_chapter_count": len(urls),
             "last_downloaded_at": datetime.now().isoformat(),
             "output_folder": output_folder,
-            "formats": ",".join(req.formats)
+            "formats": ",".join(req.formats),
+            "cover_url": story_info.cover_url
         })
+        # Cleanup checkpoint on successful completion
+        if os.path.exists(checkpoint_file):
+            os.remove(checkpoint_file)
+
+        # Clean up temp cover file
+        if story_info.cover_path and os.path.exists(story_info.cover_path):
+            try:
+                os.remove(story_info.cover_path)
+            except OSError:
+                pass
 
         await manager.broadcast({"type": "complete", "task_id": task_id, "path": output_folder})
         logger.success(f"Task {task_id} completed: {story_info.title}")
@@ -545,8 +586,10 @@ async def check_library_updates():
         for c in session_state['cookies']:
             cookies[c['name']] = c['value']
             
+    updates_found = 0
     async with httpx.AsyncClient(headers=HEADERS, cookies=cookies, timeout=20.0) as client:
         async def check_novel(novel):
+            nonlocal updates_found
             slug = novel['slug']
             try:
                 story_info = await lay_thong_tin_truyen(client, slug)
@@ -562,6 +605,7 @@ async def check_library_updates():
                 
                 if server_count > last_count:
                     status = 'update_available'
+                    updates_found += 1
                 else:
                     status = 'synced'
                 
@@ -576,7 +620,7 @@ async def check_library_updates():
         # Check updates concurrently
         await asyncio.gather(*[check_novel(n) for n in novels])
     
-    return await app.state.db.get_all_novels()
+    return {"status": "ok", "updates_found": updates_found}
 
 @app.post("/api/library/scan")
 async def scan_library():
@@ -601,38 +645,39 @@ async def scan_library():
                             "slug": data["slug"],
                             "last_chapter_count": chapter_count,
                             "output_folder": root,
-                            "status": "synced"
+                            "status": "synced",
+                            "cover_url": data.get("cover_url")
                         })
                         found_count += 1
             except Exception as e:
                 logger.error(f"Error reading checkpoint at {checkpoint_path}: {e}")
     
-    return {"status": "ok", "found": found_count}
+    return {"status": "ok", "added": found_count, "updated": 0}
 
 @app.post("/api/batch-import")
-async def batch_import(urls: List[str]):
+async def batch_import(req: BatchImportRequest):
     """Accepts a list of URLs/slugs and adds them to the download queue."""
     added_count = 0
     settings = load_vvr_settings()
-    for url in urls:
+    for url in req.items:
         # Extract slug from URL if it's a full URL
         slug = url.replace(BASE_URL + "/", "").strip("/")
         if not slug:
             continue
         
         task_id = str(uuid.uuid4())[:8]
-        req = DownloadRequest(slug=slug)
+        req_download = DownloadRequest(slug=slug)
         
         # Use default output folder if configured
         if settings.default_output_folder:
             folder_name = sanitize_filename(slug.split('/')[-1])
-            req.output_folder = os.path.join(settings.default_output_folder, folder_name)
+            req_download.output_folder = os.path.join(settings.default_output_folder, folder_name)
             
-        active_tasks[task_id] = req
-        await download_queue.add_task(req, task_id)
+        active_tasks[task_id] = req_download
+        await download_queue.add_task(req_download, task_id)
         added_count += 1
         
-    return {"status": "ok", "added": added_count}
+    return {"status": "ok", "count": added_count}
 
 async def run_web_server(host: str = "127.0.0.1", port: int = 8000, num_workers: Optional[int] = None):
     """Starts the Uvicorn server in the current event loop."""

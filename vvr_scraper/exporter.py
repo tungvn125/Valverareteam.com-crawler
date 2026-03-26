@@ -129,9 +129,12 @@ async def tao_file_epub(
     if genres:
         for g in genres: book.add_metadata('DC', 'subject', g)
 
-    try:
-        book.set_cover("cover.jpg", open('cover.jpg', 'rb').read())
-    except: pass
+    if cover_path and os.path.exists(cover_path):
+        try:
+            with open(cover_path, 'rb') as cf:
+                book.set_cover("cover.jpg", cf.read())
+        except Exception:
+            pass
 
     toc = []
     spine = ['nav']

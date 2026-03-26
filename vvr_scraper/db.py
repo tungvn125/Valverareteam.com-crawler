@@ -21,7 +21,8 @@ class DatabaseManager:
                     last_downloaded_at DATETIME,
                     output_folder TEXT,
                     formats TEXT,
-                    status TEXT
+                    status TEXT,
+                    cover_url TEXT
                 )
             """)
             await db.commit()
@@ -33,8 +34,8 @@ class DatabaseManager:
             await db.execute("""
                 INSERT INTO library (
                     title, slug, author, last_chapter_count, 
-                    last_downloaded_at, output_folder, formats, status
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    last_downloaded_at, output_folder, formats, status, cover_url
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(slug) DO UPDATE SET
                     title=excluded.title,
                     author=excluded.author,
@@ -42,7 +43,8 @@ class DatabaseManager:
                     last_downloaded_at=excluded.last_downloaded_at,
                     output_folder=excluded.output_folder,
                     formats=excluded.formats,
-                    status=excluded.status
+                    status=excluded.status,
+                    cover_url=excluded.cover_url
             """, (
                 novel_data.get('title'),
                 novel_data.get('slug'),
@@ -51,7 +53,8 @@ class DatabaseManager:
                 novel_data.get('last_downloaded_at', datetime.now().isoformat()),
                 novel_data.get('output_folder'),
                 novel_data.get('formats'),
-                novel_data.get('status', 'synced')
+                novel_data.get('status', 'synced'),
+                novel_data.get('cover_url')
             ))
             await db.commit()
 
