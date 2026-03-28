@@ -71,6 +71,7 @@ Bạn cần cung cấp API Key gốc OpenAI (hoặc OpenRouter/DeepSeek tương 
 ```bash
 export VVR_API_KEY="your-api-key"
 export VVR_BASE_URL="https://api.openai.com/v1" # Sử dụng URL proxy nếu cần
+export VVR_MODEL="gpt-4o-mini" # Model tùy chọn (mặc định: gpt-4o-mini)
 ```
 
 ## Xử lý Cloudflare và Đăng nhập

@@ -10,6 +10,7 @@ class OpenAIParser:
     def __init__(self, api_key: Optional[str] = None, base_url: Optional[str] = None):
         self.api_key = api_key or os.getenv("VVR_API_KEY")
         self.base_url = base_url or os.getenv("VVR_BASE_URL")
+        self.model = os.getenv("VVR_MODEL")
         
         if not self.api_key or not self.base_url:
             logger.warning("VVR_API_KEY or VVR_BASE_URL not found in environment variables. OpenAIParser may fail.")
@@ -35,7 +36,7 @@ class OpenAIParser:
         
         try:
             response = await self.client.chat.completions.create(
-                model="gpt-4o-mini", # Default fast model, can be overridden if needed
+                model=self.model,
                 messages=[
                     {"role": "system", "content": system_instruction},
                     {"role": "user", "content": f"Chapter Text:\n{text}"}
