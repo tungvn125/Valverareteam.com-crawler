@@ -25,8 +25,36 @@ class DatabaseManager:
                     cover_url TEXT
                 )
             """)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS character_voices (
+                    story_id TEXT,
+                    character_name TEXT,
+                    voice_name TEXT,
+                    PRIMARY KEY (story_id, character_name)
+                )
+            """)
             await db.commit()
         logger.info(f"Database initialized at {self.db_path}")
+
+    async def save_character_voice(self, story_id: str, character_name: str, voice_name: str):
+        """Saves or updates a voice mapping for a character in a story."""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("""
+                INSERT INTO character_voices (story_id, character_name, voice_name)
+                VALUES (?, ?, ?)
+                ON CONFLICT(story_id, character_name) DO UPDATE SET voice_name=excluded.voice_name
+            """, (story_id, character_name, voice_name))
+            await db.commit()
+
+    async def get_character_voice(self, story_id: str, character_name: str) -> Optional[str]:
+        """Retrieves the voice name for a character in a story."""
+        async with aiosqlite.connect(self.db_path) as db:
+            async with db.execute(
+                "SELECT voice_name FROM character_voices WHERE story_id = ? AND character_name = ?",
+                (story_id, character_name)
+            ) as cursor:
+                row = await cursor.fetchone()
+                return row[0] if row else None
 
     async def upsert_novel(self, novel_data: Dict[str, Any]):
         """Inserts or updates a novel entry based on the slug."""
