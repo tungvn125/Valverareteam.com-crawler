@@ -454,6 +454,12 @@ document.getElementById('confirmSelectionBtn').onclick = () => {
 function openDownloadModal(item) {
     document.getElementById('modalTitle').textContent = `Tải: ${item.title}`;
     document.getElementById('modalSlug').value = item.slug;
+    
+    // Reset TTS options
+    document.getElementById('ttsOptions').style.display = 'none';
+    const mp3Checkbox = document.querySelector('input[name="format"][value="MP3"]');
+    if (mp3Checkbox) mp3Checkbox.checked = false;
+    
     downloadModal.style.display = 'flex';
     searchResults.style.display = 'none';
 }
@@ -461,6 +467,23 @@ function openDownloadModal(item) {
 function closeModal() {
     downloadModal.style.display = 'none';
 }
+
+// TTS Options Toggle
+document.addEventListener('change', (e) => {
+    if (e.target.name === 'format' && e.target.value === 'MP3') {
+        document.getElementById('ttsOptions').style.display = e.target.checked ? 'block' : 'none';
+    }
+    
+    if (e.target.id === 'ttsMethod') {
+        const method = e.target.value;
+        document.getElementById('voiceOption').style.display = (method === 'edge-tts') ? 'block' : 'none';
+        document.getElementById('vieneuVoiceOption').style.display = (method === 'vieneu') ? 'block' : 'none';
+    }
+    
+    if (e.target.id === 'ttsVoice') {
+        document.getElementById('customVoice').style.display = (e.target.value === 'custom') ? 'block' : 'none';
+    }
+});
 
 function openBatchImportModal() {
     batchImportModal.style.display = 'flex';
@@ -515,6 +538,19 @@ document.getElementById('downloadForm').onsubmit = async (e) => {
     const tasks = parseInt(document.getElementById('tasksInput').value);
     const skipIllus = document.getElementById('skipIllus').checked;
     const outputPath = document.getElementById('outputPathInput').value.trim();
+    
+    // TTS options
+    let tts_method = null;
+    let voice = null;
+    if (formats.includes('MP3')) {
+        tts_method = document.getElementById('ttsMethod').value;
+        if (tts_method === 'edge-tts') {
+            const voiceSelect = document.getElementById('ttsVoice').value;
+            voice = (voiceSelect === 'custom') ? document.getElementById('customVoice').value.trim() : voiceSelect;
+        } else if (tts_method === 'vieneu') {
+            voice = document.getElementById('vieneuVoice').value.trim() || 'Tuyen';
+        }
+    }
 
     if (formats.length === 0) {
         alert('Vui lòng chọn ít nhất một định dạng.');
@@ -531,7 +567,9 @@ document.getElementById('downloadForm').onsubmit = async (e) => {
                 tasks, 
                 skip_illustrations: skipIllus,
                 output_folder: outputPath || null,
-                selected_urls: Array.from(selectedUrls)
+                selected_urls: Array.from(selectedUrls),
+                tts_method,
+                voice
             })
         });
         const data = await response.json();

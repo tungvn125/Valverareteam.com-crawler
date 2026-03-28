@@ -152,6 +152,8 @@ class DownloadRequest(BaseModel):
     skip_illustrations: bool = False
     output_folder: Optional[str] = None
     selected_urls: Optional[List[str]] = None
+    tts_method: Optional[str] = "edge-tts"
+    voice: Optional[str] = None
 
 class BatchImportRequest(BaseModel):
     items: List[str]
@@ -184,6 +186,12 @@ task_log_buffers: Dict[str, List[dict]] = {}
 
 async def run_scrape_task(req: DownloadRequest, task_id: str):
     """Orchestrates the scraping task and sends progress via WebSocket."""
+    # Set TTS method and voice for this task
+    if req.tts_method:
+        os.environ["VVR_TTS_METHOD"] = req.tts_method
+    if req.voice:
+        os.environ["VVR_VOICE"] = req.voice
+        
     active_tasks_futures[task_id] = asyncio.current_task()
     try:
         await manager.broadcast({"type": "status", "task_id": task_id, "status": "Resolving story..."})

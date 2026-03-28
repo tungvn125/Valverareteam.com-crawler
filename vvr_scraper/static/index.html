@@ -198,6 +198,29 @@
                 <div class="form-group">
                     <label><input type="checkbox" id="skipIllus"> Bỏ qua minh họa</label>
                 </div>
+                <div id="ttsOptions" style="display:none; border-top: 1px solid var(--border-color); padding-top: 15px; margin-top: 15px;">
+                    <div class="form-group">
+                        <label>Phương thức TTS:</label>
+                        <select id="ttsMethod" class="text-input">
+                            <option value="edge-tts">Edge TTS (Nhanh, tự nhiên)</option>
+                            <option value="gtts">Google TTS (Đơn giản)</option>
+                            <option value="vieneu">VieNeu AI (Chất lượng cao, nặng)</option>
+                        </select>
+                    </div>
+                    <div id="voiceOption" class="form-group">
+                        <label>Giọng đọc:</label>
+                        <select id="ttsVoice" class="text-input">
+                            <option value="vi-VN-HoaiMyNeural">Hoài Mỹ (Nữ)</option>
+                            <option value="vi-VN-NamMinhNeural">Nam Minh (Nam)</option>
+                            <option value="custom">Tự nhập ID giọng...</option>
+                        </select>
+                        <input type="text" id="customVoice" placeholder="ID giọng (VD: vi-VN-HoaiMyNeural)..." class="text-input mt-5" style="display:none">
+                    </div>
+                    <div id="vieneuVoiceOption" class="form-group" style="display:none">
+                        <label>Giọng VieNeu:</label>
+                        <input type="text" id="vieneuVoice" placeholder="Tên giọng (VD: Tuyen)..." class="text-input">
+                    </div>
+                </div>
                 <div class="modal-actions">
                     <button type="button" class="btn-secondary" onclick="closeModal()">Hủy</button>
                     <button type="submit" class="btn-primary">Bắt đầu tải</button>

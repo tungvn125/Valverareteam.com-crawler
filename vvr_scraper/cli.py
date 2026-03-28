@@ -150,7 +150,7 @@ class ValvrareScraperCLI:
             description="Tải truyện từ Valvrare Team dưới dạng PDF, EPUB, và các định dạng khác.",
             formatter_class=argparse.RawTextHelpFormatter
         )
-        parser.add_argument('ten_truyen', nargs='*', help="Tên truyện cần tải (slug). Hoặc dùng 'web' để mở giao diện.")
+        parser.add_argument('ten_truyen', nargs='*', help="Tên truyện cần tải (slug). Dùng 'web' để mở giao diện, 'publish' để đăng lên YouTube.")
         parser.add_argument('-o', '--output', dest='output_folder', help="Thư mục đầu ra.")
         parser.add_argument('-f', '--format', nargs='+', default=['EPUB'], 
                            choices=['PDF', 'EPUB', 'HTML', 'MD', 'TXT'], help="Định dạng file.")
@@ -164,11 +164,21 @@ class ValvrareScraperCLI:
         parser.add_argument('--refresh-session', action='store_true', help="Xóa session cũ.")
         parser.add_argument('--verbose', action='store_true', help="Hiển thị log chi tiết.")
         
-        # Web-specific arguments (moved to top-level)
+        # Web-specific arguments
         parser.add_argument('--host', default='127.0.0.1', help='Host cho web server.')
         parser.add_argument('--port', type=int, default=8000, help='Port cho web server.')
         parser.add_argument('--workers', type=int, default=1, help='Số lượng novel tải song song (chế độ web).')
         parser.add_argument('--no-browser', action='store_true', help='Không tự động mở trình duyệt.')
+
+        # Publish-specific arguments
+        parser.add_argument('--all-new', action='store_true', help="Đăng tất cả chương mới trong thư viện.")
+        parser.add_argument('--dry-run', action='store_true', help="Tạo video nhưng không đăng lên YouTube.")
+        parser.add_argument('--ai-off', action='store_true', help="Không dùng AI để tạo tiêu đề/mô tả.")
+        
+        # TTS-specific arguments
+        parser.add_argument('--tts-method', default='edge-tts', choices=['edge-tts', 'gtts', 'vieneu'], 
+                           help="Phương thức TTS (mặc định: edge-tts).")
+        parser.add_argument('--voice', help="Giọng đọc (tùy thuộc vào phương thức TTS).")
 
         selection_group = parser.add_mutually_exclusive_group()
         selection_group.add_argument('--all', action='store_true', help="Tải tất cả.")
@@ -276,6 +286,12 @@ class ValvrareScraperCLI:
 
     async def run(self):
         """Main execution flow."""
+        # Set TTS environment variables from CLI args
+        if self.args.tts_method:
+            os.environ["VVR_TTS_METHOD"] = self.args.tts_method
+        if self.args.voice:
+            os.environ["VVR_VOICE"] = self.args.voice
+
         # Handle 'web' command as a positional argument
         if self.args.ten_truyen and self.args.ten_truyen[0] == 'web':
             from .web import run_web_server
@@ -286,6 +302,33 @@ class ValvrareScraperCLI:
                 webbrowser.open(url)
             
             await run_web_server(host=self.args.host, port=self.args.port, num_workers=self.args.workers)
+            return
+
+        # Handle 'publish' command
+        if self.args.ten_truyen and self.args.ten_truyen[0] == 'publish':
+            from .publisher import Publisher
+            publisher = Publisher()
+            
+            if self.args.all_new:
+                console.print(Panel("[bold cyan]Syncing library and publishing all new chapters...[/bold cyan]"))
+                await publisher.discover_and_publish_all(
+                    dry_run=self.args.dry_run, 
+                    ai_off=self.args.ai_off
+                )
+            else:
+                if len(self.args.ten_truyen) < 2:
+                    logger.error("Vui lòng cung cấp slug truyện: vvrt publish <slug>")
+                    return
+                slug = self.args.ten_truyen[1]
+                console.print(Panel(f"[bold cyan]Publishing chapters for novel: {slug}[/bold cyan]"))
+                await publisher.run_pipeline(
+                    slug, 
+                    chapters=self.args.chapters, 
+                    dry_run=self.args.dry_run, 
+                    ai_off=self.args.ai_off
+                )
+            
+            console.print("[bold green]Publishing process completed.[/bold green]")
             return
 
         await self.setup_session()
@@ -428,6 +471,27 @@ class ValvrareScraperCLI:
         if "PDF" in formats:
             f_choice = input("Chọn font PDF (1. Noto Serif, 2. DejaVu Sans): ").strip()
             if f_choice == '1': font = 'NotoSerif'
+            
+        if "MP3" in formats:
+            tts_choice = InteractiveUI.show_menu(
+                ["Edge TTS (Mặc định)", "Google TTS", "VieNeu AI"],
+                "Chọn phương thức TTS"
+            )
+            methods = ["edge-tts", "gtts", "vieneu"]
+            method = methods[tts_choice] if tts_choice is not None else "edge-tts"
+            os.environ["VVR_TTS_METHOD"] = method
+            
+            if method == "edge-tts":
+                voice_choice = InteractiveUI.show_menu(
+                    ["Hoài Mỹ (Nữ)", "Nam Minh (Nam)", "Tự nhập ID giọng"],
+                    "Chọn giọng đọc Edge TTS"
+                )
+                if voice_choice == 0: os.environ["VVR_VOICE"] = "vi-VN-HoaiMyNeural"
+                elif voice_choice == 1: os.environ["VVR_VOICE"] = "vi-VN-NamMinhNeural"
+                elif voice_choice == 2:
+                    os.environ["VVR_VOICE"] = input("Nhập ID giọng (VD: vi-VN-HoaiMyNeural): ").strip()
+            elif method == "vieneu":
+                os.environ["VVR_VOICE"] = input("Nhập tên giọng VieNeu (mặc định: Tuyen): ").strip() or "Tuyen"
 
         tasks_in = input("Số lượng tác vụ song song (mặc định 5): ")
         tasks = int(tasks_in) if tasks_in.isdigit() and int(tasks_in) > 0 else 5

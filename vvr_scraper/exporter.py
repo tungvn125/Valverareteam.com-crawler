@@ -286,59 +286,80 @@ async def tao_file_txt(content_list: ContentList, filename: str, title: str = "C
 
 
 async def tao_file_mp3(content_list: ContentList, filename: str, title: str = "Chương truyện") -> None:
-    """AI-Powered Audiobook generation using VieNeu with chunked processing."""
-    # 1. SILENCE HEAVY WARNINGS BEFORE IMPORTING
-    import os
+    """AI-Powered Audiobook generation with support for multiple TTS methods."""
+    # 1. Config selection via environment variables
+    tts_method = os.getenv("VVR_TTS_METHOD", "edge-tts").lower()
+    voice = os.getenv("VVR_VOICE")
+    
+    # 2. SILENCE HEAVY WARNINGS (for Vieneu/OpenCV/TF)
     import warnings
-    # Suppress heavy framework logs and warnings to keep the terminal clean,
-    # but let PyTorch/Tensorflow decide hardware usage (CPU vs GPU) automatically.
     os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
     warnings.filterwarnings("ignore", category=UserWarning)
 
-    # 2. LAZY LOAD HEAVY LIBRARIES
-    try:
-        import numpy as np
-        from vieneu import Vieneu
-    except ImportError:
-        logger.error("Vieneu or numpy not found. Please run 'pip install vieneu numpy' to use TTS.")
-        return
-
-    logger.info(f"Đang tạo file Audiobook: {filename} (Sử dụng VieNeu AI)")
-    
-    # 3. Prepare text chunks
-    chunks = [title]
+    # 3. Prepare text content
+    full_text = f"{title}. "
     for item in _normalize_content_list(content_list):
         if item.type == 'text':
             text = item.data.strip()
             if text:
-                if len(text) > 2000:
-                    subchunks = [text[i:i+2000] for i in range(0, len(text), 2000)]
-                    chunks.extend(subchunks)
-                else:
-                    chunks.append(text)
+                full_text += f"{text} "
 
-    # 4. Synthesize each chunk
+    # 4. Synthesize based on method
     try:
-        def run_tts_chunked():
-            tts = Vieneu()
-            voice_data = tts.get_preset_voice("Tuyen")
-            audio_segments = []
+        if tts_method == "edge-tts":
+            import edge_tts
+            logger.info(f"Đang tạo file Audiobook: {filename} (Sử dụng Edge TTS)")
+            # Default voice for edge-tts if not provided
+            voice = voice or "vi-VN-HoaiMyNeural"
+            communicate = edge_tts.Communicate(full_text, voice)
+            await communicate.save(filename)
+
+        elif tts_method == "gtts":
+            from gtts import gTTS
+            logger.info(f"Đang tạo file Audiobook: {filename} (Sử dụng Google TTS)")
+            # gTTS is simpler, usually just needs lang
+            lang = os.getenv("VVR_LANG", "vi")
+            def run_gtts():
+                tts = gTTS(text=full_text, lang=lang)
+                tts.save(filename)
+            await asyncio.to_thread(run_gtts)
+
+        elif tts_method == "vieneu":
+            # Vieneu is heavy, keep its chunked logic if needed, 
+            # but for consistency we use full_text here or chunk it
+            try:
+                import numpy as np
+                from vieneu import Vieneu
+            except ImportError:
+                logger.error("Vieneu or numpy not found. Please run 'pip install vieneu numpy' to use Vieneu TTS.")
+                return
+
+            logger.info(f"Đang tạo file Audiobook: {filename} (Sử dụng VieNeu AI)")
             
-            total_chunks = len(chunks)
-            for i, chunk in enumerate(chunks):
-                if not chunk.strip():
-                    continue
-                logger.debug(f"Synthesizing chunk {i+1}/{total_chunks}...")
-                audio = tts.infer(text=chunk, voice=voice_data)
-                audio_segments.append(audio)
+            # Chunking for Vieneu specifically as it might have limits
+            chunks = [full_text[i:i+2000] for i in range(0, len(full_text), 2000)]
             
-            if audio_segments:
-                logger.debug("Merging audio segments...")
-                merged_audio = np.concatenate(audio_segments)
-                tts.save(merged_audio, filename)
+            def run_tts_vieneu():
+                tts = Vieneu()
+                # Default voice for vieneu
+                v_data = tts.get_preset_voice(voice or "Tuyen")
+                audio_segments = []
+                for chunk in chunks:
+                    if chunk.strip():
+                        audio = tts.infer(text=chunk, voice=v_data)
+                        audio_segments.append(audio)
+                if audio_segments:
+                    merged_audio = np.concatenate(audio_segments)
+                    tts.save(merged_audio, filename)
             
-        await asyncio.to_thread(run_tts_chunked)
+            await asyncio.to_thread(run_tts_vieneu)
+
+        else:
+            logger.error(f"TTS method unknown: {tts_method}")
+            return
+
         logger.info(f"Tạo file Audiobook thành công: {filename}")
     except Exception as e:
-        logger.error(f"Lỗi khi tạo Audiobook: {e}")
+        logger.error(f"Lỗi khi tạo Audiobook ({tts_method}): {e}")
         raise e
+

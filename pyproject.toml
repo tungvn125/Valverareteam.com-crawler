@@ -29,7 +29,9 @@ dependencies = [
     "uvicorn>=0.22.0",
     "websockets>=11.0",
     "vieneu",
-    "numpy"
+    "numpy",
+    "edge-tts>=6.1.0",
+    "gTTS>=2.3.0",
     "openai>=1.0.0",
     "google-api-python-client>=2.100.0",
     "google-auth-oauthlib>=1.1.0",
