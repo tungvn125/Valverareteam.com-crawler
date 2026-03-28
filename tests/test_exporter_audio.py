@@ -17,8 +17,9 @@ async def test_tao_file_audiodrama_flow(tmp_path):
     # Mock DB manager
     mock_db = MagicMock()
     # Mocking aiosqlite-like behavior if needed, but here it's just a db_manager passed to VoiceManager
-    mock_db.get_character_voice = AsyncMock(return_value="Hung")
+    mock_db.get_character_voice = AsyncMock(return_value="Binh")
     mock_db.save_character_voice = AsyncMock()
+    mock_db.get_all_story_voices = AsyncMock(return_value={})
     
     mock_script = [
         {"role": "narrator", "text": "Narrator text."},
@@ -71,7 +72,8 @@ async def test_tao_file_audiodrama_with_cache(tmp_path):
         json.dump(cached_script, f)
         
     mock_db = MagicMock()
-    mock_db.get_character_voice = AsyncMock(return_value="Mai")
+    mock_db.get_character_voice = AsyncMock(return_value="Ly")
+    mock_db.get_all_story_voices = AsyncMock(return_value={})
     
     with patch("vvr_scraper.exporter.OpenAIParser") as MockParser:
         # Vieneu mock
@@ -98,7 +100,8 @@ async def test_tao_file_audiodrama_fallback(tmp_path):
     content_list = [ContentItem(type="text", data="Some text")]
     
     mock_db = MagicMock()
-    mock_db.get_character_voice = AsyncMock(return_value="Hung")
+    mock_db.get_character_voice = AsyncMock(return_value="Binh")
+    mock_db.get_all_story_voices = AsyncMock(return_value={})
     
     # Mock OpenAIParser
     with patch("vvr_scraper.exporter.OpenAIParser") as MockParser:

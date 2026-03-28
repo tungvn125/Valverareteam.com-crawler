@@ -509,8 +509,11 @@ class ValvrareScraperCLI:
 
     async def _write_to_formats(self, folder, title, content, info, config, structure):
         for fmt in config['formats']:
+            ext = fmt.lower()
+            if ext == "ad-mp3":
+                ext = "ad.mp3"
             fname = sanitize_filename(title)
-            fpath = os.path.join(folder, f"{fname}.{fmt.lower()}")
+            fpath = os.path.join(folder, f"{fname}.{ext}")
             if fmt == "PDF": await tao_file_pdf(content, fpath, title, config['font'])
             elif fmt == "EPUB": await tao_file_epub(fpath, title, info.author, structure, info.description, info.cover_path, info.genres)
             elif fmt == "HTML": await tao_file_html(content, fpath, title)

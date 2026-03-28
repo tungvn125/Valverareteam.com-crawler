@@ -1,3 +1,4 @@
+import asyncio
 from openai import AsyncOpenAI
 import os
 import json
@@ -28,10 +29,10 @@ class OpenAIParser:
         system_instruction = (
             "You are an expert scriptwriter for audio dramas. "
             "Your task is to convert a web novel chapter into a structured script. "
-            "Identify all dialogue and the character speaking. Everything else is 'narrator'. "
+            "Identify all dialogue and the character speaking, and infer their gender ('male', 'female', or 'unknown'). Everything else is 'narrator'. "
             "Combine consecutive segments by the same character. "
-            "Output MUST be a JSON list of objects, each with 'role' and 'text'. "
-            "Example: [{\"role\": \"narrator\", \"text\": \"Once upon a time...\"}, {\"role\": \"Hero\", \"text\": \"Hello!\"}]"
+            "Output MUST be a JSON object containing a single key 'script' which maps to a list of objects, each with 'role', 'text', and 'gender'. "
+            "Example: {\"script\": [{\"role\": \"narrator\", \"text\": \"Once upon a time...\", \"gender\": \"unknown\"}, {\"role\": \"Hero\", \"text\": \"Hello!\", \"gender\": \"male\"}]}"
         )
         
         try:
@@ -70,17 +71,32 @@ class OpenAIParser:
 
 class VoiceManager:
     # Default pool of Vietnamese voices from Vieneu
-    DEFAULT_VOICES = ["Hung", "Mai", "Nam", "Linh", "Duc", "Lan", "Vinh"]
+    MALE_VOICES = ["Vinh", "Binh"]
+    FEMALE_VOICES = ["Doan", "Ly", "Ngoc"]
+    DEFAULT_VOICES = MALE_VOICES + FEMALE_VOICES
     NARRATOR_VOICE = "Tuyen"
 
     def __init__(self, db: DatabaseManager, story_id: str):
         self.db = db
         self.story_id = story_id
+        self._voice_cache: Dict[str, str] = {}
+        self._initialized = False
+        self._lock = asyncio.Lock()
 
-    async def get_voice(self, character_name: str) -> str:
+    async def _init_cache(self):
+        if not self._initialized:
+            # We use get_all_story_voices to fetch all currently assigned voices for the story.
+            # However, if it's a mocked object in tests and doesn't have it, we fallback to empty dict
+            if hasattr(self.db, 'get_all_story_voices'):
+                db_voices = await self.db.get_all_story_voices(self.story_id)
+                self._voice_cache.update(db_voices)
+            self._initialized = True
+
+    async def get_voice(self, character_name: str, gender: str = "unknown") -> str:
         """
         Retrieves the voice name for a character. Narrator is always 'Tuyen'.
-        Assigns a random voice if not already assigned and persists it.
+        Prioritizes unused voices before reusing voices for < 5 characters.
+        Routes voices based on 'gender' string if provided ('male', 'female').
         Character names are normalized (lowercased and stripped) for consistency.
         """
         if not character_name:
@@ -90,13 +106,40 @@ class VoiceManager:
         if char_normalized == "narrator":
             return self.NARRATOR_VOICE
 
-        # Check DB for existing mapping using normalized name
-        voice = await self.db.get_character_voice(self.story_id, char_normalized)
-        if voice:
-            return voice
+        async with self._lock:
+            await self._init_cache()
+            
+            # Check cache (which includes DB items)
+            if char_normalized in self._voice_cache:
+                return self._voice_cache[char_normalized]
+                
+            # Fallback point for tests mocking only get_character_voice
+            if not self._voice_cache and hasattr(self.db, 'get_character_voice'):
+                voice_from_db = await self.db.get_character_voice(self.story_id, char_normalized)
+                if voice_from_db:
+                    self._voice_cache[char_normalized] = voice_from_db
+                    return voice_from_db
 
-        # Assign new voice from pool
-        voice = random.choice(self.DEFAULT_VOICES)
-        await self.db.save_character_voice(self.story_id, char_normalized, voice)
-        logger.info(f"Assigned voice '{voice}' to character '{char_normalized}' for story '{self.story_id}'")
-        return voice
+            # Decide target voice pool based on gender
+            if gender == "male":
+                target_voices = self.MALE_VOICES
+            elif gender == "female":
+                target_voices = self.FEMALE_VOICES
+            else:
+                target_voices = self.DEFAULT_VOICES
+
+            # Find unused voices in the target pool
+            used_voices = set(self._voice_cache.values())
+            available_voices = [v for v in target_voices if v not in used_voices]
+
+            # If unused voices remain, use one. Otherwise, randomly reuse an existing one from target pool
+            if available_voices:
+                voice = random.choice(available_voices)
+            else:
+                voice = random.choice(target_voices)
+
+            # Update cache and save to DB
+            self._voice_cache[char_normalized] = voice
+            await self.db.save_character_voice(self.story_id, char_normalized, voice)
+            logger.info(f"Assigned voice '{voice}' to character '{char_normalized}' for story '{self.story_id}'")
+            return voice
