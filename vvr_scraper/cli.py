@@ -24,8 +24,9 @@ from . import tao_so_do_cay
 from .scraper_core import lay_thong_tin_truyen, scrape_chapters
 from .exporter import (
     tao_file_epub, tao_file_pdf, tao_file_html, tao_file_md, tao_file_txt, tao_file_mp3,
-    ContentList, ChaptersData
+    tao_file_audiodrama, ContentList, ChaptersData
 )
+from .db import DatabaseManager
 from .utils import (
     sanitize_filename, create_folders_from_tree, normalize_vietnamese_url, 
     get_token_from_state, HEADERS, configure_logger, BASE_URL, get_config_path
@@ -140,6 +141,7 @@ class ValvrareScraperCLI:
         self.token = None
         self.skipped_urls = []
         self.output_folder = ""
+        self.db_manager = DatabaseManager(db_path=get_config_path("vvr_library.db"))
         
         # Configure logging
         configure_logger(self.args.verbose)
@@ -152,7 +154,7 @@ class ValvrareScraperCLI:
         parser.add_argument('ten_truyen', nargs='*', help="Tên truyện cần tải (slug). Hoặc dùng 'web' để mở giao diện.")
         parser.add_argument('-o', '--output', dest='output_folder', help="Thư mục đầu ra.")
         parser.add_argument('-f', '--format', nargs='+', default=['EPUB'], 
-                           choices=['PDF', 'EPUB', 'HTML', 'MD', 'TXT'], help="Định dạng file.")
+                           choices=['PDF', 'EPUB', 'HTML', 'MD', 'TXT', 'MP3', 'AD-MP3'], help="Định dạng file.")
         parser.add_argument('-g', '--gop', default='rieng', choices=['rieng', 'volume', 'tatca'], 
                            help="Cách gộp file (rieng/volume/tatca).")
         parser.add_argument('--khong-minh-hoa', action='store_true', help="Bỏ qua minh họa.")
@@ -178,6 +180,15 @@ class ValvrareScraperCLI:
 
     async def setup_session(self):
         """Handles session loading, login, and token extraction."""
+        # Initialize DB
+        await self.db_manager.init_db()
+        
+        # Check API Key for Audio Drama
+        formats = self.args.format
+        if 'AD-MP3' in formats:
+            if not os.getenv("GEMINI_API_KEY") and not os.getenv("GOOGLE_API_KEY"):
+                logger.warning("GEMINI_API_KEY not found. Audio Drama generation might fail or fallback to simple MP3.")
+
         session_path = get_config_path(SESSION_FILE)
         self.session_state = load_session(session_path)
         
@@ -430,11 +441,15 @@ class ValvrareScraperCLI:
             await tao_so_do_cay.get_chapter_tree_folder(url=story_url, output_file=tree_path, cookies=self.cookies)
             create_folders_from_tree(tree_path, self.output_folder)
 
-        format_items = ["PDF", "EPUB", "HTML", "Markdown (.md)", "Text (.txt)", "MP3 (Audiobook)"]
+        format_items = ["PDF", "EPUB", "HTML", "Markdown (.md)", "Text (.txt)", "MP3 (Audiobook)", "MP3 (Audio Drama - AI Script)"]
         f_idxs = InteractiveUI.show_menu(format_items, "Chọn định dạng file", multi_select=True)
         if not f_idxs: return {}
         
-        mapping = {"PDF": "PDF", "EPUB": "EPUB", "HTML": "HTML", "Markdown (.md)": "MD", "Text (.txt)": "TXT", "MP3 (Audiobook)": "MP3"}
+        mapping = {
+            "PDF": "PDF", "EPUB": "EPUB", "HTML": "HTML", 
+            "Markdown (.md)": "MD", "Text (.txt)": "TXT", 
+            "MP3 (Audiobook)": "MP3", "MP3 (Audio Drama - AI Script)": "AD-MP3"
+        }
         formats = [mapping[format_items[i]] for i in f_idxs]
         
         font = 'DejaVuSans'
@@ -502,6 +517,18 @@ class ValvrareScraperCLI:
             elif fmt == "MD": await tao_file_md(content, fpath, title)
             elif fmt == "TXT": await tao_file_txt(content, fpath, title)
             elif fmt == "MP3": await tao_file_mp3(content, fpath, title)
+            elif fmt == "AD-MP3":
+                # Ensure GEMINI_API_KEY is present
+                if not os.getenv("GEMINI_API_KEY") and not os.getenv("GOOGLE_API_KEY"):
+                    logger.warning("GEMINI_API_KEY not found. Audio Drama generation might fail or fallback.")
+                
+                await tao_file_audiodrama(
+                    content_list=content,
+                    filename=fpath,
+                    story_id=info.slug,
+                    db_manager=self.db_manager,
+                    title=title
+                )
 
     def _cleanup(self):
         logger.success("--- HOÀN TẤT ---")

@@ -8,9 +8,9 @@ from .db import DatabaseManager
 
 class GeminiParser:
     def __init__(self, api_key: Optional[str] = None):
-        self.api_key = api_key or os.getenv("GOOGLE_API_KEY")
+        self.api_key = api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
         if not self.api_key:
-            logger.warning("GOOGLE_API_KEY not found in environment variables. GeminiParser may fail.")
+            logger.warning("Neither GEMINI_API_KEY nor GOOGLE_API_KEY found in environment variables. GeminiParser may fail.")
         genai.configure(api_key=self.api_key)
         self.model = genai.GenerativeModel('gemini-1.5-flash')
 
@@ -65,21 +65,22 @@ class VoiceManager:
         """
         Retrieves the voice name for a character. Narrator is always 'Tuyen'.
         Assigns a random voice if not already assigned and persists it.
+        Character names are normalized (lowercased and stripped) for consistency.
         """
         if not character_name:
             return self.NARRATOR_VOICE
             
-        char_lower = character_name.lower().strip()
-        if char_lower == "narrator":
+        char_normalized = character_name.lower().strip()
+        if char_normalized == "narrator":
             return self.NARRATOR_VOICE
 
-        # Check DB for existing mapping
-        voice = await self.db.get_character_voice(self.story_id, character_name)
+        # Check DB for existing mapping using normalized name
+        voice = await self.db.get_character_voice(self.story_id, char_normalized)
         if voice:
             return voice
 
         # Assign new voice from pool
         voice = random.choice(self.DEFAULT_VOICES)
-        await self.db.save_character_voice(self.story_id, character_name, voice)
-        logger.info(f"Assigned voice '{voice}' to character '{character_name}' for story '{self.story_id}'")
+        await self.db.save_character_voice(self.story_id, char_normalized, voice)
+        logger.info(f"Assigned voice '{voice}' to character '{char_normalized}' for story '{self.story_id}'")
         return voice

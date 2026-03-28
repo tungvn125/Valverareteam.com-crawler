@@ -68,13 +68,31 @@ async def test_voice_manager_assignment_and_persistence():
     char_name = "Lâm"
     voice1 = await vm.get_voice(char_name)
     assert voice1 in VoiceManager.DEFAULT_VOICES
-    # Should have checked DB
-    mock_db.get_character_voice.assert_called_with(story_id, char_name)
-    # Should have saved to DB
-    mock_db.save_character_voice.assert_called_once()
+    # Should have checked DB with normalized name
+    mock_db.get_character_voice.assert_called_with(story_id, "lâm")
+    # Should have saved to DB with normalized name
+    mock_db.save_character_voice.assert_called_with(story_id, "lâm", voice1)
     
     # 2. Existing character from DB
     voice2 = await vm.get_voice(char_name)
     assert voice2 == "Hung"
     # Should NOT have saved to DB again (it was already in DB)
     assert mock_db.save_character_voice.call_count == 1
+
+@pytest.mark.asyncio
+async def test_voice_manager_normalization():
+    """Tests that VoiceManager normalizes names (case-insensitive, stripped)."""
+    mock_db = MagicMock()
+    mock_db.get_character_voice = AsyncMock(return_value="Mai")
+    
+    story_id = "story_123"
+    vm = VoiceManager(mock_db, story_id)
+    
+    # "Nam" vs " nam " vs "NAM"
+    assert await vm.get_voice("Nam") == "Mai"
+    assert await vm.get_voice(" nam ") == "Mai"
+    assert await vm.get_voice("NAM") == "Mai"
+    
+    # All should have queried the DB with the same normalized key "nam"
+    assert mock_db.get_character_voice.call_count == 3
+    mock_db.get_character_voice.assert_called_with(story_id, "nam")

@@ -20,7 +20,8 @@ from datetime import datetime
 
 from .scraper_core import lay_thong_tin_truyen, scrape_chapters
 from .exporter import (
-    tao_file_epub, tao_file_pdf, tao_file_html, tao_file_md, tao_file_txt, tao_file_mp3
+    tao_file_epub, tao_file_pdf, tao_file_html, tao_file_md, tao_file_txt, tao_file_mp3,
+    tao_file_audiodrama
 )
 from .utils import (
     sanitize_filename, HEADERS, normalize_vietnamese_url, get_token_from_state,
@@ -345,6 +346,18 @@ async def run_scrape_task(req: DownloadRequest, task_id: str):
             elif fmt == "MD": await tao_file_md(full_flat, fpath, story_info.title)
             elif fmt == "TXT": await tao_file_txt(full_flat, fpath, story_info.title)
             elif fmt == "MP3": await tao_file_mp3(full_flat, fpath, story_info.title)
+            elif fmt == "AD-MP3":
+                # Ensure GEMINI_API_KEY is present
+                if not os.getenv("GEMINI_API_KEY") and not os.getenv("GOOGLE_API_KEY"):
+                    logger.warning("GEMINI_API_KEY not found. Audio Drama generation might fail or fallback.")
+                
+                await tao_file_audiodrama(
+                    content_list=full_flat,
+                    filename=fpath,
+                    story_id=req.slug,
+                    db_manager=app.state.db,
+                    title=story_info.title
+                )
 
         # Update library DB with latest stats
         await app.state.db.upsert_novel({
