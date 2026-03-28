@@ -23,7 +23,8 @@ from .exporter import (
     tao_file_epub, tao_file_pdf, tao_file_html, tao_file_md, tao_file_txt, tao_file_mp3
 )
 from .utils import (
-    sanitize_filename, HEADERS, normalize_vietnamese_url, get_token_from_state
+    sanitize_filename, HEADERS, normalize_vietnamese_url, get_token_from_state,
+    BASE_URL, get_config_path
 )
 from .session_manager import load_session, save_session
 from .tao_so_do_cay import get_chapter_tree_list
@@ -78,10 +79,14 @@ class DownloadManager:
 
 download_queue = DownloadManager(num_workers=1)
 
+_event_loop = None
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global _event_loop
     # Startup
-    app.state.db = DatabaseManager()
+    _event_loop = asyncio.get_running_loop()
+    app.state.db = DatabaseManager(db_path=get_config_path("vvr_library.db"))
     await app.state.db.init_db()
     await download_queue.start_workers()
     yield
@@ -90,7 +95,6 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Valvrare Team Scraper Web UI", lifespan=lifespan)
 
-BASE_URL = "https://valvrareteam.net"
 SSR_API_URL = "https://val-ssr-2kzit.ondigitalocean.app/api/novels/search"
 
 class ConnectionManager:
@@ -135,9 +139,8 @@ def websocket_sink(message):
             task_log_buffers[task_id].pop(0)
 
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            asyncio.run_coroutine_threadsafe(manager.broadcast(log_msg), loop)
+        if _event_loop and _event_loop.is_running():
+            asyncio.run_coroutine_threadsafe(manager.broadcast(log_msg), _event_loop)
     except Exception:
         pass
 
@@ -160,12 +163,13 @@ class Settings(BaseModel):
     num_workers: int = 1
     default_output_folder: str = ""
 
-SETTINGS_FILE = "vvr_settings.json"
+SETTINGS_FILE_NAME = "vvr_settings.json"
 
 def load_vvr_settings() -> Settings:
-    if os.path.exists(SETTINGS_FILE):
+    settings_file = get_config_path(SETTINGS_FILE_NAME)
+    if os.path.exists(settings_file):
         try:
-            with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+            with open(settings_file, "r", encoding="utf-8") as f:
                 return Settings(**json.load(f))
         except Exception as e:
             logger.error(f"Error loading settings: {e}")
@@ -173,7 +177,8 @@ def load_vvr_settings() -> Settings:
 
 def save_vvr_settings(settings: Settings):
     try:
-        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+        settings_file = get_config_path(SETTINGS_FILE_NAME)
+        with open(settings_file, "w", encoding="utf-8") as f:
             json.dump(settings.dict(), f, ensure_ascii=False, indent=2)
     except Exception as e:
         logger.error(f"Error saving settings: {e}")
@@ -188,7 +193,7 @@ async def run_scrape_task(req: DownloadRequest, task_id: str):
     try:
         await manager.broadcast({"type": "status", "task_id": task_id, "status": "Resolving story..."})
         
-        session_state = load_session(".vvr_session.json")
+        session_state = load_session(get_config_path(".vvr_session.json"))
         cookies = {}
         if session_state and 'cookies' in session_state:
             for c in session_state['cookies']:
@@ -220,75 +225,81 @@ async def run_scrape_task(req: DownloadRequest, task_id: str):
                 except OSError:
                     pass
 
-        # Always fetch the chapter tree (needed for proper titles and structure)
-        story_url = f"{BASE_URL}/{req.slug}"
-        chapter_data = await get_chapter_tree_list(story_url, output_file=f"chapters_{task_id}.json", session_state=session_state)
-
-        if not chapter_data:
-            if os.path.exists(f"chapters_{task_id}.json"):
-                with open(f"chapters_{task_id}.json", "r", encoding="utf-8") as f:
-                    chapter_data = json.load(f)
-            else:
-                raise Exception("Could not retrieve chapter list. Please check if the novel exists or try again.")
-
-        if os.path.exists(f"chapters_{task_id}.json"):
-            os.remove(f"chapters_{task_id}.json")
-
-        # Build URL list — filter by selected_urls if provided
-        selected_set = None
-        if req.selected_urls:
-            selected_set = set(
-                url if url.startswith("http") else f"{BASE_URL}{url}"
-                for url in req.selected_urls
-            )
-
-        all_chaps = [c for v in chapter_data for c in v['chapters']]
-        if req.skip_illustrations:
-            all_chaps = [c for c in all_chaps if "Minh họa" not in c['title']]
-
-        if selected_set:
-            urls = [f"{BASE_URL}{c['url']}" for c in all_chaps if f"{BASE_URL}{c['url']}" in selected_set]
-        else:
-            urls = [f"{BASE_URL}{c['url']}" for c in all_chaps]
-
-        logger.info(f"Using {len(urls)} URLs for download")
-        
-        total = len(urls)
-        
-        token = get_token_from_state(session_state)
-        
-        # Build pre-scraped dict from checkpoint
-        pre_scraped = {}
-        for url, content in checkpoint.get("scraped", {}).items():
-            if url in urls:
-                pre_scraped[url] = content
-
-        # Checkpoint + progress callback
-        async def on_chapter_done(url, content, idx, total):
-            if content:
-                # Save to checkpoint (convert ContentItem to dict for JSON)
-                from dataclasses import asdict
-                checkpoint["scraped"][url] = [
-                    asdict(item) if hasattr(item, '__dataclass_fields__') else item
-                    for item in content
-                ]
-                checkpoint["slug"] = req.slug
-                checkpoint["title"] = story_info.title
-                with open(checkpoint_file, "w", encoding="utf-8") as f:
-                    json.dump(checkpoint, f, ensure_ascii=False, indent=2)
-
-            percent = int(((idx + 1) / total) * 100)
-            is_resumed = url in pre_scraped
-            msg = f"Resumed {idx+1}/{total} chapters (from checkpoint)" if is_resumed else f"Downloaded {idx+1}/{total} chapters"
-            await manager.broadcast({
-                "type": "progress",
-                "task_id": task_id,
-                "percent": percent,
-                "msg": msg
-            })
-
+        # Open browser early to share between chapter tree and scraping
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
+
+            # Always fetch the chapter tree (using shared browser)
+            story_url = f"{BASE_URL}/{req.slug}"
+            chapter_data = await get_chapter_tree_list(story_url, output_file=f"chapters_{task_id}.json", session_state=session_state, browser=browser)
+
+            if not chapter_data:
+                if os.path.exists(f"chapters_{task_id}.json"):
+                    with open(f"chapters_{task_id}.json", "r", encoding="utf-8") as f:
+                        chapter_data = json.load(f)
+                else:
+                    raise Exception("Could not retrieve chapter list. Please check if the novel exists or try again.")
+
+            if os.path.exists(f"chapters_{task_id}.json"):
+                os.remove(f"chapters_{task_id}.json")
+
+            # Build URL list — filter by selected_urls if provided
+            selected_set = None
+            if req.selected_urls:
+                selected_set = set(
+                    url if url.startswith("http") else f"{BASE_URL}{url}"
+                    for url in req.selected_urls
+                )
+
+            all_chaps = [c for v in chapter_data for c in v['chapters']]
+            if req.skip_illustrations:
+                all_chaps = [c for c in all_chaps if "Minh họa" not in c['title']]
+
+            if selected_set:
+                urls = [f"{BASE_URL}{c['url']}" for c in all_chaps if f"{BASE_URL}{c['url']}" in selected_set]
+            else:
+                urls = [f"{BASE_URL}{c['url']}" for c in all_chaps]
+
+            logger.info(f"Using {len(urls)} URLs for download")
+            
+            total = len(urls)
+            
+            token = get_token_from_state(session_state)
+            
+            # Build pre-scraped dict from checkpoint
+            pre_scraped = {}
+            for url, content in checkpoint.get("scraped", {}).items():
+                if url in urls:
+                    pre_scraped[url] = content
+
+            # Checkpoint lock for concurrent write safety
+            checkpoint_lock = asyncio.Lock()
+
+            # Checkpoint + progress callback
+            async def on_chapter_done(url, content, idx, total):
+                if content:
+                    # Save to checkpoint (convert ContentItem to dict for JSON)
+                    from dataclasses import asdict
+                    async with checkpoint_lock:
+                        checkpoint["scraped"][url] = [
+                            asdict(item) if hasattr(item, '__dataclass_fields__') else item
+                            for item in content
+                        ]
+                        checkpoint["slug"] = req.slug
+                        checkpoint["title"] = story_info.title
+                        with open(checkpoint_file, "w", encoding="utf-8") as f:
+                            json.dump(checkpoint, f, ensure_ascii=False, indent=2)
+
+                percent = int(((idx + 1) / total) * 100)
+                is_resumed = url in pre_scraped
+                msg = f"Resumed {idx+1}/{total} chapters (from checkpoint)" if is_resumed else f"Downloaded {idx+1}/{total} chapters"
+                await manager.broadcast({
+                    "type": "progress",
+                    "task_id": task_id,
+                    "percent": percent,
+                    "msg": msg
+                })
+
             scraped = await scrape_chapters(
                 browser, urls,
                 concurrent_tasks=req.tasks,
@@ -482,7 +493,7 @@ async def browse_folder():
 @app.get("/api/chapters")
 async def get_chapters(slug: str):
     story_url = f"{BASE_URL}/{slug}"
-    session_state = load_session(".vvr_session.json")
+    session_state = load_session(get_config_path(".vvr_session.json"))
     chapter_data = await get_chapter_tree_list(story_url, session_state=session_state)
     return chapter_data
 
@@ -490,7 +501,7 @@ async def get_chapters(slug: str):
 async def get_story_info(slug: str):
     """Fetches detailed story information."""
     try:
-        session_state = load_session(".vvr_session.json")
+        session_state = load_session(get_config_path(".vvr_session.json"))
         cookies = {}
         if session_state and 'cookies' in session_state:
             for c in session_state['cookies']:
@@ -582,7 +593,7 @@ async def get_library():
 async def check_library_updates():
     """Checks for updates for all novels in the library."""
     novels = await app.state.db.get_all_novels()
-    session_state = load_session(".vvr_session.json")
+    session_state = load_session(get_config_path(".vvr_session.json"))
     cookies = {}
     if session_state and 'cookies' in session_state:
         for c in session_state['cookies']:

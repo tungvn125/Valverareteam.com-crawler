@@ -2,10 +2,14 @@
 Utility functions for the web novel scraper.
 """
 import sys
+import shutil
 from typing import Dict, List, Optional
 from loguru import logger
 import re
 import os
+
+
+BASE_URL = "https://valvrareteam.net"
 
 def configure_logger(verbose: bool = False):
     """Configures the loguru logger with appropriate levels."""
@@ -100,6 +104,29 @@ def normalize_vietnamese_url(text: str) -> str:
     normalized = re.sub(r'-+', '-', normalized).strip('-')
     
     return normalized
+
+
+def get_config_dir() -> str:
+    """Returns the config directory path (~/.config/vvr-scraper/), creating it if needed."""
+    config_dir = os.path.join(os.path.expanduser("~"), ".config", "vvr-scraper")
+    os.makedirs(config_dir, exist_ok=True)
+    return config_dir
+
+
+def get_config_path(filename: str) -> str:
+    """Returns path for a config file in ~/.config/vvr-scraper/.
+    
+    Auto-migrates from CWD to config dir if the CWD file exists but the
+    config dir file doesn't.
+    """
+    config_path = os.path.join(get_config_dir(), filename)
+    # Auto-migrate from CWD to config dir
+    if not os.path.exists(config_path):
+        cwd_path = os.path.join(os.getcwd(), filename)
+        if os.path.exists(cwd_path):
+            shutil.copy2(cwd_path, config_path)
+            logger.info(f"Migrated {filename} to {config_path}")
+    return config_path
 
 
 def get_token_from_state(state: Dict) -> Optional[str]:
