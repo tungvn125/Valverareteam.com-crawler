@@ -2,12 +2,14 @@
 File export functions for the web novel scraper.
 """
 import os
+import json
 import asyncio
 import urllib.parse
 from io import BytesIO
 from typing import List, Dict, Any, Union, cast, Optional
 
 import httpx
+from .audio_drama import GeminiParser, VoiceManager
 # Heavy AI libraries (numpy, vieneu) are lazy-loaded inside tao_file_mp3 
 # to ensure a fast cold start for the CLI and Web UI.
 from ebooklib import epub
@@ -352,3 +354,110 @@ async def tao_file_mp3(content_list: ContentList, filename: str, title: str = "C
     except Exception as e:
         logger.error(f"Lỗi khi tạo Audiobook: {e}")
         raise e
+
+
+async def tao_file_audiodrama(
+    content_list: ContentList,
+    filename: str,
+    story_id: str,
+    db_manager: Any,
+    title: str = "Chương truyện"
+) -> None:
+    """
+    AI-Powered Audio Drama generation.
+    1. Extracts text and parses into a script (dialogue/narrator) using Gemini.
+    2. Assigns voices to characters using VoiceManager.
+    3. Synthesizes each segment with Vieneu and merges them.
+    4. Caches the script to <filename>.script.json for persistence/debugging.
+    """
+
+    # 0. Extract text from content_list (List[ContentItem])
+    normalized_content = _normalize_content_list(content_list)
+    full_text = "\n".join([item.data for item in normalized_content if item.type == "text"])
+    
+    script_file = f"{filename}.script.json"
+    script = []
+
+    # 1. Load cached script if exists
+    if os.path.exists(script_file):
+        try:
+            with open(script_file, 'r', encoding='utf-8') as f:
+                script = json.load(f)
+            logger.info(f"Loaded cached script from {script_file}")
+        except Exception as e:
+            logger.warning(f"Failed to load cached script: {e}")
+
+    # 2. Parse or load cached JSON script from <filename>.script.json
+    if not script:
+        logger.info(f"Generating audio drama script for {title}...")
+        parser = GeminiParser()
+        script = await parser.parse_chapter(full_text)
+        if not script:
+            logger.warning("Gemini failed to generate script. Falling back to simple MP3.")
+            await tao_file_mp3(content_list, filename, title)
+            return
+        
+        # Save script checkpoint
+        try:
+            with open(script_file, 'w', encoding='utf-8') as f:
+                json.dump(script, f, ensure_ascii=False, indent=2)
+            logger.info(f"Saved script checkpoint to {script_file}")
+        except Exception as e:
+            logger.warning(f"Failed to save script checkpoint: {e}")
+
+    # 3. Iterate through script, get voice via VoiceManager
+    voice_manager = VoiceManager(db_manager, story_id)
+    script_with_voices = []
+    for segment in script:
+        char_name = segment.get('character', 'narrator')
+        text = segment.get('text', '').strip()
+        if not text:
+            continue
+        voice_name = await voice_manager.get_voice(char_name)
+        script_with_voices.append({
+            'voice': voice_name,
+            'text': text
+        })
+
+    # 4. Call Vieneu.infer() for each segment (via asyncio.to_thread)
+    import warnings
+    os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+    warnings.filterwarnings("ignore", category=UserWarning)
+    
+    try:
+        import numpy as np
+        from vieneu import Vieneu
+    except ImportError:
+        logger.error("Vieneu or numpy not found. Please run 'pip install vieneu numpy' to use TTS.")
+        return
+
+    logger.info(f"Synthesizing audio drama: {filename}...")
+    
+    try:
+        def run_audio_drama_tts():
+            tts = Vieneu()
+            audio_segments = []
+            
+            total_segments = len(script_with_voices)
+            for i, item in enumerate(script_with_voices):
+                voice_name = item['voice']
+                text = item['text']
+                logger.debug(f"Synthesizing segment {i+1}/{total_segments} (Voice: {voice_name})...")
+                
+                voice_data = tts.get_preset_voice(voice_name)
+                audio = tts.infer(text=text, voice=voice_data)
+                audio_segments.append(audio)
+            
+            # 5. Concatenate segments with numpy
+            if audio_segments:
+                logger.debug("Merging audio segments...")
+                merged_audio = np.concatenate(audio_segments)
+                tts.save(merged_audio, filename)
+            
+        await asyncio.to_thread(run_audio_drama_tts)
+        logger.info(f"Tạo file Audio Drama thành công: {filename}")
+    except Exception as e:
+        # 6. Save output, fallback to tao_file_mp3 on error
+        logger.error(f"Lỗi khi tạo Audio Drama: {e}")
+        logger.warning("Falling back to simple MP3.")
+        await tao_file_mp3(content_list, filename, title)
