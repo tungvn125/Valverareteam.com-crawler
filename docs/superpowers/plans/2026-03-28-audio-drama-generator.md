@@ -6,7 +6,7 @@
 
 **Architecture:** A Hybrid Cloud Pipeline. Google Gemini identifies characters and dialogue from raw text, returning a structured JSON script. This script is then processed by a local worker that assigns unique VieNeu voices to characters, persists these mappings in SQLite for consistency, and generates a concatenated multi-track audiobook.
 
-**Tech Stack:** Python 3.9+, google-generativeai, vieneu, aiosqlite, numpy, loguru.
+**Tech Stack:** Python 3.10+, google-generativeai, vieneu, aiosqlite, numpy, loguru.
 
 ---
 
