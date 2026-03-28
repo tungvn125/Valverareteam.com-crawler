@@ -28,11 +28,12 @@ dependencies = [
     "fastapi>=0.100.0",
     "uvicorn>=0.22.0",
     "websockets>=11.0",
-    "vieneu",
-    "numpy",
     "aiosqlite>=0.19.0",
     "openai>=2.30.0",
 ]
+
+[project.optional-dependencies]
+audio = ["vieneu", "numpy"]
 
 [project.scripts]
 vvrt = "vvr_scraper.cli:main"

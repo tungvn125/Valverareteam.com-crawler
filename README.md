@@ -21,6 +21,8 @@ Cách đơn giản nhất là cài đặt trực tiếp từ **PyPI**:
 
 ```bash
 pip install vvr-scraper
+# Hoặc nếu muốn dùng tính năng AI TTS (MP3/AD-MP3):
+# pip install "vvr-scraper[audio]"
 ```
 
 Sau khi cài đặt, bạn cần cài đặt trình duyệt cho Playwright:
@@ -65,9 +67,12 @@ vvrt slug-truyen-1 slug-truyen-2 -f EPUB -g tatca -t 10 --verbose
 ### 4. Batch Import (Web UI)
 Trên giao diện Web Dashboard, sử dụng chức năng **Batch Import** để nhập danh sách URL hoặc slug, mỗi dòng một truyện. Tất cả sẽ được thêm vào hàng đợi và tải lần lượt.
 
-### 5. Cấu hình Audio-Drama (AD-MP3)
-Tính năng xuất file `AD-MP3` sử dụng LLM để phân tích hội thoại và phân vai nhân vật tự động, kết hợp với AI TTS để tạo "Radio Play".
-Bạn cần cung cấp API Key gốc OpenAI (hoặc OpenRouter/DeepSeek tương thích) qua các biến môi trường trước khi khởi chạy:
+### 5. Cấu hình Audio-Drama (AD-MP3) & Audiobook (MP3)
+Tính năng `MP3` (Audiobook) và `AD-MP3` sử dụng engine TTS AI `Vieneu` chạy hoàn toàn tại local. Tính năng `AD-MP3` sử dụng thêm LLM để phân tích hội thoại, tự động đoán giới tính và phân vai nhân vật, kết hợp với AI TTS để tạo thành "Radio Play".
+
+> ⚠️ **Cảnh báo phần cứng (TTS AI):** Engine `Vieneu` sử dụng các mô hình AI tiếng Việt nặng (dựa trên PyTorch). Việc tạo Audiobook và Audio Drama tiêu tốn rất nhiều tài nguyên hệ thống (RAM) và yêu cầu cấu hình máy tính từ trung bình khá trở lên. Quá trình tổng hợp giọng nói phụ thuộc trực tiếp vào sức mạnh CPU/GPU và có thể mất nhiều thời gian hoặc gây tràn RAM trên máy cấu hình yếu.
+
+Để cấu hình tính năng phân vai của `AD-MP3`, bạn cần cung cấp API Key LLM tương thích (OpenAI, OpenRouter, DeepSeek, v.v.) qua các biến môi trường trước khi khởi chạy:
 ```bash
 export VVR_API_KEY="your-api-key"
 export VVR_BASE_URL="https://api.openai.com/v1" # Sử dụng URL proxy nếu cần
