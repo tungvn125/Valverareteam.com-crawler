@@ -347,9 +347,8 @@ async def run_scrape_task(req: DownloadRequest, task_id: str):
             elif fmt == "TXT": await tao_file_txt(full_flat, fpath, story_info.title)
             elif fmt == "MP3": await tao_file_mp3(full_flat, fpath, story_info.title)
             elif fmt == "AD-MP3":
-                # Ensure GEMINI_API_KEY is present
-                if not os.getenv("GEMINI_API_KEY") and not os.getenv("GOOGLE_API_KEY"):
-                    logger.warning("GEMINI_API_KEY not found. Audio Drama generation might fail or fallback.")
+                if not os.getenv("VVR_API_KEY") or not os.getenv("VVR_BASE_URL"):
+                    logger.warning("VVR_API_KEY or VVR_BASE_URL not found. Audio Drama generation might fail or fallback.")
                 
                 await tao_file_audiodrama(
                     content_list=full_flat,

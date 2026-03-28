@@ -186,8 +186,8 @@ class ValvrareScraperCLI:
         # Check API Key for Audio Drama
         formats = self.args.format
         if 'AD-MP3' in formats:
-            if not os.getenv("GEMINI_API_KEY") and not os.getenv("GOOGLE_API_KEY"):
-                logger.warning("GEMINI_API_KEY not found. Audio Drama generation might fail or fallback to simple MP3.")
+            if not os.getenv("VVR_API_KEY") or not os.getenv("VVR_BASE_URL"):
+                logger.warning("VVR_API_KEY or VVR_BASE_URL not found. Audio Drama generation might fail or fallback to simple MP3.")
 
         session_path = get_config_path(SESSION_FILE)
         self.session_state = load_session(session_path)
@@ -518,9 +518,8 @@ class ValvrareScraperCLI:
             elif fmt == "TXT": await tao_file_txt(content, fpath, title)
             elif fmt == "MP3": await tao_file_mp3(content, fpath, title)
             elif fmt == "AD-MP3":
-                # Ensure GEMINI_API_KEY is present
-                if not os.getenv("GEMINI_API_KEY") and not os.getenv("GOOGLE_API_KEY"):
-                    logger.warning("GEMINI_API_KEY not found. Audio Drama generation might fail or fallback.")
+                if not os.getenv("VVR_API_KEY") or not os.getenv("VVR_BASE_URL"):
+                    logger.warning("VVR_API_KEY or VVR_BASE_URL not found. Audio Drama generation might fail or fallback.")
                 
                 await tao_file_audiodrama(
                     content_list=content,

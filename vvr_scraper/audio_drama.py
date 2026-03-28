@@ -1,31 +1,24 @@
+from openai import AsyncOpenAI
 import os
 import json
 import random
 from typing import List, Dict, Optional
-import google.generativeai as genai
 from loguru import logger
 from .db import DatabaseManager
 
-class GeminiParser:
-    def __init__(self, api_key: Optional[str] = None):
-        self.api_key = api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
-        if not self.api_key:
-            logger.warning("Neither GEMINI_API_KEY nor GOOGLE_API_KEY found in environment variables. GeminiParser may fail.")
-        genai.configure(api_key=self.api_key)
+class OpenAIParser:
+    def __init__(self, api_key: Optional[str] = None, base_url: Optional[str] = None):
+        self.api_key = api_key or os.getenv("VVR_API_KEY")
+        self.base_url = base_url or os.getenv("VVR_BASE_URL")
         
-        # Set safety settings to BLOCK_NONE for all categories
-        self.safety_settings = [
-            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-        ]
-        
-        self.model = genai.GenerativeModel('gemini-1.5-flash', safety_settings=self.safety_settings)
+        if not self.api_key or not self.base_url:
+            logger.warning("VVR_API_KEY or VVR_BASE_URL not found in environment variables. OpenAIParser may fail.")
+            
+        self.client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url)
 
     async def parse_chapter(self, text: str) -> List[Dict[str, str]]:
         """
-        Parses chapter text into a list of dialogue/narrator segments using Gemini.
+        Parses chapter text into a list of dialogue/narrator segments using OpenAI.
         Returns: List of Dicts with 'role' and 'text'.
         """
         if not text or not text.strip():
@@ -41,24 +34,37 @@ class GeminiParser:
         )
         
         try:
-            # Using generate_content_async with a clear prompt
-            response = await self.model.generate_content_async(
-                f"{system_instruction}\n\nChapter Text:\n{text}",
-                generation_config={"response_mime_type": "application/json"}
+            response = await self.client.chat.completions.create(
+                model="gpt-4o-mini", # Default fast model, can be overridden if needed
+                messages=[
+                    {"role": "system", "content": system_instruction},
+                    {"role": "user", "content": f"Chapter Text:\n{text}"}
+                ],
+                response_format={"type": "json_object"} # Some models require {"type": "json_object"} along with instructions to output JSON. Better to extract list or expect it in a key. Wait, if we use response_format={"type": "json_object"}, the model must output an object.
             )
             
-            if not response.text:
-                logger.error("Empty response from Gemini")
+            content = response.choices[0].message.content
+            if not content:
+                logger.error("Empty response from OpenAI")
                 return []
                 
-            script = json.loads(response.text)
+            script = json.loads(content)
+            
+            # Since JSON object is forced usually by API, standard response might be {"script": [...]}, let's handle if it returns a list directly (some compatible APIs allow list directly without object wrapper, but OpenAI strictly wants an Object if json_object is set)
+            if isinstance(script, dict):
+                # Try to find the list inside
+                for key, val in script.items():
+                    if isinstance(val, list):
+                        script = val
+                        break
+            
             if not isinstance(script, list):
-                logger.error(f"Expected list from Gemini, got {type(script)}")
+                logger.error(f"Expected list from OpenAI, got {type(script)}")
                 return []
                 
             return script
         except Exception as e:
-            logger.error(f"Error parsing chapter with Gemini: {e}")
+            logger.error(f"Error parsing chapter with OpenAI: {e}")
             return []
 
 class VoiceManager:

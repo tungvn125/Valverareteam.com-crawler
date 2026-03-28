@@ -8,7 +8,7 @@
 
 ## Tính năng nổi bật
 - **Web Dashboard & CLI:** Giao diện Web hiện đại hoặc terminal chuyên nghiệp với Rich — tùy bạn chọn.
-- **Xuất đa định dạng:** EPUB (có mục lục Tập/Chương, ảnh bìa), PDF, HTML, Markdown, TXT, MP3 (AI TTS).
+- **Xuất đa định dạng:** EPUB (có mục lục Tập/Chương, ảnh bìa), PDF, HTML, Markdown, TXT, MP3 (AI TTS), AD-MP3 (Audio Drama đa giọng nói bằng AI).
 - **Batch Import & Download Queue:** Tải hàng loạt truyện với hàng đợi đa luồng, hỗ trợ pause/resume/cancel.
 - **Checkpoint & Resume:** Tự động lưu tiến trình — nếu bị gián đoạn, tiếp tục từ chương cuối đã tải.
 - **Thư viện truyện:** Theo dõi lịch sử tải, kiểm tra chương mới, quét thư mục hiện có.
@@ -64,6 +64,14 @@ vvrt slug-truyen-1 slug-truyen-2 -f EPUB -g tatca -t 10 --verbose
 
 ### 4. Batch Import (Web UI)
 Trên giao diện Web Dashboard, sử dụng chức năng **Batch Import** để nhập danh sách URL hoặc slug, mỗi dòng một truyện. Tất cả sẽ được thêm vào hàng đợi và tải lần lượt.
+
+### 5. Cấu hình Audio-Drama (AD-MP3)
+Tính năng xuất file `AD-MP3` sử dụng LLM để phân tích hội thoại và phân vai nhân vật tự động, kết hợp với AI TTS để tạo "Radio Play".
+Bạn cần cung cấp API Key gốc OpenAI (hoặc OpenRouter/DeepSeek tương thích) qua các biến môi trường trước khi khởi chạy:
+```bash
+export VVR_API_KEY="your-api-key"
+export VVR_BASE_URL="https://api.openai.com/v1" # Sử dụng URL proxy nếu cần
+```
 
 ## Xử lý Cloudflare và Đăng nhập
 

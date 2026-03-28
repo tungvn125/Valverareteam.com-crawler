@@ -9,7 +9,7 @@ from io import BytesIO
 from typing import List, Dict, Any, Union, cast, Optional
 
 import httpx
-from .audio_drama import GeminiParser, VoiceManager
+from .audio_drama import OpenAIParser, VoiceManager
 # Heavy AI libraries (numpy, vieneu) are lazy-loaded inside tao_file_mp3 
 # to ensure a fast cold start for the CLI and Web UI.
 from ebooklib import epub
@@ -365,7 +365,7 @@ async def tao_file_audiodrama(
 ) -> None:
     """
     AI-Powered Audio Drama generation.
-    1. Extracts text and parses into a script (dialogue/narrator) using Gemini.
+    1. Extracts text and parses into a script (dialogue/narrator) using OpenAI.
     2. Assigns voices to characters using VoiceManager.
     3. Synthesizes each segment with Vieneu and merges them.
     4. Caches the script to <filename>.script.json for persistence/debugging.
@@ -390,10 +390,10 @@ async def tao_file_audiodrama(
     # 2. Parse or load cached JSON script from <filename>.script.json
     if not script:
         logger.info(f"Generating audio drama script for {title}...")
-        parser = GeminiParser()
+        parser = OpenAIParser()
         script = await parser.parse_chapter(full_text)
         if not script:
-            logger.warning("Gemini failed to generate script. Falling back to simple MP3.")
+            logger.warning("OpenAI failed to generate script. Falling back to simple MP3.")
             await tao_file_mp3(content_list, filename, title)
             return
         

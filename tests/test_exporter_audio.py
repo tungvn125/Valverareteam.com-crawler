@@ -25,8 +25,8 @@ async def test_tao_file_audiodrama_flow(tmp_path):
         {"role": "Character", "text": "Hello!"}
     ]
     
-    # Mock GeminiParser
-    with patch("vvr_scraper.exporter.GeminiParser") as MockParser:
+    # Mock OpenAIParser
+    with patch("vvr_scraper.exporter.OpenAIParser") as MockParser:
         parser_instance = MockParser.return_value
         parser_instance.parse_chapter = AsyncMock(return_value=mock_script)
         
@@ -42,7 +42,7 @@ async def test_tao_file_audiodrama_flow(tmp_path):
             
             await tao_file_audiodrama(content_list, filename, story_id, mock_db)
             
-            # Verify Gemini was called
+            # Verify OpenAI was called
             parser_instance.parse_chapter.assert_called_once()
             
             # Verify script checkpoint was saved
@@ -73,7 +73,7 @@ async def test_tao_file_audiodrama_with_cache(tmp_path):
     mock_db = MagicMock()
     mock_db.get_character_voice = AsyncMock(return_value="Mai")
     
-    with patch("vvr_scraper.exporter.GeminiParser") as MockParser:
+    with patch("vvr_scraper.exporter.OpenAIParser") as MockParser:
         # Vieneu mock
         with patch("vieneu.Vieneu") as MockVieneu, \
              patch("numpy.concatenate") as mock_concat:
@@ -84,7 +84,7 @@ async def test_tao_file_audiodrama_with_cache(tmp_path):
             
             await tao_file_audiodrama(content_list, filename, story_id, mock_db)
             
-            # Gemini should NOT be called
+            # OpenAI should NOT be called
             MockParser.assert_not_called()
             
             # Vieneu should be called for cached segment
@@ -100,8 +100,8 @@ async def test_tao_file_audiodrama_fallback(tmp_path):
     mock_db = MagicMock()
     mock_db.get_character_voice = AsyncMock(return_value="Hung")
     
-    # Mock GeminiParser
-    with patch("vvr_scraper.exporter.GeminiParser") as MockParser:
+    # Mock OpenAIParser
+    with patch("vvr_scraper.exporter.OpenAIParser") as MockParser:
         parser_instance = MockParser.return_value
         parser_instance.parse_chapter = AsyncMock(return_value=[{"character": "n", "text": "t"}])
         
