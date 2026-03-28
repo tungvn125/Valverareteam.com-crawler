@@ -11,7 +11,7 @@
 - **httpx:** Used for fast, asynchronous HTTP requests. It powers the "Fast Mode" scraping via a DigitalOcean SSR fallback.
 - **WebSockets:** Provides real-time log streaming and progress updates from the scraper to the Web UI.
 - **aiosqlite:** Async SQLite driver for the library database (`vvr_library.db`).
-- **openai:** Python client for utilizing standard LLM APIs to parse dialogues from web novel chapters, powering the Audio-Drama generator. Requires `VVR_API_KEY` and `VVR_BASE_URL`.
+- **openai:** Python client for utilizing standard LLM APIs to parse dialogues from web novel chapters, powering the Audio-Drama generator. Requires `VVR_API_KEY`, `VVR_BASE_URL`, and optionally `VVR_MODEL`.
 - **BeautifulSoup4 & lxml:** Used for parsing HTML and XML (sitemaps).
 - **EbookLib & reportlab:** Used for generating EPUB and PDF output files, respectively.
 - **VieNeu & numpy:** AI-powered Vietnamese text-to-speech synthesis (TTS) for generating high-quality audiobooks. Lazy-loaded to keep startup fast.
