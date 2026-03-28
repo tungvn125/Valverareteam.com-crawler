@@ -27,3 +27,4 @@ memory/
 dist/
 build/
 .env
+demo/
