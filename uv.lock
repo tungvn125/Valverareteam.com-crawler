@@ -4244,8 +4244,6 @@ dependencies = [
     { name = "httpx" },
     { name = "loguru" },
     { name = "lxml" },
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "numpy", version = "2.4.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "openai" },
     { name = "pillow" },
     { name = "playwright" },
@@ -4254,8 +4252,14 @@ dependencies = [
     { name = "rich" },
     { name = "simple-term-menu" },
     { name = "uvicorn" },
-    { name = "vieneu" },
     { name = "websockets" },
+]
+
+[package.optional-dependencies]
+audio = [
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "vieneu" },
 ]
 
 [package.metadata]
@@ -4268,7 +4272,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28.0" },
     { name = "loguru", specifier = ">=0.7.2" },
     { name = "lxml", specifier = ">=6.0.0" },
-    { name = "numpy" },
+    { name = "numpy", marker = "extra == 'audio'" },
     { name = "openai", specifier = ">=2.30.0" },
     { name = "pillow", specifier = ">=11.3.0" },
     { name = "playwright", specifier = ">=1.54.0" },
@@ -4277,9 +4281,10 @@ requires-dist = [
     { name = "rich", specifier = ">=13.7.0" },
     { name = "simple-term-menu", specifier = ">=1.6.6" },
     { name = "uvicorn", specifier = ">=0.22.0" },
-    { name = "vieneu" },
+    { name = "vieneu", marker = "extra == 'audio'" },
     { name = "websockets", specifier = ">=11.0" },
 ]
+provides-extras = ["audio"]
 
 [[package]]
 name = "wcwidth"
