@@ -21,8 +21,8 @@ async def test_tao_file_audiodrama_flow(tmp_path):
     mock_db.save_character_voice = AsyncMock()
     
     mock_script = [
-        {"character": "narrator", "text": "Narrator text."},
-        {"character": "Character", "text": "Hello!"}
+        {"role": "narrator", "text": "Narrator text."},
+        {"role": "Character", "text": "Hello!"}
     ]
     
     # Mock GeminiParser
@@ -66,7 +66,7 @@ async def test_tao_file_audiodrama_with_cache(tmp_path):
     story_id = "test_story"
     content_list = [ContentItem(type="text", data="Some text")]
     
-    cached_script = [{"character": "narrator", "text": "Cached text"}]
+    cached_script = [{"role": "narrator", "text": "Cached text"}]
     with open(script_file, 'w', encoding='utf-8') as f:
         json.dump(cached_script, f)
         
