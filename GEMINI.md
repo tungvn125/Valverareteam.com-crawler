@@ -26,7 +26,8 @@ The application follows a modular, asynchronous architecture:
     3. **DownloadManager:** Worker-pool based task queue with pause/resume/cancel support.
     4. **Background Tasks:** Orchestrates scraping using `scraper_core.scrape_chapters()` with a progress callback — no duplicated scraping logic.
 - **`vvr_scraper/scraper_core.py`:** Implements a **Hybrid Scraping Architecture** (Fast Mode via SSR fallback and Reliable Mode via Playwright). The central `scrape_chapters()` function accepts an `on_chapter_done` callback and `pre_scraped` dict for checkpoint resumption, making it reusable by both CLI and Web.
-- **`vvr_scraper/exporter.py`:** Handles asynchronous exports with concurrent image downloading and **lazy-loaded AI audiobook generation** (TTS). EPUB export uses the passed `cover_path` parameter (per-novel unique temp file) to avoid race conditions in multi-download.
+- **`vvr_scraper/exporter.py`:** Handles asynchronous exports with concurrent image downloading and **lazy-loaded AI audiobook & audio drama generation** (TTS). EPUB export uses the passed `cover_path` parameter (per-novel unique temp file) to avoid race conditions in multi-download.
+- **`vvr_scraper/audio_drama.py`:** Houses `OpenAIParser` and `VoiceManager`. Uses an LLM to parse dialogue, character names, and infer genders from text segments. Maps these parameters to a constrained subset of Vieneu TTS voices.
 - **`vvr_scraper/db.py`:** Async SQLite database manager for the novel library. Tracks downloaded novels, chapter counts, download timestamps, and update status.
 - **`vvr_scraper/tao_so_do_cay.py`:** Utility module for extracting chapter lists and volume structures from the novel page using Playwright.
 - **`vvr_scraper/static/`:** Contains the Vanilla HTML/CSS/JS frontend for the Web Dashboard.
@@ -78,6 +79,7 @@ pytest
 - **Failure Threshold:** If >30% of chapters fail to download, the task aborts without exporting, preventing empty or incomplete output files.
 - **Chapter Tree Always Fetched:** The Web server always fetches the full chapter tree (even when `selected_urls` is provided) to ensure proper volume/chapter titles in EPUB TOC, matching CLI output quality.
 - **Checkpoint Serialization:** `ContentItem` dataclass objects are converted to plain dicts via `dataclasses.asdict()` before JSON checkpoint serialization. Corrupt checkpoints are auto-deleted and the task starts fresh.
+- **Audio Drama Voice Allocation:** `VoiceManager` utilizes an `asyncio.Lock` and an in-memory cache pre-populated via `get_all_story_voices()` to globally coordinate character voice assignment during multi-threaded chunk processing. It guarantees a unique gender-appropriate voice is assigned to auxiliary characters to prevent collision.
 
 ## Development Conventions
 

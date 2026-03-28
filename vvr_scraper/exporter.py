@@ -411,9 +411,10 @@ async def tao_file_audiodrama(
     for segment in script:
         char_name = segment.get('role', 'narrator')
         text = segment.get('text', '').strip()
+        gender = segment.get('gender', 'unknown').lower()
         if not text:
             continue
-        voice_name = await voice_manager.get_voice(char_name)
+        voice_name = await voice_manager.get_voice(char_name, gender)
         script_with_voices.append({
             'voice': voice_name,
             'text': text

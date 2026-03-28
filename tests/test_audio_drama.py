@@ -63,9 +63,9 @@ async def test_voice_manager_narrator():
 async def test_voice_manager_assignment_and_persistence():
     """Tests voice assignment and DB persistence for characters."""
     mock_db = MagicMock()
-    # First time returns None (not in DB), second time returns "Hung"
-    mock_db.get_character_voice = AsyncMock(side_effect=[None, "Hung"])
     mock_db.save_character_voice = AsyncMock()
+    mock_db.get_all_story_voices = AsyncMock(return_value={})
+    mock_db.get_character_voice = AsyncMock(return_value=None)
     
     story_id = "story_123"
     vm = VoiceManager(mock_db, story_id)
@@ -74,31 +74,28 @@ async def test_voice_manager_assignment_and_persistence():
     char_name = "Lâm"
     voice1 = await vm.get_voice(char_name)
     assert voice1 in VoiceManager.DEFAULT_VOICES
-    # Should have checked DB with normalized name
-    mock_db.get_character_voice.assert_called_with(story_id, "lâm")
     # Should have saved to DB with normalized name
     mock_db.save_character_voice.assert_called_with(story_id, "lâm", voice1)
     
-    # 2. Existing character from DB
+    # 2. Existing character from cache
     voice2 = await vm.get_voice(char_name)
-    assert voice2 == "Hung"
-    # Should NOT have saved to DB again (it was already in DB)
+    assert voice2 == voice1
+    # Should NOT have saved to DB again (it was already in DB/cache)
     assert mock_db.save_character_voice.call_count == 1
 
 @pytest.mark.asyncio
 async def test_voice_manager_normalization():
     """Tests that VoiceManager normalizes names (case-insensitive, stripped)."""
     mock_db = MagicMock()
-    mock_db.get_character_voice = AsyncMock(return_value="Mai")
+    mock_db.get_all_story_voices = AsyncMock(return_value={"nam": "Ly"})
     
     story_id = "story_123"
     vm = VoiceManager(mock_db, story_id)
     
     # "Nam" vs " nam " vs "NAM"
-    assert await vm.get_voice("Nam") == "Mai"
-    assert await vm.get_voice(" nam ") == "Mai"
-    assert await vm.get_voice("NAM") == "Mai"
+    assert await vm.get_voice("Nam") == "Ly"
+    assert await vm.get_voice(" nam ") == "Ly"
+    assert await vm.get_voice("NAM") == "Ly"
     
-    # All should have queried the DB with the same normalized key "nam"
-    assert mock_db.get_character_voice.call_count == 3
-    mock_db.get_character_voice.assert_called_with(story_id, "nam")
+    # Only queried once via _init_cache
+    assert mock_db.get_all_story_voices.call_count == 1

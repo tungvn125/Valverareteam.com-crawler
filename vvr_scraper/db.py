@@ -56,6 +56,16 @@ class DatabaseManager:
                 row = await cursor.fetchone()
                 return row[0] if row else None
 
+    async def get_all_story_voices(self, story_id: str) -> Dict[str, str]:
+        """Retrieves all character to voice mappings for a story."""
+        async with aiosqlite.connect(self.db_path) as db:
+            async with db.execute(
+                "SELECT character_name, voice_name FROM character_voices WHERE story_id = ?",
+                (story_id,)
+            ) as cursor:
+                rows = await cursor.fetchall()
+                return {row[0]: row[1] for row in rows}
+
     async def upsert_novel(self, novel_data: Dict[str, Any]):
         """Inserts or updates a novel entry based on the slug."""
         async with aiosqlite.connect(self.db_path) as db:

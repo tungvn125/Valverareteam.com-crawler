@@ -339,7 +339,10 @@ async def run_scrape_task(req: DownloadRequest, task_id: str):
                 full_structure.append({'volume': v_info['volume'], 'chapters': v_chaps})
         
         for fmt in req.formats:
-            fpath = os.path.join(output_folder, f"{sanitize_filename(story_info.title)}.{fmt.lower()}")
+            ext = fmt.lower()
+            if ext == "ad-mp3":
+                ext = "ad.mp3"
+            fpath = os.path.join(output_folder, f"{sanitize_filename(story_info.title)}.{ext}")
             if fmt == "PDF": await tao_file_pdf(full_flat, fpath, story_info.title)
             elif fmt == "EPUB": await tao_file_epub(fpath, story_info.title, story_info.author, full_structure, story_info.description, story_info.cover_path, story_info.genres)
             elif fmt == "HTML": await tao_file_html(full_flat, fpath, story_info.title)
