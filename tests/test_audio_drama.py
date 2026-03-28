@@ -1,21 +1,27 @@
 import pytest
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
-from vvr_scraper.audio_drama import GeminiParser, VoiceManager
+from vvr_scraper.audio_drama import OpenAIParser, VoiceManager
 
 @pytest.mark.asyncio
-async def test_gemini_parser_success():
-    """Tests GeminiParser with a successful mocked response."""
-    with patch("google.generativeai.GenerativeModel") as MockModel:
-        mock_model_instance = MockModel.return_value
+async def test_openai_parser_success():
+    """Tests OpenAIParser with a successful mocked response."""
+    with patch("vvr_scraper.audio_drama.AsyncOpenAI") as MockOpenAI:
+        mock_client = MockOpenAI.return_value
         mock_response = MagicMock()
-        mock_response.text = json.dumps([
+        
+        mock_message = MagicMock()
+        mock_message.content = json.dumps([
             {"role": "narrator", "text": "Đó là một ngày nắng đẹp."},
             {"role": "Nam", "text": "Chào buổi sáng!"}
         ])
-        mock_model_instance.generate_content_async = AsyncMock(return_value=mock_response)
+        mock_choice = MagicMock()
+        mock_choice.message = mock_message
+        mock_response.choices = [mock_choice]
         
-        parser = GeminiParser(api_key="fake_key")
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+        
+        parser = OpenAIParser(api_key="fake_key", base_url="fake_url")
         result = await parser.parse_chapter("Nội dung chương truyện...")
         
         assert len(result) == 2
@@ -24,13 +30,13 @@ async def test_gemini_parser_success():
         assert result[1]["text"] == "Chào buổi sáng!"
 
 @pytest.mark.asyncio
-async def test_gemini_parser_error():
-    """Tests GeminiParser handling of errors."""
-    with patch("google.generativeai.GenerativeModel") as MockModel:
-        mock_model_instance = MockModel.return_value
-        mock_model_instance.generate_content_async = AsyncMock(side_effect=Exception("API Error"))
+async def test_openai_parser_error():
+    """Tests OpenAIParser handling of errors."""
+    with patch("vvr_scraper.audio_drama.AsyncOpenAI") as MockOpenAI:
+        mock_client = MockOpenAI.return_value
+        mock_client.chat.completions.create = AsyncMock(side_effect=Exception("API Error"))
         
-        parser = GeminiParser(api_key="fake_key")
+        parser = OpenAIParser(api_key="fake_key", base_url="fake_url")
         result = await parser.parse_chapter("Nội dung...")
         
         assert result == []

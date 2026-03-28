@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**Purpose:** This project is a high-performance, asynchronous command-line and web-based tool designed to scrape and download web novels from [Valvrare Team](https://valvrareteam.net). It allows users to export stories into multiple formats including **EPUB, PDF, HTML, Markdown, TXT, and MP3 (Audiobook)**, with a focus on speed, reliable content extraction, and a modern user experience.
+**Purpose:** This project is a high-performance, asynchronous command-line and web-based tool designed to scrape and download web novels from [Valvrare Team](https://valvrareteam.net). It allows users to export stories into multiple formats including **EPUB, PDF, HTML, Markdown, TXT, MP3 (Audiobook), and AD-MP3 (Audio Drama)**, with a focus on speed, reliable content extraction, and a modern user experience.
 
 **Main Technologies:**
 - **Python (3.10+):** The core programming language.
@@ -11,6 +11,7 @@
 - **httpx:** Used for fast, asynchronous HTTP requests. It powers the "Fast Mode" scraping via a DigitalOcean SSR fallback.
 - **WebSockets:** Provides real-time log streaming and progress updates from the scraper to the Web UI.
 - **aiosqlite:** Async SQLite driver for the library database (`vvr_library.db`).
+- **openai:** Python client for utilizing standard LLM APIs to parse dialogues from web novel chapters, powering the Audio-Drama generator. Requires `VVR_API_KEY` and `VVR_BASE_URL`.
 - **BeautifulSoup4 & lxml:** Used for parsing HTML and XML (sitemaps).
 - **EbookLib & reportlab:** Used for generating EPUB and PDF output files, respectively.
 - **VieNeu & numpy:** AI-powered Vietnamese text-to-speech synthesis (TTS) for generating high-quality audiobooks. Lazy-loaded to keep startup fast.
