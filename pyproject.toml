@@ -7,7 +7,7 @@ name = "vvr-scraper"
 version = "1.5.2"
 description = "Công cụ tải web novel từ Valvrare Team (Async, Web UI & Download Queue)"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [
     {name = "Valvrare Team Crawler Contributors"}
@@ -29,7 +29,9 @@ dependencies = [
     "uvicorn>=0.22.0",
     "websockets>=11.0",
     "vieneu",
-    "numpy"
+    "numpy",
+    "aiosqlite>=0.19.0",
+    "google-generativeai>=0.4.0"
 ]
 
 [project.scripts]

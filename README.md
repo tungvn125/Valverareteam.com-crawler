@@ -28,7 +28,7 @@ Sau khi cài đặt, bạn cần cài đặt trình duyệt cho Playwright:
 playwright install chromium-headless-shell
 ```
 
-**Yêu cầu:** Python 3.9 trở lên.
+**Yêu cầu:** Python 3.10 trở lên.
 
 **Khả năng tương thích:**
 - **Linux:** Đã test hoạt động tốt (KDE/openSUSE).
