@@ -10,8 +10,8 @@ async def test_gemini_parser_success():
         mock_model_instance = MockModel.return_value
         mock_response = MagicMock()
         mock_response.text = json.dumps([
-            {"character": "narrator", "text": "Đó là một ngày nắng đẹp."},
-            {"character": "Nam", "text": "Chào buổi sáng!"}
+            {"role": "narrator", "text": "Đó là một ngày nắng đẹp."},
+            {"role": "Nam", "text": "Chào buổi sáng!"}
         ])
         mock_model_instance.generate_content_async = AsyncMock(return_value=mock_response)
         
@@ -19,8 +19,8 @@ async def test_gemini_parser_success():
         result = await parser.parse_chapter("Nội dung chương truyện...")
         
         assert len(result) == 2
-        assert result[0]["character"] == "narrator"
-        assert result[1]["character"] == "Nam"
+        assert result[0]["role"] == "narrator"
+        assert result[1]["role"] == "Nam"
         assert result[1]["text"] == "Chào buổi sáng!"
 
 @pytest.mark.asyncio

@@ -12,12 +12,21 @@ class GeminiParser:
         if not self.api_key:
             logger.warning("Neither GEMINI_API_KEY nor GOOGLE_API_KEY found in environment variables. GeminiParser may fail.")
         genai.configure(api_key=self.api_key)
-        self.model = genai.GenerativeModel('gemini-1.5-flash')
+        
+        # Set safety settings to BLOCK_NONE for all categories
+        self.safety_settings = [
+            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+        ]
+        
+        self.model = genai.GenerativeModel('gemini-1.5-flash', safety_settings=self.safety_settings)
 
     async def parse_chapter(self, text: str) -> List[Dict[str, str]]:
         """
         Parses chapter text into a list of dialogue/narrator segments using Gemini.
-        Returns: List of Dicts with 'character' and 'text'.
+        Returns: List of Dicts with 'role' and 'text'.
         """
         if not text or not text.strip():
             return []
@@ -27,8 +36,8 @@ class GeminiParser:
             "Your task is to convert a web novel chapter into a structured script. "
             "Identify all dialogue and the character speaking. Everything else is 'narrator'. "
             "Combine consecutive segments by the same character. "
-            "Output MUST be a JSON list of objects, each with 'character' and 'text'. "
-            "Example: [{\"character\": \"narrator\", \"text\": \"Once upon a time...\"}, {\"character\": \"Hero\", \"text\": \"Hello!\"}]"
+            "Output MUST be a JSON list of objects, each with 'role' and 'text'. "
+            "Example: [{\"role\": \"narrator\", \"text\": \"Once upon a time...\"}, {\"role\": \"Hero\", \"text\": \"Hello!\"}]"
         )
         
         try:

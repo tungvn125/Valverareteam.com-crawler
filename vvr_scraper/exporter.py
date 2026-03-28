@@ -409,7 +409,7 @@ async def tao_file_audiodrama(
     voice_manager = VoiceManager(db_manager, story_id)
     script_with_voices = []
     for segment in script:
-        char_name = segment.get('character', 'narrator')
+        char_name = segment.get('role', 'narrator')
         text = segment.get('text', '').strip()
         if not text:
             continue
