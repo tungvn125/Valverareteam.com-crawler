@@ -13,7 +13,7 @@ from bs4 import BeautifulSoup
 
 from loguru import logger
 
-from .utils import HEADERS
+from .utils import HEADERS, BASE_URL
 from .models import StoryInfo, ContentItem
 
 
@@ -120,7 +120,6 @@ async def lay_thong_tin_truyen(client: httpx.AsyncClient, ten_truyen: str, verbo
         try:
             # Prepend base URL if relative (though usually absolute with B-CDN)
             if cover_url.startswith('/'):
-                from .web import BASE_URL
                 cover_url = f"{BASE_URL}{cover_url}"
                 
             response = await client.get(cover_url, timeout=30.0)
@@ -275,33 +274,34 @@ async def scrape_chapters(
 
     total = len(urls)
 
-    async def process_url(url: str, idx: int) -> None:
-        # Skip if already scraped (from checkpoint)
-        if url in scraped_content:
-            if on_chapter_done:
-                await on_chapter_done(url, scraped_content[url], idx, total)
-            return
+    # Create a single shared HTTP client for connection pooling across all chapters
+    async with httpx.AsyncClient(headers=HEADERS, cookies=cookies, follow_redirects=True) as client:
+        async def process_url(url: str, idx: int) -> None:
+            # Skip if already scraped (from checkpoint)
+            if url in scraped_content:
+                if on_chapter_done:
+                    await on_chapter_done(url, scraped_content[url], idx, total)
+                return
 
-        async with semaphore:
-            content = None
-            # 1. Try Fast Mode (HTTPX)
-            async with httpx.AsyncClient(headers=HEADERS, cookies=cookies, follow_redirects=True) as client:
+            async with semaphore:
+                content = None
+                # 1. Try Fast Mode (HTTPX) — reuses shared client
                 content = await lay_chuong_httpx(client, url, verbose=verbose, token=token)
-            
-            # 2. Try Reliable Mode (Playwright) if Fast Mode failed
-            if not content:
-                logger.debug(f"Fast-scrape failed for {url}. Falling back to Playwright...")
-                content = await lay_chuong_voi_hinh_anh(browser, url, session_state=session_state, verbose=verbose)
-            
-            if content:
-                scraped_content[url] = content
-            else:
-                skipped_urls.append(url)
-                logger.warning(f"Thất bại sau cả 2 phương thức: {url}")
+                
+                # 2. Try Reliable Mode (Playwright) if Fast Mode failed
+                if not content:
+                    logger.debug(f"Fast-scrape failed for {url}. Falling back to Playwright...")
+                    content = await lay_chuong_voi_hinh_anh(browser, url, session_state=session_state, verbose=verbose)
+                
+                if content:
+                    scraped_content[url] = content
+                else:
+                    skipped_urls.append(url)
+                    logger.warning(f"Thất bại sau cả 2 phương thức: {url}")
 
-            if on_chapter_done:
-                await on_chapter_done(url, content, idx, total)
+                if on_chapter_done:
+                    await on_chapter_done(url, content, idx, total)
 
-    tasks = [process_url(url, i) for i, url in enumerate(urls)]
-    await asyncio.gather(*tasks)
+        tasks = [process_url(url, i) for i, url in enumerate(urls)]
+        await asyncio.gather(*tasks)
     return scraped_content

@@ -28,13 +28,12 @@ from .exporter import (
 )
 from .utils import (
     sanitize_filename, create_folders_from_tree, normalize_vietnamese_url, 
-    get_token_from_state, HEADERS, configure_logger
+    get_token_from_state, HEADERS, configure_logger, BASE_URL, get_config_path
 )
 from .models import StoryInfo, ContentItem
 from .session_manager import load_session, save_session, capture_session
 
 SESSION_FILE = ".vvr_session.json"
-BASE_URL = "https://valvrareteam.net"
 console = Console()
 
 
@@ -179,10 +178,11 @@ class ValvrareScraperCLI:
 
     async def setup_session(self):
         """Handles session loading, login, and token extraction."""
-        self.session_state = load_session(SESSION_FILE)
+        session_path = get_config_path(SESSION_FILE)
+        self.session_state = load_session(session_path)
         
-        if self.args.refresh_session and os.path.exists(SESSION_FILE):
-            os.remove(SESSION_FILE)
+        if self.args.refresh_session and os.path.exists(session_path):
+            os.remove(session_path)
             self.session_state = None
 
         if self.args.login or not self.session_state:
@@ -194,7 +194,7 @@ class ValvrareScraperCLI:
             if do_login:
                 logger.info("Đang khởi tạo trình duyệt để lấy session...")
                 self.session_state = await capture_session(f"{BASE_URL}/")
-                save_session(self.session_state, SESSION_FILE)
+                save_session(self.session_state, session_path)
                 logger.success("Session đã được lưu.")
 
         self.token = get_token_from_state(self.session_state)
@@ -334,47 +334,60 @@ class ValvrareScraperCLI:
             if not self.is_cli_mode or self.args.verbose:
                 InteractiveUI.display_story_summary(story_info)
 
-        # 3. Load Chapter List
-        logger.info(f"Đang lấy danh sách chương cho '{story_info.title}'...")
-        await tao_so_do_cay.get_chapter_tree_list(story_url, output_file="chapter_list.json", session_state=self.session_state)
-        with open("chapter_list.json", "r", encoding="utf-8") as f:
-            chapter_data = json.load(f)
-
-        # 4. Filter and Select
-        chapter_data = self.filter_chapters(chapter_data)
-        if not chapter_data: return
-        
-        selected_chaps = self.select_chapters_to_download(chapter_data)
-        if not selected_chaps: return
-
-        # 5. Export Config
-        export_config = await self._get_export_config(story_url)
-        
-        # 6. Scrape
-        urls = [f"{BASE_URL}{c['url']}" for c in selected_chaps]
+        # Open browser early to share between chapter tree and scraping
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
-            
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                BarColumn(),
-                TaskProgressColumn(),
-                console=console,
-                transient=True
-            ) as progress:
-                scrape_task = progress.add_task(f"[green]Đang tải {len(urls)} chương...", total=len(urls))
-                
-                scraped = await scrape_chapters(
-                    browser, urls, export_config['tasks'], 
-                    skipped_urls=self.skipped_urls, 
-                    session_state=self.session_state, 
-                    verbose=self.args.verbose,
-                    token=self.token
+            try:
+                # 3. Load Chapter List (using shared browser)
+                logger.info(f"Đang lấy danh sách chương cho '{story_info.title}'...")
+                chapter_data = await tao_so_do_cay.get_chapter_tree_list(
+                    story_url, output_file="chapter_list.json",
+                    session_state=self.session_state, browser=browser
                 )
-                progress.update(scrape_task, completed=len(urls))
+                if not chapter_data:
+                    if os.path.exists("chapter_list.json"):
+                        with open("chapter_list.json", "r", encoding="utf-8") as f:
+                            chapter_data = json.load(f)
+                    else:
+                        logger.error("Không thể lấy danh sách chương.")
+                        return
+
+                # 4. Filter and Select
+                chapter_data = self.filter_chapters(chapter_data)
+                if not chapter_data: return
                 
-            await browser.close()
+                selected_chaps = self.select_chapters_to_download(chapter_data)
+                if not selected_chaps: return
+
+                # 5. Export Config
+                export_config = await self._get_export_config(story_url)
+                
+                # 6. Scrape with live progress
+                urls = [f"{BASE_URL}{c['url']}" for c in selected_chaps]
+                
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    BarColumn(),
+                    TaskProgressColumn(),
+                    console=console,
+                    transient=True
+                ) as progress:
+                    scrape_task = progress.add_task(f"[green]Đang tải {len(urls)} chương...", total=len(urls))
+                    
+                    async def on_chapter_done(url, content, idx, total):
+                        progress.update(scrape_task, advance=1)
+                    
+                    scraped = await scrape_chapters(
+                        browser, urls, export_config['tasks'], 
+                        skipped_urls=self.skipped_urls, 
+                        session_state=self.session_state, 
+                        verbose=self.args.verbose,
+                        token=self.token,
+                        on_chapter_done=on_chapter_done,
+                    )
+            finally:
+                await browser.close()
 
         # Check failure rate — abort if too many chapters failed
         failed_count = len(urls) - len(scraped)

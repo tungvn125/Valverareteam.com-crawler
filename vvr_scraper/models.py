@@ -1,7 +1,7 @@
 """
 Data models for the web novel scraper.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Union, Literal, TypedDict, Any
 
 
@@ -12,7 +12,7 @@ class StoryInfo:
     author: str
     description: str
     slug: Optional[str] = None
-    genres: List[str] = None
+    genres: List[str] = field(default_factory=list)
     cover_path: Optional[str] = None
     cover_url: Optional[str] = None
     total_chapters: str = "Unknown"

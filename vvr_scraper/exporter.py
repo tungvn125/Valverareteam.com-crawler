@@ -82,6 +82,16 @@ async def _download_images_bulk(urls: List[str], max_concurrent: int = 10) -> Di
     return results
 
 
+# Correct MIME types for image formats (image/jpg is NOT valid per RFC 2045)
+MIME_TYPE_MAP = {
+    'jpg': 'image/jpeg',
+    'jpeg': 'image/jpeg',
+    'png': 'image/png',
+    'gif': 'image/gif',
+    'svg': 'image/svg+xml',
+}
+
+
 def _get_image_extension(url: str, content_type: Optional[str] = None) -> str:
     """Detects image extension from URL or Content-Type header."""
     if content_type:
@@ -148,7 +158,7 @@ async def tao_file_epub(
         img_item = epub.EpubImage(
             uid=f'img_{image_counter}',
             file_name=f'images/{img_name}',
-            media_type=f'image/{ext}',
+            media_type=MIME_TYPE_MAP.get(ext, 'image/jpeg'),
             content=content
         )
         book.add_item(img_item)
