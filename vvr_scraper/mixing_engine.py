@@ -11,7 +11,7 @@ class MixingEngine:
         bgm_segment: AudioSegment, 
         voice_segment: AudioSegment, 
         start_ms: int, 
-        duck_db: float = -10.0,
+        duck_db: float = -15.0,
         crossfade_ms: int = 100
     ) -> AudioSegment:
         """
