@@ -25,6 +25,25 @@ class DatabaseManager:
                     cover_url TEXT
                 )
             """)
+            
+            # Migration: Add new columns if they don't exist
+            new_columns = [
+                ("last_synced_count", "INTEGER DEFAULT 0"),
+                ("server_chapter_count", "INTEGER DEFAULT 0"),
+                ("has_updates", "INTEGER DEFAULT 0"),
+                ("last_checked_at", "TEXT")
+            ]
+            
+            for col_name, col_type in new_columns:
+                try:
+                    await db.execute(f"ALTER TABLE library ADD COLUMN {col_name} {col_type}")
+                    logger.info(f"Added column {col_name} to library table.")
+                except aiosqlite.OperationalError as e:
+                    if "duplicate column name" in str(e).lower():
+                        logger.debug(f"Column {col_name} already exists in library table.")
+                    else:
+                        raise e
+
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS character_voices (
                     story_id TEXT,
@@ -35,6 +54,24 @@ class DatabaseManager:
             """)
             await db.commit()
         logger.info(f"Database initialized at {self.db_path}")
+
+    async def update_library_metadata(self, slug: str, metadata: Dict[str, Any]):
+        """Updates one or more metadata fields for a novel identified by its slug."""
+        if not metadata:
+            return
+
+        keys = list(metadata.keys())
+        values = list(metadata.values())
+        
+        set_clause = ", ".join([f"{key} = ?" for key in keys])
+        query = f"UPDATE library SET {set_clause} WHERE slug = ?"
+        params = values + [slug]
+
+        async with aiosqlite.connect(self.db_path) as db:
+            async with db.execute(query, params) as cursor:
+                if cursor.rowcount == 0:
+                    logger.warning(f"No novel found with slug: {slug} to update metadata.")
+            await db.commit()
 
     async def save_character_voice(self, story_id: str, character_name: str, voice_name: str):
         """Saves or updates a voice mapping for a character in a story."""

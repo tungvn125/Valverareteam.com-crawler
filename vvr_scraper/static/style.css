@@ -59,7 +59,17 @@ header {
 
 .header-actions {
     display: flex;
+    align-items: center;
     gap: 12px;
+}
+
+.header-actions .btn-sm {
+    flex: initial;
+    padding: 8px 15px;
+    max-width: 250px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 header h1 {
@@ -306,6 +316,113 @@ main {
 .status-badge.synced { background-color: var(--success); }
 .status-badge.update-available { background-color: var(--primary); }
 .status-badge.unavailable { background-color: var(--error); }
+.status-badge.archived { background-color: var(--text-muted); }
+
+/* Update Ribbon */
+.update-ribbon {
+    position: absolute;
+    top: 0;
+    left: 0;
+    background: var(--error);
+    color: white;
+    padding: 4px 12px;
+    font-size: 0.75rem;
+    font-weight: 800;
+    z-index: 10;
+    border-bottom-right-radius: 12px;
+    box-shadow: 2px 2px 8px rgba(0,0,0,0.2);
+    animation: pulse-red 2s infinite;
+}
+
+@keyframes pulse-red {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+}
+
+/* Floating Sync Bar */
+.floating-sync-bar {
+    position: fixed;
+    bottom: -100px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--card);
+    border: 1px solid var(--primary);
+    padding: 15px 25px;
+    border-radius: 50px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    z-index: 1000;
+    transition: bottom 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.floating-sync-bar.show {
+    bottom: 30px;
+}
+
+.sync-info {
+    font-weight: 600;
+}
+
+.sync-count {
+    color: var(--primary);
+    font-size: 1.2rem;
+}
+
+/* Global Progress Bar */
+#globalProgressBarContainer {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 20px;
+}
+
+.global-progress-bar {
+    height: 4px;
+    background: var(--border);
+    margin-top: 10px;
+    margin-bottom: 10px;
+    border-radius: 2px;
+    overflow: hidden;
+    display: none;
+}
+
+/* Toast Notifications */
+.toast-notification {
+    position: fixed;
+    top: 20px;
+    right: -300px;
+    background: var(--primary);
+    color: white;
+    padding: 12px 24px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    z-index: 2000;
+    transition: right 0.3s ease;
+    font-weight: 600;
+}
+
+.toast-notification.show {
+    right: 20px;
+}
+
+/* Spinner */
+.spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255,255,255,.3);
+    border-radius: 50%;
+    border-top-color: #fff;
+    animation: spin 1s ease-in-out infinite;
+    margin-right: 8px;
+    vertical-align: middle;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
 
 .card-info {
     padding: 12px;

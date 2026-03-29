@@ -28,7 +28,7 @@ from .utils import (
     BASE_URL, get_config_path
 )
 from .session_manager import load_session, save_session
-from .tao_so_do_cay import get_chapter_tree_list
+from .tao_so_do_cay import get_chapter_tree_list, get_chapter_range_urls
 from playwright.async_api import async_playwright
 from .db import DatabaseManager
 
@@ -244,6 +244,9 @@ async def run_scrape_task(req: DownloadRequest, task_id: str):
             if os.path.exists(f"chapters_{task_id}.json"):
                 os.remove(f"chapters_{task_id}.json")
 
+            all_chaps_full = [c for v in chapter_data for c in v['chapters']]
+            total_server_chapters = len(all_chaps_full)
+
             # Build URL list — filter by selected_urls if provided
             selected_set = None
             if req.selected_urls:
@@ -372,6 +375,30 @@ async def run_scrape_task(req: DownloadRequest, task_id: str):
             "formats": ",".join(req.formats),
             "cover_url": story_info.cover_url
         })
+        
+        # Only update last_synced_count and reset has_updates if we downloaded the LATEST chapter
+        is_latest_included = True
+        if selected_set and all_chaps_full:
+            latest_url = all_chaps_full[-1]['url']
+            latest_full_url = latest_url if latest_url.startswith("http") else f"{BASE_URL}{latest_url}"
+            is_latest_included = latest_full_url in selected_set
+
+        if is_latest_included:
+            # Explicitly update last_synced_count and reset has_updates
+            await app.state.db.update_library_metadata(req.slug, {
+                "last_synced_count": total_server_chapters,
+                "has_updates": 0
+            })
+        else:
+            logger.info(f"Partial download for {story_info.title}. NOT updating last_synced_count.")
+            # Still reset has_updates if the user manually downloaded something, 
+            # though it might be better to keep it if they still haven't synced to latest.
+            # But the prompt says "Only update last_synced_count in the database if...".
+            # It doesn't explicitly say NOT to reset has_updates, but usually has_updates=1 
+            # means there's something NEW to sync. If we didn't sync the latest, has_updates should probably stay 1.
+            # Actually, let's keep has_updates as is if not latest.
+            pass
+
         # Cleanup checkpoint on successful completion
         if os.path.exists(checkpoint_file):
             os.remove(checkpoint_file)
@@ -604,51 +631,151 @@ async def get_library():
     """Returns all entries from the library database."""
     return await app.state.db.get_all_novels()
 
-@app.post("/api/library/check")
-async def check_library_updates():
-    """Checks for updates for all novels in the library."""
+@app.post("/api/library/sync-all")
+async def sync_all_novels():
+    """Queues incremental downloads for all novels that have updates."""
     novels = await app.state.db.get_all_novels()
+    sync_count = 0
+    
+    # Check settings for default format
+    settings = load_vvr_settings()
+    default_formats = ["EPUB"] # Fallback
+    
+    # Get session for chapter tree fetching
+    session_state = load_session(get_config_path(".vvr_session.json"))
+    
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        
+        for novel in novels:
+            if novel.get('has_updates') == 1:
+                slug = novel['slug']
+                title = novel['title']
+                
+                logger.info(f"Syncing {title}...")
+                
+                try:
+                    # Fetch LATEST chapter tree to include all chapters (1..N)
+                    story_url = f"{BASE_URL}/{slug}"
+                    temp_file = f"temp_sync_{uuid.uuid4().hex[:8]}.json"
+                    chapter_data = await get_chapter_tree_list(
+                        story_url, 
+                        output_file=temp_file, 
+                        session_state=session_state,
+                        browser=browser
+                    )
+                    
+                    if not chapter_data:
+                        logger.warning(f"Could not fetch chapter tree for {title}")
+                        continue
+                        
+                    # Flatten ALL chapter URLs
+                    all_urls = [c['url'] for v in chapter_data for c in v['chapters']]
+                    
+                    if all_urls:
+                        task_id = str(uuid.uuid4())[:8]
+                        formats = novel.get('formats').split(',') if novel.get('formats') else default_formats
+                        
+                        req = DownloadRequest(
+                            slug=slug,
+                            selected_urls=all_urls,
+                            output_folder=novel.get('output_folder'),
+                            formats=formats
+                        )
+                        active_tasks[task_id] = req
+                        await download_queue.add_task(req, task_id)
+                        
+                        # Reset has_updates immediately to prevent redundant queuing
+                        await app.state.db.update_library_metadata(slug, {"has_updates": 0})
+                        sync_count += 1
+                    
+                    # Cleanup temp file
+                    if os.path.exists(temp_file):
+                        os.remove(temp_file)
+                        
+                except Exception as e:
+                    logger.error(f"Error syncing {title}: {e}")
+
+        await browser.close()
+
+    return {"status": "ok", "queued": sync_count}
+
+async def check_library_updates(db: DatabaseManager, manager: ConnectionManager):
+    """
+    Background worker that checks for updates across the entire library.
+    """
+    novels = await db.get_all_novels()
+    total = len(novels)
+    updates_found = 0
+    
     session_state = load_session(get_config_path(".vvr_session.json"))
     cookies = {}
     if session_state and 'cookies' in session_state:
         for c in session_state['cookies']:
             cookies[c['name']] = c['value']
             
-    updates_found = 0
     async with httpx.AsyncClient(headers=HEADERS, cookies=cookies, timeout=20.0) as client:
-        async def check_novel(novel):
-            nonlocal updates_found
+        for i, novel in enumerate(novels):
             slug = novel['slug']
+            title = novel['title']
+            
+            # Broadcast progress
+            await manager.broadcast({
+                "type": "library_check_progress",
+                "current": i + 1,
+                "total": total,
+                "title": title
+            })
+            
             try:
-                story_info = await lay_thong_tin_truyen(client, slug)
-                server_count_str = story_info.total_chapters
-                # Parse server_count to integer
+                info = await lay_thong_tin_truyen(client, slug)
+                
+                if info.total_chapters == "Unknown":
+                    logger.warning(f"Unknown chapter count for {title} ({slug}). Skipping.")
+                    continue
+                
+                # Parse server_count
                 server_count = 0
-                match = re.search(r'(\d+[\d.,]*)', server_count_str)
+                match = re.search(r'(\d+[\d.,]*)', info.total_chapters)
                 if match:
                     server_count = int(match.group(1).replace('.', '').replace(',', ''))
                 
-                last_count = novel.get('last_chapter_count') or 0
-                status = novel.get('status', 'synced')
-                
-                if server_count > last_count:
-                    status = 'update_available'
+                last_synced = novel.get('last_synced_count') or 0
+                has_updates = 1 if server_count > last_synced else 0
+                if has_updates:
                     updates_found += 1
-                else:
-                    status = 'synced'
                 
-                # Update DB with new count if it's higher
-                await app.state.db.update_novel_status(slug, status, max(server_count, last_count))
+                await db.update_library_metadata(slug, {
+                    "server_chapter_count": server_count,
+                    "has_updates": has_updates,
+                    "last_checked_at": datetime.now().isoformat()
+                })
+                
             except httpx.HTTPStatusError as e:
                 if e.response.status_code == 404:
-                    await app.state.db.update_novel_status(slug, 'unavailable')
+                    logger.warning(f"Novel {title} ({slug}) not found (404). Archiving.")
+                    await db.update_library_metadata(slug, {"status": "archived"})
+                else:
+                    logger.error(f"HTTP error {e.response.status_code} for {slug}: {e}")
             except Exception as e:
                 logger.error(f"Error checking update for {slug}: {e}")
+                
+    await manager.broadcast({
+        "type": "library_check_complete",
+        "updates_found": updates_found
+    })
 
-        # Check updates concurrently
-        await asyncio.gather(*[check_novel(n) for n in novels])
-    
-    return {"status": "ok", "updates_found": updates_found}
+@app.get("/api/library/check-updates")
+async def trigger_library_check_updates():
+    """Trigger library update check in the background."""
+    asyncio.create_task(check_library_updates(app.state.db, manager))
+    return {"status": "started"}
+
+@app.post("/api/library/check")
+async def trigger_library_check():
+    """Trigger library update check (now uses background worker)."""
+    asyncio.create_task(check_library_updates(app.state.db, manager))
+    return {"status": "started"}
 
 @app.post("/api/library/scan")
 async def scan_library():

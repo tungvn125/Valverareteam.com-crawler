@@ -4,6 +4,7 @@ from playwright.async_api import async_playwright, Browser
 from bs4 import BeautifulSoup
 import json
 from typing import Optional, Dict, Any, List
+from uuid import uuid4
 
 from loguru import logger
 
@@ -238,5 +239,56 @@ def get_chapters_by_volume_index(file_path: str, index: int):
         return volume["chapters"]
 
     except Exception as e:
-        logger.error(f"Đã xảy ra lỗi khi đọc file: {e}")
+        logger.error(f"Đara lỗi khi đọc file: {e}")
         return []
+
+
+async def get_chapter_range_urls(
+    slug_or_url: str,
+    start_index: int,
+    end_index: int,
+    session_state: Optional[Dict[str, Any]] = None,
+    browser: Optional[Browser] = None
+) -> List[str]:
+    """
+    Fetches the full chapter tree and returns a slice of chapter URLs.
+
+    Args:
+        slug_or_url: The slug (e.g. 'truyen/...') or full URL.
+        start_index: 0-based start index (inclusive).
+        end_index: 0-based end index (exclusive).
+        session_state: Playwright storage state for authenticated sessions.
+        browser: Optional Playwright Browser to reuse.
+
+    Returns:
+        List of chapter relative URLs.
+    """
+    from .utils import BASE_URL
+    url = slug_or_url if slug_or_url.startswith("http") else f"{BASE_URL}/{slug_or_url}"
+
+    temp_filename = f"temp_sync_{uuid4().hex[:8]}.json"
+    chapter_tree = await get_chapter_tree_list(
+        url,
+        output_file=temp_filename,
+        session_state=session_state,
+        browser=browser
+    )
+
+    # Clean up temp file
+    import os
+    if os.path.exists(temp_filename):
+        try:
+            os.remove(temp_filename)
+        except OSError:
+            pass
+
+    # Flatten all chapters from all volumes
+    all_chapters = []
+    for volume in chapter_tree:
+        all_chapters.extend(volume['chapters'])
+
+    # Slice the list
+    selected_chapters = all_chapters[start_index:end_index]
+
+    # Return only URLs
+    return [chap['url'] for chap in selected_chapters]

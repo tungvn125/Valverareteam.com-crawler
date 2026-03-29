@@ -66,6 +66,8 @@ async def lay_thong_tin_truyen(client: httpx.AsyncClient, ten_truyen: str, verbo
                 views = val
             elif "Từ" in lab or "Số chữ" in lab:
                 word_count = val
+            elif "Chương" in lab:
+                total_chapters = val
 
     # Try .rd-stats-item (legacy fallback)
     if total_chapters == "Unknown" or word_count == "Unknown" or views == "-":
