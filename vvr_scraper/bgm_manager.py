@@ -6,13 +6,13 @@ class BGMManager:
     """
     Manages background music library organized by mood.
     The library should have subdirectories named by mood, 
-    each containing audio files (mp3, wav).
+    each containing audio files (mp3, wav, ogg).
     """
     
-    SUPPORTED_EXTENSIONS = {".mp3", ".wav"}
+    SUPPORTED_EXTENSIONS = {".mp3", ".wav", ".ogg"}
 
-    def __init__(self, library_path: str | Path):
-        self.library_path = Path(library_path)
+    def __init__(self, base_dir: str = "bgm"):
+        self.library_path = Path(base_dir)
         self.moods: Dict[str, List[Path]] = {}
         self._scan_library()
 
@@ -28,19 +28,23 @@ class BGMManager:
                     if f.is_file() and f.suffix.lower() in self.SUPPORTED_EXTENSIONS
                 ]
                 if tracks:
-                    self.moods[mood_dir.name] = tracks
+                    self.moods[mood_dir.name.lower()] = tracks
 
     @property
     def available_moods(self) -> List[str]:
         """Returns a list of moods that have at least one track."""
         return list(self.moods.keys())
 
-    def get_random_track(self, mood: Optional[str] = None) -> Optional[Path]:
+    def get_random_track(self, mood: Optional[str] = None) -> Optional[str]:
         """
         Retrieves a random track for the specified mood.
         Returns None if the mood is not found or if no tracks are available for that mood.
         """
-        if not mood or mood not in self.moods:
+        if not mood:
+            return None
+        
+        mood_lower = mood.lower()
+        if mood_lower not in self.moods:
             return None
 
-        return random.choice(self.moods[mood])
+        return str(random.choice(self.moods[mood_lower]))
