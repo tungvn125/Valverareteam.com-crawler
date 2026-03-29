@@ -26,9 +26,11 @@ class OpenAIParser:
         if not text or not text.strip():
             return []
 
-        # Chunk the text to stay within token limits (approx 3000 chars per chunk)
-        # Split by newlines to avoid cutting in the middle of sentences
-        max_chunk_size = 3000
+        # Chunk the text to stay within token limits (approx 10,000 chars per chunk)
+        # Chunk the text to stay within token limits (approx 4,000 chars per chunk)
+        # 4k chars is the safe limit to ensure the resulting JSON script (which is 
+        # much larger than the input) fits within the 4k output token limit.
+        max_chunk_size = 4000
         chunks = []
         current_chunk = []
         current_size = 0
@@ -56,11 +58,7 @@ class OpenAIParser:
             "For 'segment' type: include 'role', 'text', and 'gender'. "
             "For 'mood_shift' type: include 'mood' (one of the allowed moods). "
             "Combine consecutive segments by the same character. "
-            "Example: {\"script\": ["
-            "{\"type\": \"mood_shift\", \"mood\": \"mysterious\"}, "
-            "{\"type\": \"segment\", \"role\": \"narrator\", \"text\": \"Darkness falls.\", \"gender\": \"unknown\"}, "
-            "{\"type\": \"segment\", \"role\": \"Hero\", \"text\": \"Wait!\", \"gender\": \"male\"}"
-            "]}"
+            "IMPORTANT: Be concise. Do not add any text outside the JSON object."
         )
 
         for i, chunk in enumerate(chunks):
@@ -89,8 +87,9 @@ class OpenAIParser:
                         data = json.loads(content)
                     except json.JSONDecodeError as je:
                         logger.error(f"JSON Decode Error in chunk {i+1}: {je}")
-                        logger.debug(f"Raw content (first 500 chars): {content[:500]}")
-                        logger.debug(f"Raw content (last 500 chars): {content[-500:]}")
+                        # Log content head/tail to help diagnose truncation
+                        logger.error(f"Raw content head: {content[:200]}...")
+                        logger.error(f"Raw content tail: ...{content[-200:]}")
                         raise
                         
                     if isinstance(data, list):
