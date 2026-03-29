@@ -21,14 +21,19 @@ class OpenAIParser:
     async def parse_chapter(self, text: str) -> List[Dict[str, str]]:
         """
         Parses chapter text into a list of dialogue/narrator segments and mood shifts using OpenAI.
-        Returns: List of Dicts with 'type' ('segment' or 'mood_shift') and relevant fields.
+        Handles large chapters by chunking the text and merging the results.
         """
         if not text or not text.strip():
             return []
 
+        # Chunk the text to stay within token limits (approx 5000 chars per chunk)
+        chunk_size = 5000
+        chunks = [text[i:i + chunk_size] for i in range(0, len(text), chunk_size)]
+        full_script = []
+
         system_instruction = (
             "You are an expert scriptwriter for audio dramas. "
-            "Your task is to convert a web novel chapter into a structured script. "
+            "Your task is to convert a web novel chapter segment into a structured script. "
             "Identify all dialogue and the character speaking, and infer their gender ('male', 'female', or 'unknown'). Everything else is 'narrator'. "
             "In addition to dialogue, you must identify significant mood shifts in the story. "
             "Allowed moods: 'action', 'peaceful', 'mysterious', 'romantic', 'sad', 'suspense'. "
@@ -37,47 +42,67 @@ class OpenAIParser:
             "For 'segment' type: include 'role', 'text', and 'gender'. "
             "For 'mood_shift' type: include 'mood' (one of the allowed moods). "
             "Combine consecutive segments by the same character. "
-            "Start the script with an appropriate mood_shift. "
             "Example: {\"script\": ["
             "{\"type\": \"mood_shift\", \"mood\": \"mysterious\"}, "
             "{\"type\": \"segment\", \"role\": \"narrator\", \"text\": \"Darkness falls.\", \"gender\": \"unknown\"}, "
             "{\"type\": \"segment\", \"role\": \"Hero\", \"text\": \"Wait!\", \"gender\": \"male\"}"
             "]}"
         )
-        
-        try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system_instruction},
-                    {"role": "user", "content": f"Chapter Text:\n{text}"}
-                ],
-                response_format={"type": "json_object"} # Some models require {"type": "json_object"} along with instructions to output JSON. Better to extract list or expect it in a key. Wait, if we use response_format={"type": "json_object"}, the model must output an object.
-            )
-            
-            content = response.choices[0].message.content
-            if not content:
-                logger.error("Empty response from OpenAI")
-                return []
-                
-            script = json.loads(content)
-            
-            # Since JSON object is forced usually by API, standard response might be {"script": [...]}, let's handle if it returns a list directly (some compatible APIs allow list directly without object wrapper, but OpenAI strictly wants an Object if json_object is set)
-            if isinstance(script, dict):
-                # Try to find the list inside
-                for key, val in script.items():
-                    if isinstance(val, list):
-                        script = val
+
+        for i, chunk in enumerate(chunks):
+            chunk_success = False
+            while not chunk_success:
+                logger.info(f"Parsing chunk {i+1}/{len(chunks)} of chapter text...")
+                try:
+                    response = await self.client.chat.completions.create(
+                        model=self.model or "gpt-4o-mini",
+                        messages=[
+                            {"role": "system", "content": system_instruction},
+                            {"role": "user", "content": f"Chapter Text Segment:\n{chunk}"}
+                        ],
+                        response_format={"type": "json_object"},
+                        temperature=0.0  # Set temperature to 0 for maximum reliability
+                    )
+                    if not response or not hasattr(response, 'choices') or not response.choices:
+                        raise ValueError(f"Invalid or empty response from OpenAI for chunk {i+1}")
+
+                    content = response.choices[0].message.content
+                    if not content:
+                        raise ValueError(f"Empty content in response for chunk {i+1}")
+                        
+                    data = json.loads(content)
+                    script_part = data.get("script", [])
+                    
+                    if isinstance(script_part, list):
+                        full_script.extend(script_part)
+                        chunk_success = True
+                    else:
+                        raise ValueError(f"Expected list in 'script' key, got {type(script_part)}")
+
+                except Exception as e:
+                    logger.error(f"Error parsing chunk {i+1} with OpenAI: {e}")
+                    
+                    # Ask user to retry if in a terminal
+                    try:
+                        from rich.prompt import Confirm
+                        import sys
+                        if sys.stdin.isatty():
+                            if Confirm.ask(f"[bold yellow]Chunk {i+1} gặp lỗi. Bạn có muốn thử lại không?[/]", default=True):
+                                continue # Retry the same chunk
+                            else:
+                                logger.warning(f"Bỏ qua chunk {i+1} theo yêu cầu người dùng.")
+                                break # Skip to next chunk
+                        else:
+                            # Not a terminal, don't hang, just skip
+                            break
+                    except ImportError:
+                        # Fallback to standard input if rich is missing (unlikely)
+                        choice = input(f"Chunk {i+1} gặp lỗi. Thử lại? (Y/n): ").strip().lower()
+                        if choice in ('', 'y', 'yes'):
+                            continue
                         break
-            
-            if not isinstance(script, list):
-                logger.error(f"Expected list from OpenAI, got {type(script)}")
-                return []
-                
-            return script
-        except Exception as e:
-            logger.error(f"Error parsing chapter with OpenAI: {e}")
-            return []
+        
+        return full_script
 
 class VoiceManager:
     # Default pool of Vietnamese voices from Vieneu

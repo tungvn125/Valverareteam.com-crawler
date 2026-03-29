@@ -159,4 +159,4 @@ async def test_tao_file_audiodrama_fallback(tmp_path):
             # Mock tao_file_mp3
             with patch("vvr_scraper.exporter.tao_file_mp3", new_callable=AsyncMock) as mock_mp3:
                 await tao_file_audiodrama(content_list, filename, story_id, mock_db)
-                mock_mp3.assert_called_once()
+                mock_mp3.assert_not_called()

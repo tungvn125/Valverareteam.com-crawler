@@ -389,21 +389,21 @@ async def tao_file_audiodrama(
 
     # 2. Parse or load cached JSON script from <filename>.script.json
     if not script:
-        logger.info(f"Generating audio drama script for {title}...")
-        parser = OpenAIParser()
-        script = await parser.parse_chapter(full_text)
+        # 2. Parse if needed
         if not script:
-            logger.warning("OpenAI failed to generate script. Falling back to simple MP3.")
-            await tao_file_mp3(content_list, filename, title)
-            return
-        
-        # Save script checkpoint
-        try:
-            with open(script_file, 'w', encoding='utf-8') as f:
-                json.dump(script, f, ensure_ascii=False, indent=2)
-            logger.info(f"Saved script checkpoint to {script_file}")
-        except Exception as e:
-            logger.warning(f"Failed to save script checkpoint: {e}")
+            logger.info(f"Generating audio drama script for {title}...")
+            parser = OpenAIParser()
+            script = await parser.parse_chapter(full_text)
+            if not script:
+                logger.error("OpenAI failed to generate script. Aborting Audio Drama generation.")
+                return
+            try:
+                with open(script_file, 'w', encoding='utf-8') as f:
+                    json.dump(script, f, ensure_ascii=False, indent=2)
+                logger.info(f"Saved script checkpoint to {script_file}")
+            except Exception as e:
+                logger.warning(f"Failed to save script checkpoint: {e}")
+
 
     # 3. Prepare voice assignments and handle mood shifts
     voice_manager = VoiceManager(db_manager, story_id)
@@ -439,8 +439,6 @@ async def tao_file_audiodrama(
         import soundfile as sf
     except ImportError as e:
         logger.error(f"Required libraries for Audio Drama v2 not found: {e}")
-        logger.warning("Falling back to simple MP3.")
-        await tao_file_mp3(content_list, filename, title)
         return
 
     logger.info(f"Synthesizing audio drama v2: {filename}...")
@@ -512,13 +510,10 @@ async def tao_file_audiodrama(
             
         success = await asyncio.to_thread(run_audio_drama_v2)
         if not success:
-            logger.warning("Audio Drama v2 failed to produce audio. Falling back.")
-            await tao_file_mp3(content_list, filename, title)
+            logger.error("Audio Drama v2 failed to produce audio.")
         else:
             logger.info(f"Tạo file Audio Drama v2 thành công: {filename}")
 
     except Exception as e:
         logger.error(f"Lỗi khi tạo Audio Drama v2: {e}")
-        logger.warning("Falling back to simple MP3.")
-        await tao_file_mp3(content_list, filename, title)
 
