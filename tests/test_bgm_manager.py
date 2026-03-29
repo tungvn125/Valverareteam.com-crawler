@@ -61,6 +61,18 @@ def test_get_random_track_ogg_support(mock_bgm_dir):
     track = manager.get_random_track("mysterious")
     assert track.endswith(".ogg")
 
+def test_get_random_track_additional_formats(mock_bgm_dir):
+    """Test that .flac and .m4a files are supported."""
+    new_formats_dir = mock_bgm_dir / "high_quality"
+    new_formats_dir.mkdir()
+    (new_formats_dir / "track.flac").touch()
+    (new_formats_dir / "track.m4a").touch()
+    
+    manager = BGMManager(mock_bgm_dir)
+    assert "high_quality" in manager.available_moods
+    track = manager.get_random_track("high_quality")
+    assert track.endswith((".flac", ".m4a"))
+
 def test_get_random_track_invalid_mood_fallback(mock_bgm_dir):
     """Test that an invalid mood returns None."""
     manager = BGMManager(mock_bgm_dir)
