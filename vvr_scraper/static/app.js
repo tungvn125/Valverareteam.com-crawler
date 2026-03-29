@@ -99,7 +99,64 @@ function handleSocketMessage(data) {
         finishTask(data.task_id, data.path);
     } else if (data.type === 'error') {
         updateTask(data.task_id, { status: `Lỗi: ${data.error}`, error: true });
+    } else if (data.type === 'library_check_progress') {
+        updateLibraryCheckProgress(data.current, data.total, data.title);
+    } else if (data.type === 'library_check_complete') {
+        finishLibraryCheck(data.updates_found);
     }
+}
+
+function updateLibraryCheckProgress(current, total, title) {
+    checkUpdatesBtn.disabled = true;
+    const percent = Math.round((current / total) * 100);
+    checkUpdatesBtn.innerHTML = `<span class="spinner"></span> (${percent}%) ${title}`;
+    
+    // Also update a global progress bar
+    let progressBar = document.getElementById('libraryCheckProgressBar');
+    if (!progressBar) {
+        progressBar = document.createElement('div');
+        progressBar.id = 'libraryCheckProgressBar';
+        progressBar.className = 'global-progress-bar';
+        progressBar.innerHTML = '<div class="progress-fill"></div>';
+        const container = document.getElementById('globalProgressBarContainer');
+        if (container) {
+            container.appendChild(progressBar);
+        } else {
+            // Fallback
+            document.querySelector('header').after(progressBar);
+        }
+    }
+    progressBar.querySelector('.progress-fill').style.width = `${percent}%`;
+    progressBar.style.display = 'block';
+}
+
+function finishLibraryCheck(updatesFound) {
+    checkUpdatesBtn.disabled = false;
+    checkUpdatesBtn.textContent = 'Kiểm tra cập nhật';
+    
+    const progressBar = document.getElementById('libraryCheckProgressBar');
+    if (progressBar) progressBar.style.display = 'none';
+    
+    renderLibrary();
+    
+    if (updatesFound > 0) {
+        showNotification(`Đã tìm thấy ${updatesFound} bản cập nhật mới!`);
+    }
+}
+
+function showNotification(msg) {
+    // Simple toast notification
+    const toast = document.createElement('div');
+    toast.className = 'toast-notification';
+    toast.textContent = msg;
+    document.body.appendChild(toast);
+    setTimeout(() => {
+        toast.classList.add('show');
+        setTimeout(() => {
+            toast.classList.remove('show');
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
+    }, 100);
 }
 
 // Log Handling
@@ -792,10 +849,55 @@ async function renderLibrary() {
         libraryData = await response.json();
         filterLibrary();
         updateLibraryStats();
+        updateSyncBar();
     } catch (e) {
         console.error('Failed to fetch library', e);
         libraryGrid.innerHTML = '<div class="error-msg">Không thể tải thư viện.</div>';
     }
+}
+
+function updateSyncBar() {
+    const updatedNovels = libraryData.filter(n => n.has_updates === 1);
+    let syncBar = document.getElementById('floatingSyncBar');
+    
+    if (updatedNovels.length === 0) {
+        if (syncBar) syncBar.classList.remove('show');
+        return;
+    }
+    
+    if (!syncBar) {
+        syncBar = document.createElement('div');
+        syncBar.id = 'floatingSyncBar';
+        syncBar.className = 'floating-sync-bar';
+        syncBar.innerHTML = `
+            <div class="sync-info">
+                <span class="sync-count">X</span> novels need syncing
+            </div>
+            <button id="syncAllBtn" class="btn-primary">Download All Updates</button>
+        `;
+        document.body.appendChild(syncBar);
+        
+        document.getElementById('syncAllBtn').onclick = async () => {
+            const btn = document.getElementById('syncAllBtn');
+            btn.disabled = true;
+            btn.textContent = 'Queuing tasks...';
+            try {
+                const response = await fetch('/api/library/sync-all', { method: 'POST' });
+                const data = await response.json();
+                showNotification(`Queued ${data.queued} incremental updates.`);
+                renderLibrary();
+                navSearch.click(); // Switch to search/tasks view to see progress
+            } catch (e) {
+                alert('Failed to sync all updates.');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Download All Updates';
+            }
+        };
+    }
+    
+    syncBar.querySelector('.sync-count').textContent = updatedNovels.length;
+    syncBar.classList.add('show');
 }
 
 function filterLibrary() {
@@ -817,16 +919,25 @@ function filterLibrary() {
         
         let statusClass = 'synced';
         let statusText = 'Đã khớp';
+        let updateBadge = '';
         
-        if (novel.status === 'update_available') {
+        const hasUpdates = novel.has_updates === 1;
+        const diff = (novel.server_chapter_count || 0) - (novel.last_synced_count || 0);
+
+        if (hasUpdates) {
             statusClass = 'update-available';
             statusText = 'Có chương mới';
+            updateBadge = `<div class="update-ribbon">+${diff > 0 ? diff : 'New'}</div>`;
         } else if (novel.status === 'unavailable') {
             statusClass = 'unavailable';
             statusText = 'Mất link';
+        } else if (novel.status === 'archived') {
+            statusClass = 'archived';
+            statusText = 'Đã lưu trữ';
         }
         
         card.innerHTML = `
+            ${updateBadge}
             <div class="card-cover">
                 <img src="${novel.cover_url || 'https://via.placeholder.com/180x240?text=No+Cover'}" alt="${novel.title}" onerror="this.src='https://via.placeholder.com/180x240?text=No+Cover'">
                 <span class="status-badge ${statusClass}">${statusText}</span>
@@ -835,7 +946,7 @@ function filterLibrary() {
                 <div class="card-title" title="${novel.title}">${novel.title}</div>
                 <div class="card-author">${novel.author || 'Ẩn danh'}</div>
                 <div class="card-meta">
-                    <span>${novel.last_chapter_count || 0} chương</span>
+                    <span>${novel.last_synced_count || novel.last_chapter_count || 0} chương</span>
                     <span title="${novel.output_folder || 'Chưa có đường dẫn'}">${novel.output_folder ? '📂' : ''}</span>
                 </div>
             </div>
@@ -864,7 +975,7 @@ function filterLibrary() {
 function updateLibraryStats() {
     if (!libraryStats) return;
     const total = libraryData.length;
-    const updates = libraryData.filter(n => n.status === 'update_available').length;
+    const updates = libraryData.filter(n => n.has_updates === 1).length;
     libraryStats.innerHTML = `
         <p>Tổng số truyện: <strong>${total}</strong></p>
         <p>Cần cập nhật: <strong style="color:var(--primary)">${updates}</strong></p>
@@ -875,13 +986,16 @@ checkUpdatesBtn.onclick = async () => {
     checkUpdatesBtn.disabled = true;
     checkUpdatesBtn.textContent = 'Đang kiểm tra...';
     try {
-        const response = await fetch('/api/library/check', { method: 'POST' });
-        const data = await response.json();
-        alert(`Đã kiểm tra xong. Tìm thấy ${data.updates_found} bản cập nhật mới.`);
-        renderLibrary();
+        const response = await fetch('/api/library/check-updates');
+        if (response.ok) {
+            // Wait for WebSocket messages to update progress
+        } else {
+            alert('Lỗi khi kích hoạt kiểm tra cập nhật.');
+            checkUpdatesBtn.disabled = false;
+            checkUpdatesBtn.textContent = 'Kiểm tra cập nhật';
+        }
     } catch (e) {
-        alert('Lỗi khi kiểm tra cập nhật.');
-    } finally {
+        alert('Không thể kết nối đến máy chủ.');
         checkUpdatesBtn.disabled = false;
         checkUpdatesBtn.textContent = 'Kiểm tra cập nhật';
     }
