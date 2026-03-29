@@ -38,20 +38,9 @@ class BGMManager:
     def get_random_track(self, mood: Optional[str] = None) -> Optional[Path]:
         """
         Retrieves a random track for the specified mood.
-        If mood is not found or not specified, picks a random track from any mood.
-        Returns None if no tracks are available in the entire library.
+        Returns None if the mood is not found or if no tracks are available for that mood.
         """
-        if not self.moods:
+        if not mood or mood not in self.moods:
             return None
 
-        # Try to get tracks for the requested mood
-        mood_tracks = self.moods.get(mood) if mood else None
-        
-        if not mood_tracks:
-            # Fallback: combine all tracks from all moods
-            all_tracks = []
-            for tracks in self.moods.values():
-                all_tracks.extend(tracks)
-            return random.choice(all_tracks) if all_tracks else None
-
-        return random.choice(mood_tracks)
+        return random.choice(self.moods[mood])
