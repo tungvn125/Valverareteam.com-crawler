@@ -26,9 +26,23 @@ class OpenAIParser:
         if not text or not text.strip():
             return []
 
-        # Chunk the text to stay within token limits (approx 5000 chars per chunk)
-        chunk_size = 5000
-        chunks = [text[i:i + chunk_size] for i in range(0, len(text), chunk_size)]
+        # Chunk the text to stay within token limits (approx 3000 chars per chunk)
+        # Split by newlines to avoid cutting in the middle of sentences
+        max_chunk_size = 3000
+        chunks = []
+        current_chunk = []
+        current_size = 0
+        
+        for line in text.splitlines():
+            if current_size + len(line) > max_chunk_size and current_chunk:
+                chunks.append("\n".join(current_chunk))
+                current_chunk = []
+                current_size = 0
+            current_chunk.append(line)
+            current_size += len(line) + 1
+        if current_chunk:
+            chunks.append("\n".join(current_chunk))
+
         full_script = []
 
         system_instruction = (
@@ -61,7 +75,8 @@ class OpenAIParser:
                             {"role": "user", "content": f"Chapter Text Segment:\n{chunk}"}
                         ],
                         response_format={"type": "json_object"},
-                        temperature=0.0  # Set temperature to 0 for maximum reliability
+                        temperature=0.0,
+                        max_tokens=4096
                     )
                     if not response or not hasattr(response, 'choices') or not response.choices:
                         raise ValueError(f"Invalid or empty response from OpenAI for chunk {i+1}")
@@ -69,8 +84,15 @@ class OpenAIParser:
                     content = response.choices[0].message.content
                     if not content:
                         raise ValueError(f"Empty content in response for chunk {i+1}")
+                    
+                    try:
+                        data = json.loads(content)
+                    except json.JSONDecodeError as je:
+                        logger.error(f"JSON Decode Error in chunk {i+1}: {je}")
+                        logger.debug(f"Raw content (first 500 chars): {content[:500]}")
+                        logger.debug(f"Raw content (last 500 chars): {content[-500:]}")
+                        raise
                         
-                    data = json.loads(content)
                     if isinstance(data, list):
                         script_part = data
                     elif isinstance(data, dict):
