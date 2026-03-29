@@ -110,76 +110,67 @@ class OpenAIParser:
         return full_script
 
 class VoiceManager:
-    # Default pool of Vietnamese voices from Vieneu
-    MALE_VOICES = ["Vinh", "Binh"]
-    FEMALE_VOICES = ["Doan", "Ly", "Ngoc"]
-    DEFAULT_VOICES = MALE_VOICES + FEMALE_VOICES
-    NARRATOR_VOICE = "Tuyen"
+    NARRATOR_VOICE_ID = "EXAVITQu4vr4xnSDxMaL" # Rachel or any default
 
-    def __init__(self, db: DatabaseManager, story_id: str):
+    def __init__(self, db, story_id: str):
         self.db = db
         self.story_id = story_id
-        self._voice_cache: Dict[str, str] = {}
+        self._voice_cache = {}
         self._initialized = False
         self._lock = asyncio.Lock()
+        self._available_voices = []
 
     async def _init_cache(self):
         if not self._initialized:
-            # We use get_all_story_voices to fetch all currently assigned voices for the story.
-            # However, if it's a mocked object in tests and doesn't have it, we fallback to empty dict
             if hasattr(self.db, 'get_all_story_voices'):
                 db_voices = await self.db.get_all_story_voices(self.story_id)
                 self._voice_cache.update(db_voices)
+            
+            # Fetch ElevenLabs voices
+            import os
+            api_key = os.getenv("ELEVENLABS_API_KEY")
+            if not api_key:
+                logger.warning("ELEVENLABS_API_KEY missing, using fallback empty voice list")
+                self._available_voices = []
+            else:
+                try:
+                    from elevenlabs.client import ElevenLabs
+                    client = ElevenLabs(api_key=api_key)
+                    # Fetch voices blockingly inside thread to avoid async loop issues
+                    def fetch_voices():
+                        return client.voices.get_all().voices
+                    voices = await asyncio.to_thread(fetch_voices)
+                    self._available_voices = [v.voice_id for v in voices]
+                except Exception as e:
+                    logger.error(f"Failed to fetch ElevenLabs voices: {e}")
+                    self._available_voices = []
+
             self._initialized = True
 
     async def get_voice(self, character_name: str, gender: str = "unknown") -> str:
         """
-        Retrieves the voice name for a character. Narrator is always 'Tuyen'.
-        Prioritizes unused voices before reusing voices for < 5 characters.
-        Routes voices based on 'gender' string if provided ('male', 'female').
-        Character names are normalized (lowercased and stripped) for consistency.
+        Retrieves the voice name for a character. Narrator is always the default.
         """
         if not character_name:
-            return self.NARRATOR_VOICE
+            return self.NARRATOR_VOICE_ID
             
         char_normalized = character_name.lower().strip()
         if char_normalized == "narrator":
-            return self.NARRATOR_VOICE
+            return self.NARRATOR_VOICE_ID
 
         async with self._lock:
             await self._init_cache()
             
-            # Check cache (which includes DB items)
             if char_normalized in self._voice_cache:
                 return self._voice_cache[char_normalized]
+            
+            import random
+            assigned_voice = self.NARRATOR_VOICE_ID
+            if self._available_voices:
+                assigned_voice = random.choice(self._available_voices)
+
+            self._voice_cache[char_normalized] = assigned_voice
+            if hasattr(self.db, 'save_character_voice'):
+                await self.db.save_character_voice(self.story_id, char_normalized, assigned_voice)
                 
-            # Fallback point for tests mocking only get_character_voice
-            if not self._voice_cache and hasattr(self.db, 'get_character_voice'):
-                voice_from_db = await self.db.get_character_voice(self.story_id, char_normalized)
-                if voice_from_db:
-                    self._voice_cache[char_normalized] = voice_from_db
-                    return voice_from_db
-
-            # Decide target voice pool based on gender
-            if gender == "male":
-                target_voices = self.MALE_VOICES
-            elif gender == "female":
-                target_voices = self.FEMALE_VOICES
-            else:
-                target_voices = self.DEFAULT_VOICES
-
-            # Find unused voices in the target pool
-            used_voices = set(self._voice_cache.values())
-            available_voices = [v for v in target_voices if v not in used_voices]
-
-            # If unused voices remain, use one. Otherwise, randomly reuse an existing one from target pool
-            if available_voices:
-                voice = random.choice(available_voices)
-            else:
-                voice = random.choice(target_voices)
-
-            # Update cache and save to DB
-            self._voice_cache[char_normalized] = voice
-            await self.db.save_character_voice(self.story_id, char_normalized, voice)
-            logger.info(f"Assigned voice '{voice}' to character '{char_normalized}' for story '{self.story_id}'")
-            return voice
+            return assigned_voice
