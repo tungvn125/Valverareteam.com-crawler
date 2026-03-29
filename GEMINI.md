@@ -15,7 +15,7 @@
 - **pydub:** Used for multi-track audio mixing, implementing **Auto-Ducking** and BGM cross-fades in Audio Drama.
 - **BeautifulSoup4 & lxml:** Used for parsing HTML and XML (sitemaps).
 - **EbookLib & reportlab:** Used for generating EPUB and PDF output files, respectively.
-- **VieNeu & numpy:** AI-powered Vietnamese text-to-speech synthesis (TTS) for generating high-quality audiobooks. Lazy-loaded to keep startup fast.
+- **ElevenLabs & pydub:** Cloud-based AI text-to-speech synthesis (TTS) for generating high-quality audiobooks and audio dramas. Requires `ELEVENLABS_API_KEY`.
 - **Loguru & Rich:** Used for structured logging and professional terminal UI elements.
 
 **Architecture:**

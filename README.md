@@ -68,9 +68,9 @@ vvrt slug-truyen-1 slug-truyen-2 -f EPUB -g tatca -t 10 --verbose
 Trên giao diện Web Dashboard, sử dụng chức năng **Batch Import** để nhập danh sách URL hoặc slug, mỗi dòng một truyện. Tất cả sẽ được thêm vào hàng đợi và tải lần lượt.
 
 ### 5. Cấu hình Audio-Drama (AD-MP3) & Audiobook (MP3)
-Tính năng `MP3` (Audiobook) và `AD-MP3` sử dụng engine TTS AI `Vieneu` chạy hoàn toàn tại local. Tính năng `AD-MP3` (v2) sử dụng thêm LLM để phân tích hội thoại và **bối cảnh (Mood)**, tự động chọn nhạc nền phù hợp và thực hiện trộn âm (Mixing) với hiệu ứng **Auto-Ducking**.
+Tính năng `MP3` (Audiobook) và `AD-MP3` sử dụng engine TTS AI `ElevenLabs` (Cloud API). Tính năng `AD-MP3` (v2) sử dụng thêm LLM để phân tích hội thoại và **bối cảnh (Mood)**, tự động chọn nhạc nền phù hợp và thực hiện trộn âm (Mixing) với hiệu ứng **Auto-Ducking**.
 
-> ⚠️ **Cảnh báo phần cứng (TTS AI):** Engine `Vieneu` sử dụng các mô hình AI tiếng Việt nặng (dựa trên PyTorch). Việc tạo Audiobook và Audio Drama tiêu tốn rất nhiều tài nguyên hệ thống (RAM) và yêu cầu cấu hình máy tính từ trung bình khá trở lên.
+> 💡 **Lưu ý:** Bạn cần thiết lập biến môi trường `ELEVENLABS_API_KEY` để sử dụng các tính năng Audio. ElevenLabs cung cấp chất lượng giọng đọc tự nhiên và hỗ trợ nhiều ngôn ngữ (bao gồm tiếng Việt) mà không yêu cầu cấu hình máy tính mạnh.
 
 #### Thư viện Nhạc nền (BGM)
 Để sử dụng tính năng nhạc nền cho Audio Drama, bạn cần tạo thư mục `bgm` trong thư mục chạy lệnh với cấu trúc sau:
