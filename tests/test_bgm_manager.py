@@ -42,12 +42,10 @@ def test_get_random_track_success(mock_bgm_dir):
     assert "happy" in str(track)
 
 def test_get_random_track_invalid_mood_fallback(mock_bgm_dir):
-    """Test that an invalid mood returns a random track from any mood."""
+    """Test that an invalid mood returns None."""
     manager = BGMManager(mock_bgm_dir)
     track = manager.get_random_track("nonexistent")
-    assert track is not None
-    # Should pick from either happy or sad
-    assert any(mood in str(track) for mood in ["happy", "sad"])
+    assert track is None
 
 def test_get_random_track_empty_library(tmp_path):
     """Test behavior when the library is empty."""
