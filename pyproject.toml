@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vvr-scraper"
-version = "1.6.0"
+version = "1.6.1"
 description = "Công cụ tải web novel từ Valvrare Team (Async, Web UI & Download Queue)"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -33,7 +33,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-audio = ["vieneu", "numpy"]
+audio = ["vieneu", "numpy", "pydub>=0.25.1"]
 
 [project.scripts]
 vvrt = "vvr_scraper.cli:main"
