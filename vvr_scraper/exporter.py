@@ -298,24 +298,22 @@ async def tao_file_txt(content_list: ContentList, filename: str, title: str = "C
 
 
 async def tao_file_mp3(content_list: ContentList, filename: str, title: str = "Chương truyện") -> None:
-    """AI-Powered Audiobook generation using VieNeu with chunked processing."""
-    # 1. SILENCE HEAVY WARNINGS BEFORE IMPORTING
+    """AI-Powered Audiobook generation using ElevenLabs with chunked processing."""
     import os
-    import warnings
-    # Suppress heavy framework logs and warnings to keep the terminal clean,
-    # but let PyTorch/Tensorflow decide hardware usage (CPU vs GPU) automatically.
-    os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
-    warnings.filterwarnings("ignore", category=UserWarning)
-
-    # 2. LAZY LOAD HEAVY LIBRARIES
-    try:
-        import numpy as np
-        from vieneu import Vieneu
-    except ImportError:
-        logger.error("Vieneu or numpy not found. Please run 'pip install vieneu numpy' to use TTS.")
+    api_key = os.getenv("ELEVENLABS_API_KEY")
+    if not api_key:
+        logger.error("ELEVENLABS_API_KEY not found. Cannot generate MP3.")
         return
 
-    logger.info(f"Đang tạo file Audiobook: {filename} (Sử dụng VieNeu AI)")
+    try:
+        from elevenlabs.client import ElevenLabs
+        import pydub
+        import io
+    except ImportError:
+        logger.error("elevenlabs or pydub not found. Please run 'uv pip install vvr-scraper[audio]'.")
+        return
+
+    logger.info(f"Đang tạo file Audiobook: {filename} (Sử dụng ElevenLabs AI)")
     
     # 3. Prepare text chunks
     chunks = [title]
@@ -332,8 +330,7 @@ async def tao_file_mp3(content_list: ContentList, filename: str, title: str = "C
     # 4. Synthesize each chunk
     try:
         def run_tts_chunked():
-            tts = Vieneu()
-            voice_data = tts.get_preset_voice("Tuyen")
+            client = ElevenLabs(api_key=api_key)
             audio_segments = []
             
             total_chunks = len(chunks)
@@ -341,13 +338,23 @@ async def tao_file_mp3(content_list: ContentList, filename: str, title: str = "C
                 if not chunk.strip():
                     continue
                 logger.debug(f"Synthesizing chunk {i+1}/{total_chunks}...")
-                audio = tts.infer(text=chunk, voice=voice_data)
-                audio_segments.append(audio)
+                # Generate speech
+                audio_stream = client.generate(
+                    text=chunk, 
+                    voice="EXAVITQu4vr4xnSDxMaL", # Default voice ID
+                    model="eleven_multilingual_v2"
+                )
+                # Consume generator into bytes
+                audio_bytes = b"".join(list(audio_stream))
+                segment = pydub.AudioSegment.from_file(io.BytesIO(audio_bytes), format="mp3")
+                audio_segments.append(segment)
             
             if audio_segments:
                 logger.debug("Merging audio segments...")
-                merged_audio = np.concatenate(audio_segments)
-                tts.save(merged_audio, filename)
+                merged_audio = audio_segments[0]
+                for seg in audio_segments[1:]:
+                    merged_audio += seg
+                merged_audio.export(filename, format="mp3")
             
         await asyncio.to_thread(run_tts_chunked)
         logger.info(f"Tạo file Audiobook thành công: {filename}")
@@ -425,18 +432,12 @@ async def tao_file_audiodrama(
             })
 
     # 4. Synthesis and Mixing pipeline
-    import warnings
-    os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
-    warnings.filterwarnings("ignore", category=UserWarning)
-    
     try:
-        import numpy as np
-        from vieneu import Vieneu
+        from elevenlabs.client import ElevenLabs
         from pydub import AudioSegment
         from .bgm_manager import BGMManager
         from .mixing_engine import MixingEngine
         import io
-        import soundfile as sf
     except ImportError as e:
         logger.error(f"Required libraries for Audio Drama v2 not found: {e}")
         return
@@ -445,7 +446,11 @@ async def tao_file_audiodrama(
     
     try:
         def run_audio_drama_v2():
-            tts = Vieneu()
+            api_key = os.getenv("ELEVENLABS_API_KEY")
+            if not api_key:
+                raise ValueError("ELEVENLABS_API_KEY environment variable is required")
+                
+            client = ElevenLabs(api_key=api_key)
             bgm_manager = BGMManager()
             mixing_engine = MixingEngine()
             
@@ -472,18 +477,14 @@ async def tao_file_audiodrama(
                     
                     current_time_ms = 0
                 else:
-                    voice_name = item['voice']
+                    voice_id = item['voice']
                     text = item['text']
-                    logger.debug(f"Synthesizing segment {i+1}/{total_items} (Voice: {voice_name})...")
+                    logger.debug(f"Synthesizing segment {i+1}/{total_items} (Voice: {voice_id})...")
                     
-                    voice_data = tts.get_preset_voice(voice_name)
-                    audio_np = tts.infer(text=text, voice=voice_data)
-                    
-                    # Convert numpy to AudioSegment
-                    buf = io.BytesIO()
-                    sf.write(buf, audio_np, 22050, format='WAV')
-                    buf.seek(0)
-                    voice_segment = AudioSegment.from_wav(buf)
+                    # Generate speech using ElevenLabs
+                    audio_stream = client.generate(text=text, voice=voice_id, model="eleven_multilingual_v2")
+                    audio_bytes = b"".join(list(audio_stream))
+                    voice_segment = AudioSegment.from_file(io.BytesIO(audio_bytes), format="mp3")
                     
                     # Ensure we have a BGM even if script didn't start with mood_shift
                     if current_bgm is None:
