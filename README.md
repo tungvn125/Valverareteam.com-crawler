@@ -68,11 +68,25 @@ vvrt slug-truyen-1 slug-truyen-2 -f EPUB -g tatca -t 10 --verbose
 Trên giao diện Web Dashboard, sử dụng chức năng **Batch Import** để nhập danh sách URL hoặc slug, mỗi dòng một truyện. Tất cả sẽ được thêm vào hàng đợi và tải lần lượt.
 
 ### 5. Cấu hình Audio-Drama (AD-MP3) & Audiobook (MP3)
-Tính năng `MP3` (Audiobook) và `AD-MP3` sử dụng engine TTS AI `Vieneu` chạy hoàn toàn tại local. Tính năng `AD-MP3` sử dụng thêm LLM để phân tích hội thoại, tự động đoán giới tính và phân vai nhân vật, kết hợp với AI TTS để tạo thành "Radio Play".
+Tính năng `MP3` (Audiobook) và `AD-MP3` sử dụng engine TTS AI `Vieneu` chạy hoàn toàn tại local. Tính năng `AD-MP3` (v2) sử dụng thêm LLM để phân tích hội thoại và **bối cảnh (Mood)**, tự động chọn nhạc nền phù hợp và thực hiện trộn âm (Mixing) với hiệu ứng **Auto-Ducking**.
 
-> ⚠️ **Cảnh báo phần cứng (TTS AI):** Engine `Vieneu` sử dụng các mô hình AI tiếng Việt nặng (dựa trên PyTorch). Việc tạo Audiobook và Audio Drama tiêu tốn rất nhiều tài nguyên hệ thống (RAM) và yêu cầu cấu hình máy tính từ trung bình khá trở lên. Quá trình tổng hợp giọng nói phụ thuộc trực tiếp vào sức mạnh CPU/GPU và có thể mất nhiều thời gian hoặc gây tràn RAM trên máy cấu hình yếu.
+> ⚠️ **Cảnh báo phần cứng (TTS AI):** Engine `Vieneu` sử dụng các mô hình AI tiếng Việt nặng (dựa trên PyTorch). Việc tạo Audiobook và Audio Drama tiêu tốn rất nhiều tài nguyên hệ thống (RAM) và yêu cầu cấu hình máy tính từ trung bình khá trở lên.
 
-Để cấu hình tính năng phân vai của `AD-MP3`, bạn cần cung cấp API Key LLM tương thích (OpenAI, OpenRouter, DeepSeek, v.v.) qua các biến môi trường trước khi khởi chạy:
+#### Thư viện Nhạc nền (BGM)
+Để sử dụng tính năng nhạc nền cho Audio Drama, bạn cần tạo thư mục `bgm` trong thư mục chạy lệnh với cấu trúc sau:
+```text
+bgm/
+├── action/      (Nhạc chiến đấu, căng thẳng)
+├── peaceful/    (Nhạc bình yên, thường nhật)
+├── mysterious/  (Nhạc bí ẩn, rùng rợn)
+├── romantic/    (Nhạc lãng mạn)
+├── sad/         (Nhạc buồn)
+└── suspense/    (Nhạc hồi hộp)
+```
+Hệ thống sẽ tự động chọn ngẫu nhiên một file nhạc (`.mp3`, `.wav`, `.ogg`) trong thư mục tương ứng với bối cảnh truyện.
+
+#### Cấu hình LLM
+Để cấu hình tính năng phân vai và phân tích mood của `AD-MP3`, bạn cần cung cấp API Key LLM:
 ```bash
 export VVR_API_KEY="your-api-key"
 export VVR_BASE_URL="https://api.openai.com/v1" # Sử dụng URL proxy nếu cần

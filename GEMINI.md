@@ -11,7 +11,8 @@
 - **httpx:** Used for fast, asynchronous HTTP requests. It powers the "Fast Mode" scraping via a DigitalOcean SSR fallback.
 - **WebSockets:** Provides real-time log streaming and progress updates from the scraper to the Web UI.
 - **aiosqlite:** Async SQLite driver for the library database (`vvr_library.db`).
-- **openai:** Python client for utilizing standard LLM APIs to parse dialogues from web novel chapters, powering the Audio-Drama generator. Requires `VVR_API_KEY`, `VVR_BASE_URL`, and optionally `VVR_MODEL`.
+- **openai:** Python client for utilizing standard LLM APIs to parse dialogues and **mood shifts** from web novel chapters, powering the Audio-Drama generator. Requires `VVR_API_KEY`, `VVR_BASE_URL`, and optionally `VVR_MODEL`.
+- **pydub:** Used for multi-track audio mixing, implementing **Auto-Ducking** and BGM cross-fades in Audio Drama.
 - **BeautifulSoup4 & lxml:** Used for parsing HTML and XML (sitemaps).
 - **EbookLib & reportlab:** Used for generating EPUB and PDF output files, respectively.
 - **VieNeu & numpy:** AI-powered Vietnamese text-to-speech synthesis (TTS) for generating high-quality audiobooks. Lazy-loaded to keep startup fast.
@@ -26,8 +27,10 @@ The application follows a modular, asynchronous architecture:
     3. **DownloadManager:** Worker-pool based task queue with pause/resume/cancel support.
     4. **Background Tasks:** Orchestrates scraping using `scraper_core.scrape_chapters()` with a progress callback — no duplicated scraping logic.
 - **`vvr_scraper/scraper_core.py`:** Implements a **Hybrid Scraping Architecture** (Fast Mode via SSR fallback and Reliable Mode via Playwright). The central `scrape_chapters()` function accepts an `on_chapter_done` callback and `pre_scraped` dict for checkpoint resumption, making it reusable by both CLI and Web.
-- **`vvr_scraper/exporter.py`:** Handles asynchronous exports with concurrent image downloading and **lazy-loaded AI audiobook & audio drama generation** (TTS). EPUB export uses the passed `cover_path` parameter (per-novel unique temp file) to avoid race conditions in multi-download.
-- **`vvr_scraper/audio_drama.py`:** Houses `OpenAIParser` and `VoiceManager`. Uses an LLM to parse dialogue, character names, and infer genders from text segments. Maps these parameters to a constrained subset of Vieneu TTS voices.
+- **`vvr_scraper/exporter.py`:** Handles asynchronous exports with concurrent image downloading and **lazy-loaded AI audiobook & audio drama generation** (TTS). The Audio Drama exporter (`tao_file_audiodrama`) integrates BGM mixing and auto-ducking using `MixingEngine`.
+- **`vvr_scraper/audio_drama.py`:** Houses `OpenAIParser` and `VoiceManager`. Uses an LLM to parse dialogue, character names, and infer genders/moods from text segments.
+- **`vvr_scraper/bgm_manager.py`:** Manages the background music library. Scans the `bgm/` directory for mood folders and provides random track selection.
+- **`vvr_scraper/mixing_engine.py`:** Implements the core audio mixing logic. Layers voice over BGM with auto-ducking (-15dB) and handles padding with silence.
 - **`vvr_scraper/db.py`:** Async SQLite database manager for the novel library. Tracks downloaded novels, chapter counts, download timestamps, and update status.
 - **`vvr_scraper/tao_so_do_cay.py`:** Utility module for extracting chapter lists and volume structures from the novel page using Playwright.
 - **`vvr_scraper/static/`:** Contains the Vanilla HTML/CSS/JS frontend for the Web Dashboard.
@@ -80,6 +83,7 @@ pytest
 - **Chapter Tree Always Fetched:** The Web server always fetches the full chapter tree (even when `selected_urls` is provided) to ensure proper volume/chapter titles in EPUB TOC, matching CLI output quality.
 - **Checkpoint Serialization:** `ContentItem` dataclass objects are converted to plain dicts via `dataclasses.asdict()` before JSON checkpoint serialization. Corrupt checkpoints are auto-deleted and the task starts fresh.
 - **Audio Drama Voice Allocation:** `VoiceManager` utilizes an `asyncio.Lock` and an in-memory cache pre-populated via `get_all_story_voices()` to globally coordinate character voice assignment during multi-threaded chunk processing. It guarantees a unique gender-appropriate voice is assigned to auxiliary characters to prevent collision.
+- **Atmospheric Immersion & Auto-Ducking:** Audio Drama v2 implements a multi-track mixing pipeline. It detects mood shifts (Action, Peaceful, etc.) using LLM analysis and switches BGM accordingly. The `MixingEngine` applies a `-15dB` gain reduction (ducking) to the BGM track specifically during voice segments, with 500ms cross-fades to ensure smooth acoustic transitions.
 
 ## Development Conventions
 
