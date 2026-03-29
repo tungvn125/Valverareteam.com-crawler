@@ -71,7 +71,12 @@ class OpenAIParser:
                         raise ValueError(f"Empty content in response for chunk {i+1}")
                         
                     data = json.loads(content)
-                    script_part = data.get("script", [])
+                    if isinstance(data, list):
+                        script_part = data
+                    elif isinstance(data, dict):
+                        script_part = data.get("script", [])
+                    else:
+                        raise ValueError(f"Expected list or dict, got {type(data)}")
                     
                     if isinstance(script_part, list):
                         full_script.extend(script_part)
