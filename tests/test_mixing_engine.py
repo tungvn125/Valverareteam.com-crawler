@@ -19,28 +19,32 @@ def test_mixing_engine_ducking():
     voice.__len__.return_value = 2000   # 2 seconds
     
     # Mock slicing
-    bgm.__getitem__.side_effect = lambda s: MagicMock()
+    during_segment = MagicMock()
+    # Mock bgm[1000:3000]
+    bgm.__getitem__.side_effect = lambda s: during_segment if s == slice(1000, 3000) else MagicMock()
     
     # Mock AudioSegment.silent
     mock_audio_segment.silent.return_value = MagicMock()
     
     # Mock methods used in implementation
-    bgm.apply_gain.return_value = bgm
-    bgm.overlay.return_value = bgm
-    bgm.__add__.return_value = bgm
+    during_segment.apply_gain.return_value = during_segment
+    during_segment.overlay.return_value = during_segment
     
     engine = MixingEngine()
     start_ms = 1000
-    duck_db = -10
     
-    result = engine.mix_with_ducking(bgm, voice, start_ms, duck_db)
+    # Test with default duck_db (-15.0)
+    result = engine.mix_with_ducking(bgm, voice, start_ms)
     
     # Verification
     # Implementation should split BGM: 0-1000, 1000-3000, 3000-end
     assert bgm.__getitem__.called
-    # It should apply gain to the "during" part
-    # We expect bgm[1000:3000].apply_gain(-10)
+    
+    # It should apply gain to the "during" part with default -15.0
+    during_segment.apply_gain.assert_called_once_with(-15.0)
+    
     # And then overlay voice on it
+    during_segment.overlay.assert_called_once_with(voice)
     
     assert result is not None
 
