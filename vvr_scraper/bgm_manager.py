@@ -9,7 +9,7 @@ class BGMManager:
     each containing audio files (mp3, wav, ogg).
     """
     
-    SUPPORTED_EXTENSIONS = {".mp3", ".wav", ".ogg"}
+    SUPPORTED_EXTENSIONS = {".mp3", ".wav", ".ogg", ".flac", ".m4a"}
 
     def __init__(self, base_dir: str = "bgm"):
         self.library_path = Path(base_dir)
