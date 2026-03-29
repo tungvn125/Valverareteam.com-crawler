@@ -367,7 +367,7 @@ async def tao_file_audiodrama(
     AI-Powered Audio Drama generation.
     1. Extracts text and parses into a script (dialogue/narrator) using OpenAI.
     2. Assigns voices to characters using VoiceManager.
-    3. Synthesizes each segment with Vieneu and merges them.
+    3. Synthesizes each segment with Vieneu, mixes with BGM using MixingEngine.
     4. Caches the script to <filename>.script.json for persistence/debugging.
     """
 
@@ -405,22 +405,26 @@ async def tao_file_audiodrama(
         except Exception as e:
             logger.warning(f"Failed to save script checkpoint: {e}")
 
-    # 3. Iterate through script, get voice via VoiceManager
+    # 3. Prepare voice assignments and handle mood shifts
     voice_manager = VoiceManager(db_manager, story_id)
-    script_with_voices = []
-    for segment in script:
-        char_name = segment.get('role', 'narrator')
-        text = segment.get('text', '').strip()
-        gender = segment.get('gender', 'unknown').lower()
-        if not text:
-            continue
-        voice_name = await voice_manager.get_voice(char_name, gender)
-        script_with_voices.append({
-            'voice': voice_name,
-            'text': text
-        })
+    enriched_script = []
+    for item in script:
+        if item.get('type') == 'mood_shift':
+            enriched_script.append(item)
+        else:
+            char_name = item.get('role', 'narrator')
+            text = item.get('text', '').strip()
+            gender = item.get('gender', 'unknown').lower()
+            if not text:
+                continue
+            voice_name = await voice_manager.get_voice(char_name, gender)
+            enriched_script.append({
+                'type': 'segment',
+                'voice': voice_name,
+                'text': text
+            })
 
-    # 4. Call Vieneu.infer() for each segment (via asyncio.to_thread)
+    # 4. Synthesis and Mixing pipeline
     import warnings
     os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
     warnings.filterwarnings("ignore", category=UserWarning)
@@ -428,37 +432,93 @@ async def tao_file_audiodrama(
     try:
         import numpy as np
         from vieneu import Vieneu
-    except ImportError:
-        logger.error("Vieneu or numpy not found. Please run 'pip install vieneu numpy' to use TTS.")
-        return
-
-    logger.info(f"Synthesizing audio drama: {filename}...")
-    
-    try:
-        def run_audio_drama_tts():
-            tts = Vieneu()
-            audio_segments = []
-            
-            total_segments = len(script_with_voices)
-            for i, item in enumerate(script_with_voices):
-                voice_name = item['voice']
-                text = item['text']
-                logger.debug(f"Synthesizing segment {i+1}/{total_segments} (Voice: {voice_name})...")
-                
-                voice_data = tts.get_preset_voice(voice_name)
-                audio = tts.infer(text=text, voice=voice_data)
-                audio_segments.append(audio)
-            
-            # 5. Concatenate segments with numpy
-            if audio_segments:
-                logger.debug("Merging audio segments...")
-                merged_audio = np.concatenate(audio_segments)
-                tts.save(merged_audio, filename)
-            
-        await asyncio.to_thread(run_audio_drama_tts)
-        logger.info(f"Tạo file Audio Drama thành công: {filename}")
-    except Exception as e:
-        # 6. Save output, fallback to tao_file_mp3 on error
-        logger.error(f"Lỗi khi tạo Audio Drama: {e}")
+        from pydub import AudioSegment
+        from .bgm_manager import BGMManager
+        from .mixing_engine import MixingEngine
+        import io
+        import soundfile as sf
+    except ImportError as e:
+        logger.error(f"Required libraries for Audio Drama v2 not found: {e}")
         logger.warning("Falling back to simple MP3.")
         await tao_file_mp3(content_list, filename, title)
+        return
+
+    logger.info(f"Synthesizing audio drama v2: {filename}...")
+    
+    try:
+        def run_audio_drama_v2():
+            tts = Vieneu()
+            bgm_manager = BGMManager()
+            mixing_engine = MixingEngine()
+            
+            master_audio = AudioSegment.silent(duration=0)
+            current_bgm = None
+            current_time_ms = 0
+            
+            total_items = len(enriched_script)
+            for i, item in enumerate(enriched_script):
+                if item.get('type') == 'mood_shift':
+                    mood = item.get('mood')
+                    logger.debug(f"Mood shift detected: {mood}")
+                    
+                    # Finalize current BGM before switching
+                    if current_bgm:
+                        finalize_pos = current_time_ms + 1000
+                        master_audio += current_bgm[:finalize_pos].fade_out(1000)
+                    
+                    bgm_track = bgm_manager.get_random_track(mood)
+                    if bgm_track:
+                        current_bgm = AudioSegment.from_file(bgm_track)
+                    else:
+                        current_bgm = AudioSegment.silent(duration=600000) # 10m fallback
+                    
+                    current_time_ms = 0
+                else:
+                    voice_name = item['voice']
+                    text = item['text']
+                    logger.debug(f"Synthesizing segment {i+1}/{total_items} (Voice: {voice_name})...")
+                    
+                    voice_data = tts.get_preset_voice(voice_name)
+                    audio_np = tts.infer(text=text, voice=voice_data)
+                    
+                    # Convert numpy to AudioSegment
+                    buf = io.BytesIO()
+                    sf.write(buf, audio_np, 22050, format='WAV')
+                    buf.seek(0)
+                    voice_segment = AudioSegment.from_wav(buf)
+                    
+                    # Ensure we have a BGM even if script didn't start with mood_shift
+                    if current_bgm is None:
+                        bgm_track = bgm_manager.get_random_track("peaceful")
+                        if bgm_track:
+                            current_bgm = AudioSegment.from_file(bgm_track)
+                        else:
+                            current_bgm = AudioSegment.silent(duration=600000)
+                    
+                    # Mix voice into BGM
+                    current_bgm = mixing_engine.mix_with_ducking(current_bgm, voice_segment, current_time_ms)
+                    current_time_ms += len(voice_segment) + 500 # 500ms gap
+            
+            # Finalize last BGM
+            if current_bgm:
+                finalize_pos = current_time_ms + 1000
+                master_audio += current_bgm[:finalize_pos].fade_out(1000)
+            
+            if len(master_audio) > 0:
+                logger.debug(f"Exporting Audio Drama to {filename}...")
+                master_audio.export(filename, format="mp3")
+                return True
+            return False
+            
+        success = await asyncio.to_thread(run_audio_drama_v2)
+        if not success:
+            logger.warning("Audio Drama v2 failed to produce audio. Falling back.")
+            await tao_file_mp3(content_list, filename, title)
+        else:
+            logger.info(f"Tạo file Audio Drama v2 thành công: {filename}")
+
+    except Exception as e:
+        logger.error(f"Lỗi khi tạo Audio Drama v2: {e}")
+        logger.warning("Falling back to simple MP3.")
+        await tao_file_mp3(content_list, filename, title)
+
