@@ -53,12 +53,13 @@ class OpenAIParser:
             "Identify all dialogue and the character speaking, and infer their gender ('male', 'female', or 'unknown'). Everything else is 'narrator'. "
             "In addition to dialogue, you must identify significant mood shifts in the story. "
             "Allowed moods: 'action', 'peaceful', 'mysterious', 'romantic', 'sad', 'suspense'. "
-            "Output MUST be a JSON object containing a single key 'script' which maps to a list of objects. "
+            "Output MUST be a valid JSON object containing a single key 'script' which maps to a list of objects. "
             "Each object in the list must have a 'type' field which is either 'segment' or 'mood_shift'. "
             "For 'segment' type: include 'role', 'text', and 'gender'. "
             "For 'mood_shift' type: include 'mood' (one of the allowed moods). "
             "Combine consecutive segments by the same character. "
-            "IMPORTANT: Be concise. Do not add any text outside the JSON object."
+            "IMPORTANT: Ensure ALL fields and objects are correctly separated by commas. "
+            "Do not add any text outside the JSON object."
         )
 
         for i, chunk in enumerate(chunks):
@@ -83,13 +84,39 @@ class OpenAIParser:
                     if not content:
                         raise ValueError(f"Empty content in response for chunk {i+1}")
                     
+                    # --- JSON Sanity Fix ---
+                    # Common LLM mistake: missing comma between fields
+                    # e.g., "text": "abc" "gender": "male" -> "text": "abc", "gender": "male"
+                    import re
+                    # Insert missing comma between a quoted value and the next key
+                    content = re.sub(r'(:[ \t]*"(?:[^"\\]|\\.)*")\s*(")', r'\1, \2', content)
+                    # Insert missing comma between objects in an array
+                    content = re.sub(r'(})\s*({)', r'\1, \2', content)
+                    # Remove trailing comma before closing brace or bracket
+                    content = re.sub(r',\s*([}\]])', r'\1', content)
+                    # -----------------------
+
                     try:
                         data = json.loads(content)
                     except json.JSONDecodeError as je:
                         logger.error(f"JSON Decode Error in chunk {i+1}: {je}")
-                        # Log content head/tail to help diagnose truncation
-                        logger.error(f"Raw content head: {content[:200]}...")
-                        logger.error(f"Raw content tail: ...{content[-200:]}")
+                        # Log context around the error position
+                        pos = je.pos
+                        start_pos = max(0, pos - 50)
+                        end_pos = min(len(content), pos + 50)
+                        context = content[start_pos:end_pos]
+                        # Highlight the error character
+                        pointer = " " * (pos - start_pos) + "^"
+                        logger.error(f"Context around char {pos}:\n{context}\n{pointer}")
+                        
+                        # Auto-save failed output for investigation
+                        failed_file = f"failed_chunk_{i+1}.txt"
+                        try:
+                            with open(failed_file, "w", encoding="utf-8") as f:
+                                f.write(content)
+                            logger.info(f"Đã lưu nội dung lỗi vào: {failed_file}")
+                        except Exception as fe:
+                            logger.error(f"Không thể lưu file lỗi: {fe}")
                         raise
                         
                     if isinstance(data, list):
