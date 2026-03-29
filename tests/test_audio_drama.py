@@ -11,10 +11,12 @@ async def test_openai_parser_success():
         mock_response = MagicMock()
         
         mock_message = MagicMock()
-        mock_message.content = json.dumps([
-            {"role": "narrator", "text": "Đó là một ngày nắng đẹp."},
-            {"role": "Nam", "text": "Chào buổi sáng!"}
-        ])
+        mock_message.content = json.dumps({
+            "script": [
+                {"type": "segment", "role": "narrator", "text": "Đó là một ngày nắng đẹp.", "gender": "unknown"},
+                {"type": "segment", "role": "Nam", "text": "Chào buổi sáng!", "gender": "male"}
+            ]
+        })
         mock_choice = MagicMock()
         mock_choice.message = mock_message
         mock_response.choices = [mock_choice]
