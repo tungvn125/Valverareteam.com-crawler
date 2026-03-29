@@ -20,8 +20,8 @@ class OpenAIParser:
 
     async def parse_chapter(self, text: str) -> List[Dict[str, str]]:
         """
-        Parses chapter text into a list of dialogue/narrator segments using OpenAI.
-        Returns: List of Dicts with 'role' and 'text'.
+        Parses chapter text into a list of dialogue/narrator segments and mood shifts using OpenAI.
+        Returns: List of Dicts with 'type' ('segment' or 'mood_shift') and relevant fields.
         """
         if not text or not text.strip():
             return []
@@ -30,9 +30,19 @@ class OpenAIParser:
             "You are an expert scriptwriter for audio dramas. "
             "Your task is to convert a web novel chapter into a structured script. "
             "Identify all dialogue and the character speaking, and infer their gender ('male', 'female', or 'unknown'). Everything else is 'narrator'. "
+            "In addition to dialogue, you must identify significant mood shifts in the story. "
+            "Allowed moods: 'action', 'peaceful', 'mysterious', 'romantic', 'sad', 'suspense'. "
+            "Output MUST be a JSON object containing a single key 'script' which maps to a list of objects. "
+            "Each object in the list must have a 'type' field which is either 'segment' or 'mood_shift'. "
+            "For 'segment' type: include 'role', 'text', and 'gender'. "
+            "For 'mood_shift' type: include 'mood' (one of the allowed moods). "
             "Combine consecutive segments by the same character. "
-            "Output MUST be a JSON object containing a single key 'script' which maps to a list of objects, each with 'role', 'text', and 'gender'. "
-            "Example: {\"script\": [{\"role\": \"narrator\", \"text\": \"Once upon a time...\", \"gender\": \"unknown\"}, {\"role\": \"Hero\", \"text\": \"Hello!\", \"gender\": \"male\"}]}"
+            "Start the script with an appropriate mood_shift. "
+            "Example: {\"script\": ["
+            "{\"type\": \"mood_shift\", \"mood\": \"mysterious\"}, "
+            "{\"type\": \"segment\", \"role\": \"narrator\", \"text\": \"Darkness falls.\", \"gender\": \"unknown\"}, "
+            "{\"type\": \"segment\", \"role\": \"Hero\", \"text\": \"Wait!\", \"gender\": \"male\"}"
+            "]}"
         )
         
         try:
