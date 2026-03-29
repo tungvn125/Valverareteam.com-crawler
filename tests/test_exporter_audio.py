@@ -56,7 +56,7 @@ async def test_tao_file_audiodrama_flow(tmp_path):
              patch("vvr_scraper.mixing_engine.MixingEngine") as MockMixing:
             
             client_instance = MockElevenLabs.return_value
-            client_instance.generate.return_value = [b"fake_audio_chunk"]
+            client_instance.text_to_speech.convert.return_value = [b"fake_audio_chunk"]
             
             MockSilent.side_effect = lambda duration: MockAudio(duration)
             MockFromFile.return_value = MockAudio(1000)
@@ -70,7 +70,7 @@ async def test_tao_file_audiodrama_flow(tmp_path):
             parser_instance.parse_chapter.assert_called_once()
             
             # Verify ElevenLabs was called for each segment (2 segments)
-            assert client_instance.generate.call_count == 2
+            assert client_instance.text_to_speech.convert.call_count == 2
 
 @pytest.mark.asyncio
 async def test_tao_file_audiodrama_v2_with_moods(tmp_path):
@@ -99,7 +99,7 @@ async def test_tao_file_audiodrama_v2_with_moods(tmp_path):
              patch("vvr_scraper.mixing_engine.MixingEngine") as MockMixing:
             
             client_instance = MockElevenLabs.return_value
-            client_instance.generate.return_value = [b"audio"]
+            client_instance.text_to_speech.convert.return_value = [b"audio"]
             
             bgm_instance = MockBGM.return_value
             bgm_instance.get_random_track.return_value = "fake_bgm.mp3"
@@ -113,7 +113,7 @@ async def test_tao_file_audiodrama_v2_with_moods(tmp_path):
             await tao_file_audiodrama(content_list, filename, story_id, mock_db)
             
             assert bgm_instance.get_random_track.called
-            assert client_instance.generate.call_count == 1
+            assert client_instance.text_to_speech.convert.call_count == 1
 
 @pytest.mark.asyncio
 async def test_tao_file_mp3_flow(tmp_path):
@@ -127,14 +127,14 @@ async def test_tao_file_mp3_flow(tmp_path):
          patch("pydub.AudioSegment.from_file") as MockFromFile:
         
         client_instance = MockElevenLabs.return_value
-        client_instance.generate.return_value = [b"chunk1"]
+        client_instance.text_to_speech.convert.return_value = [b"chunk1"]
             
         MockFromFile.return_value = MockAudio(1000)
         
         await tao_file_mp3(content_list, filename, "Test Title")
         
         # Should be called for title and text
-        assert client_instance.generate.call_count == 2
+        assert client_instance.text_to_speech.convert.call_count == 2
 
 @pytest.mark.asyncio
 async def test_tao_file_audiodrama_fallback(tmp_path):

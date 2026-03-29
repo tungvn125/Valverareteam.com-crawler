@@ -338,11 +338,11 @@ async def tao_file_mp3(content_list: ContentList, filename: str, title: str = "C
                 if not chunk.strip():
                     continue
                 logger.debug(f"Synthesizing chunk {i+1}/{total_chunks}...")
-                # Generate speech
-                audio_stream = client.generate(
+                # Generate speech using ElevenLabs API v2.x
+                audio_stream = client.text_to_speech.convert(
+                    voice_id="EXAVITQu4vr4xnSDxMaL", # Default voice ID (Rachel)
                     text=chunk, 
-                    voice="EXAVITQu4vr4xnSDxMaL", # Default voice ID
-                    model="eleven_multilingual_v2"
+                    model_id="eleven_multilingual_v2"
                 )
                 # Consume generator into bytes
                 audio_bytes = b"".join(list(audio_stream))
@@ -479,12 +479,17 @@ async def tao_file_audiodrama(
                 else:
                     voice_id = item['voice']
                     text = item['text']
-                    logger.debug(f"Synthesizing segment {i+1}/{total_items} (Voice: {voice_id})...")
-                    
-                    # Generate speech using ElevenLabs
-                    audio_stream = client.generate(text=text, voice=voice_id, model="eleven_multilingual_v2")
+                    logger.debug(f"Synthesizing [{voice_id}]: {text[:30]}...")
+
+                    # Generate speech using ElevenLabs API v2.x
+                    audio_stream = client.text_to_speech.convert(
+                        voice_id=voice_id,
+                        text=text, 
+                        model_id="eleven_multilingual_v2"
+                    )
                     audio_bytes = b"".join(list(audio_stream))
                     voice_segment = AudioSegment.from_file(io.BytesIO(audio_bytes), format="mp3")
+
                     
                     # Ensure we have a BGM even if script didn't start with mood_shift
                     if current_bgm is None:
