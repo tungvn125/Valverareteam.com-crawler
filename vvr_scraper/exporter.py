@@ -469,6 +469,7 @@ async def tao_file_audiodrama(
                 
             client = ElevenLabs(api_key=api_key)
             bgm_manager = BGMManager()
+            bgm_manager.refresh() # Ensure we have latest BGM files
             mixing_engine = MixingEngine()
             
             master_audio = AudioSegment.silent(duration=0)

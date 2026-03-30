@@ -35,11 +35,19 @@ class BGMManager:
         """Returns a list of moods that have at least one track."""
         return list(self.moods.keys())
 
-    def get_random_track(self, mood: Optional[str] = None) -> Optional[str]:
+    def refresh(self):
+        """Re-scans the library for updates."""
+        self.moods = {}
+        self._scan_library()
+
+    def get_random_track(self, mood: Optional[str] = None, refresh: bool = False) -> Optional[str]:
         """
         Retrieves a random track for the specified mood.
         Returns None if the mood is not found or if no tracks are available for that mood.
         """
+        if refresh:
+            self.refresh()
+            
         if not mood:
             return None
         
