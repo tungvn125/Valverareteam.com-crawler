@@ -30,7 +30,7 @@ class OpenAIParser:
         # Chunk the text to stay within token limits (approx 4,000 chars per chunk)
         # 4k chars is the safe limit to ensure the resulting JSON script (which is 
         # much larger than the input) fits within the 4k output token limit.
-        max_chunk_size = 4000
+        max_chunk_size = 30000
         chunks = []
         current_chunk = []
         current_size = 0
@@ -75,7 +75,6 @@ class OpenAIParser:
                         ],
                         response_format={"type": "json_object"},
                         temperature=0.0,
-                        max_tokens=4096
                     )
                     if not response or not hasattr(response, 'choices') or not response.choices:
                         raise ValueError(f"Invalid or empty response from OpenAI for chunk {i+1}")
