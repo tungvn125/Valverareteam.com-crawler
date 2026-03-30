@@ -33,7 +33,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-audio = ["vieneu", "numpy", "pydub>=0.25.1"]
+audio = ["elevenlabs>=1.0.0", "pydub>=0.25.1"]
 
 [project.scripts]
 vvrt = "vvr_scraper.cli:main"
@@ -43,4 +43,4 @@ where = ["."]
 include = ["vvr_scraper*"]
 
 [tool.setuptools.package-data]
-"vvr_scraper" = ["static/*"]
+"vvr_scraper" = ["static/*", "prompts/*.md"]
