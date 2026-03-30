@@ -83,7 +83,7 @@ bgm/
 ├── sad/         (Nhạc buồn)
 └── suspense/    (Nhạc hồi hộp)
 ```
-Hệ thống sẽ tự động chọn ngẫu nhiên một file nhạc (`.mp3`, `.wav`, `.ogg`) trong thư mục tương ứng với bối cảnh truyện.
+Hệ thống sẽ tự động chọn ngẫu nhiên một file nhạc (`.mp3`, `.wav`, `.ogg`, `.flac`, `.m4a`) trong thư mục tương ứng với bối cảnh truyện.
 
 #### Cấu hình LLM
 Để cấu hình tính năng phân vai và phân tích mood của `AD-MP3`, bạn cần cung cấp API Key LLM:
