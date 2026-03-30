@@ -41,3 +41,6 @@ vvrt = "vvr_scraper.cli:main"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["vvr_scraper*"]
+
+[tool.setuptools.package-data]
+"vvr_scraper" = ["static/*"]
