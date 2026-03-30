@@ -33,15 +33,18 @@ async def test_openai_parser_success():
 
 @pytest.mark.asyncio
 async def test_openai_parser_error():
-    """Tests OpenAIParser handling of errors."""
+    """Tests OpenAIParser handling of errors and verification of MAX_RETRIES."""
     with patch("vvr_scraper.audio_drama.AsyncOpenAI") as MockOpenAI:
         mock_client = MockOpenAI.return_value
         mock_client.chat.completions.create = AsyncMock(side_effect=Exception("API Error"))
         
         parser = OpenAIParser(api_key="fake_key", base_url="fake_url")
+        # In non-interactive mode (default in tests), it should retry up to MAX_RETRIES and then break
         result = await parser.parse_chapter("Nội dung...")
         
         assert result == []
+        # Verify it retried exactly MAX_RETRIES (2) times
+        assert mock_client.chat.completions.create.call_count == 2
 
 @pytest.mark.asyncio
 async def test_voice_manager_narrator():

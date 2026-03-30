@@ -64,7 +64,10 @@ class OpenAIParser:
 
         for i, chunk in enumerate(chunks):
             chunk_success = False
-            while not chunk_success:
+            retries = 0
+            MAX_RETRIES = 2
+            while not chunk_success and retries < MAX_RETRIES:
+                retries += 1
                 logger.info(f"Parsing chunk {i+1}/{len(chunks)} of chapter text...")
                 try:
                     response = await self.client.chat.completions.create(
@@ -145,8 +148,8 @@ class OpenAIParser:
                                 logger.warning(f"Bỏ qua chunk {i+1} theo yêu cầu người dùng.")
                                 break # Skip to next chunk
                         else:
-                            # Not a terminal, don't hang, just skip
-                            break
+                            # Not a terminal, retry automatically up to MAX_RETRIES
+                            continue
                     except ImportError:
                         # Fallback to standard input if rich is missing (unlikely)
                         choice = input(f"Chunk {i+1} gặp lỗi. Thử lại? (Y/n): ").strip().lower()
