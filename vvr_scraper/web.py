@@ -790,7 +790,11 @@ async def scan_library():
         return {"error": f"Scan path {scan_path} does not exist"}
     
     found_count = 0
+    EXCLUDE_DIRS = {'.git', '.venv', '__pycache__', 'node_modules', 'bgm', 'tests', 'dist', 'build'}
     for root, dirs, files in os.walk(scan_path):
+        # Prune excluded directories in-place
+        dirs[:] = [d for d in dirs if d not in EXCLUDE_DIRS]
+        
         if ".vvr_checkpoint.json" in files:
             checkpoint_path = os.path.join(root, ".vvr_checkpoint.json")
             try:
