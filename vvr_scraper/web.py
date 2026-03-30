@@ -644,16 +644,18 @@ async def sync_all_novels():
     # Get session for chapter tree fetching
     session_state = load_session(get_config_path(".vvr_session.json"))
     
+    semaphore = asyncio.Semaphore(3) # Limit to 3 concurrent tree fetches
+    
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         
-        for novel in novels:
-            if novel.get('has_updates') == 1:
-                slug = novel['slug']
-                title = novel['title']
-                
+        async def sync_one(novel):
+            nonlocal sync_count
+            slug = novel['slug']
+            title = novel['title']
+            
+            async with semaphore:
                 logger.info(f"Syncing {title}...")
-                
                 try:
                     # Fetch LATEST chapter tree to include all chapters (1..N)
                     story_url = f"{BASE_URL}/{slug}"
@@ -667,7 +669,7 @@ async def sync_all_novels():
                     
                     if not chapter_data:
                         logger.warning(f"Could not fetch chapter tree for {title}")
-                        continue
+                        return
                         
                     # Flatten ALL chapter URLs
                     all_urls = [c['url'] for v in chapter_data for c in v['chapters']]
@@ -696,6 +698,8 @@ async def sync_all_novels():
                 except Exception as e:
                     logger.error(f"Error syncing {title}: {e}")
 
+        tasks = [sync_one(novel) for novel in novels if novel.get('has_updates') == 1]
+        await asyncio.gather(*tasks)
         await browser.close()
 
     return {"status": "ok", "queued": sync_count}
