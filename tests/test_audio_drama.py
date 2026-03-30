@@ -45,24 +45,28 @@ async def test_openai_parser_error():
 
 @pytest.mark.asyncio
 async def test_voice_manager_narrator():
-    """Tests that VoiceManager always returns NARRATOR_VOICE_ID for narrator."""
+    """Tests that VoiceManager always returns narrator_voice_id for narrator."""
     from vvr_scraper.audio_drama import VoiceManager
     mock_db = MagicMock()
     story_id = "story_123"
     vm = VoiceManager(mock_db, story_id)
     
     # Direct "narrator"
-    assert await vm.get_voice("narrator") == VoiceManager.NARRATOR_VOICE_ID
+    assert await vm.get_voice("narrator") == vm.narrator_voice_id
     # Case insensitive
-    assert await vm.get_voice("NARRATOR") == VoiceManager.NARRATOR_VOICE_ID
+    assert await vm.get_voice("NARRATOR") == vm.narrator_voice_id
     # Empty name
-    assert await vm.get_voice("") == VoiceManager.NARRATOR_VOICE_ID
-    assert await vm.get_voice(None) == VoiceManager.NARRATOR_VOICE_ID
+    assert await vm.get_voice("") == vm.narrator_voice_id
+    assert await vm.get_voice(None) == vm.narrator_voice_id
 
 @pytest.mark.asyncio
 async def test_voice_manager_assignment_and_persistence():
     """Tests voice assignment and DB persistence for characters."""
     from vvr_scraper.audio_drama import VoiceManager
+    # Reset global state for testing and mock no available voices
+    VoiceManager._global_available_voices = []
+    VoiceManager._global_voice_metadata = {}
+    
     mock_db = MagicMock()
     mock_db.save_character_voice = AsyncMock()
     mock_db.get_all_story_voices = AsyncMock(return_value={})
@@ -70,11 +74,14 @@ async def test_voice_manager_assignment_and_persistence():
     story_id = "story_123"
     vm = VoiceManager(mock_db, story_id)
     
-    # 1. New character assignment
+    # 1. New character assignment (with no available voices)
     char_name = "Lâm"
+    # Force _initialized so it doesn't try to fetch from real API
+    vm._initialized = True
+    
     voice1 = await vm.get_voice(char_name)
-    # By default, without API key, it should fallback to NARRATOR_VOICE_ID
-    assert voice1 == VoiceManager.NARRATOR_VOICE_ID
+    # By default, with no available voices, it should fallback to narrator_voice_id
+    assert voice1 == vm.narrator_voice_id
     # Should have saved to DB with normalized name
     mock_db.save_character_voice.assert_called_with(story_id, "lâm", voice1)
     
@@ -83,6 +90,42 @@ async def test_voice_manager_assignment_and_persistence():
     assert voice2 == voice1
     # Should NOT have saved to DB again (it was already in DB/cache)
     assert mock_db.save_character_voice.call_count == 1
+
+@pytest.mark.asyncio
+async def test_voice_manager_gender_aware():
+    """Tests that VoiceManager respects gender labels if available."""
+    from vvr_scraper.audio_drama import VoiceManager
+    # Reset and mock global state
+    VoiceManager._global_available_voices = ["voice_m1", "voice_f1", "voice_n1"]
+    VoiceManager._global_voice_metadata = {
+        "voice_m1": {"name": "Male Voice", "gender": "male"},
+        "voice_f1": {"name": "Female Voice", "gender": "female"},
+        "voice_n1": {"name": "Neutral Voice", "gender": "neutral"}
+    }
+    
+    mock_db = MagicMock()
+    mock_db.save_character_voice = AsyncMock()
+    mock_db.get_all_story_voices = AsyncMock(return_value={})
+    
+    story_id = "story_gender"
+    vm = VoiceManager(mock_db, story_id)
+    
+    # 1. Request male voice
+    v_male = await vm.get_voice("Nam", gender="male")
+    assert v_male == "voice_m1"
+    
+    # 2. Request female voice
+    v_female = await vm.get_voice("Nữ", gender="female")
+    assert v_female == "voice_f1"
+    
+    # 3. Request unknown gender (should pick from remaining, but excluding narrator if possible)
+    # Since narrator is DEFAULT_NARRATOR_VOICE_ID and not in _global_available_voices, 
+    # candidates will be all available voices.
+    v_unknown = await vm.get_voice("Ai Đó", gender="unknown")
+    assert v_unknown in ["voice_m1", "voice_f1", "voice_n1"]
+    # Variety maximization: since m1 and f1 are already assigned in this instance cache, 
+    # it should prefer n1 if it considers assigned_ids.
+    assert v_unknown == "voice_n1"
 
 @pytest.mark.asyncio
 async def test_voice_manager_normalization():

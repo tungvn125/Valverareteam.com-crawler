@@ -18,6 +18,21 @@ class OpenAIParser:
             
         self.client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url)
 
+    def _load_prompt(self, prompt_name: str = "audio_drama_script.md") -> str:
+        """Loads a prompt from the prompts directory."""
+        try:
+            prompt_path = os.path.join(os.path.dirname(__file__), "prompts", prompt_name)
+            if os.path.exists(prompt_path):
+                with open(prompt_path, "r", encoding="utf-8") as f:
+                    return f.read().strip()
+            else:
+                logger.warning(f"Prompt file not found: {prompt_path}. Using fallback instructions.")
+        except Exception as e:
+            logger.error(f"Error loading prompt {prompt_name}: {e}")
+        
+        # Fallback in case of error
+        return "You are an expert scriptwriter for audio dramas. Convert web novel text to JSON script format."
+
     async def parse_chapter(self, text: str) -> List[Dict[str, str]]:
         """
         Parses chapter text into a list of dialogue/narrator segments and mood shifts using OpenAI.
@@ -26,7 +41,6 @@ class OpenAIParser:
         if not text or not text.strip():
             return []
 
-        # Chunk the text to stay within token limits (approx 10,000 chars per chunk)
         # Chunk the text to stay within token limits (approx 4,000 chars per chunk)
         # 4k chars is the safe limit to ensure the resulting JSON script (which is 
         # much larger than the input) fits within the 4k output token limit.
@@ -46,21 +60,7 @@ class OpenAIParser:
             chunks.append("\n".join(current_chunk))
 
         full_script = []
-
-        system_instruction = (
-            "You are an expert scriptwriter for audio dramas. "
-            "Your task is to convert a web novel chapter segment into a structured script. "
-            "Identify all dialogue and the character speaking, and infer their gender ('male', 'female', or 'unknown'). Everything else is 'narrator'. "
-            "In addition to dialogue, you must identify significant mood shifts in the story. "
-            "Allowed moods: 'action', 'peaceful', 'mysterious', 'romantic', 'sad', 'suspense'. "
-            "Output MUST be a valid JSON object containing a single key 'script' which maps to a list of objects. "
-            "Each object in the list must have a 'type' field which is either 'segment' or 'mood_shift'. "
-            "For 'segment' type: include 'role', 'text', and 'gender'. "
-            "For 'mood_shift' type: include 'mood' (one of the allowed moods). "
-            "Combine consecutive segments by the same character. "
-            "IMPORTANT: Ensure ALL fields and objects are correctly separated by commas. "
-            "Do not add any text outside the JSON object."
-        )
+        system_instruction = self._load_prompt()
 
         for i, chunk in enumerate(chunks):
             chunk_success = False
@@ -157,67 +157,115 @@ class OpenAIParser:
         return full_script
 
 class VoiceManager:
-    NARRATOR_VOICE_ID = "EXAVITQu4vr4xnSDxMaL" # Rachel or any default
+    # Default narrator voice: "Anh" (Vietnamese Female)
+    DEFAULT_NARRATOR_VOICE_ID = "ywBZEqUhld86Jeajq94o"
+    
+    # Global cache to avoid redundant API calls across chapters
+    _global_available_voices = None
+    _global_voice_metadata = {} # {voice_id: {'gender': str, 'name': str}}
+    _global_init_lock = asyncio.Lock()
 
     def __init__(self, db, story_id: str):
         self.db = db
         self.story_id = story_id
         self._voice_cache = {}
         self._initialized = False
-        self._lock = asyncio.Lock()
-        self._available_voices = []
+        self._instance_lock = asyncio.Lock()
+        
+        # Override narrator ID from env if provided
+        self.narrator_voice_id = os.getenv("VVR_NARRATOR_VOICE_ID", self.DEFAULT_NARRATOR_VOICE_ID)
 
     async def _init_cache(self):
-        if not self._initialized:
-            if hasattr(self.db, 'get_all_story_voices'):
-                db_voices = await self.db.get_all_story_voices(self.story_id)
-                self._voice_cache.update(db_voices)
-            
-            # Fetch ElevenLabs voices
-            import os
-            api_key = os.getenv("ELEVENLABS_API_KEY")
-            if not api_key:
-                logger.warning("ELEVENLABS_API_KEY missing, using fallback empty voice list")
-                self._available_voices = []
-            else:
-                try:
-                    from elevenlabs.client import ElevenLabs
-                    client = ElevenLabs(api_key=api_key)
-                    # Fetch voices blockingly inside thread to avoid async loop issues
-                    def fetch_voices():
-                        return client.voices.get_all().voices
-                    voices = await asyncio.to_thread(fetch_voices)
-                    self._available_voices = [v.voice_id for v in voices]
-                except Exception as e:
-                    logger.error(f"Failed to fetch ElevenLabs voices: {e}")
-                    self._available_voices = []
+        if self._initialized:
+            return
 
-            self._initialized = True
+        # 1. Load existing assignments from DB
+        if hasattr(self.db, 'get_all_story_voices'):
+            db_voices = await self.db.get_all_story_voices(self.story_id)
+            self._voice_cache.update(db_voices)
+        
+        # 2. Fetch ElevenLabs voices (using global cache)
+        async with self._global_init_lock:
+            if VoiceManager._global_available_voices is None:
+                api_key = os.getenv("ELEVENLABS_API_KEY")
+                if not api_key:
+                    logger.warning("ELEVENLABS_API_KEY missing, using fallback empty voice list")
+                    VoiceManager._global_available_voices = []
+                else:
+                    try:
+                        from elevenlabs.client import ElevenLabs
+                        client = ElevenLabs(api_key=api_key)
+                        
+                        def fetch_voices():
+                            return client.voices.get_all().voices
+                            
+                        voices = await asyncio.to_thread(fetch_voices)
+                        VoiceManager._global_available_voices = [v.voice_id for v in voices]
+                        VoiceManager._global_voice_metadata = {
+                            v.voice_id: {
+                                'name': v.name,
+                                'gender': v.labels.get('gender', 'unknown').lower() if v.labels else 'unknown'
+                            }
+                            for v in voices
+                        }
+                        logger.info(f"Fetched {len(voices)} voices from ElevenLabs.")
+                    except Exception as e:
+                        logger.error(f"Failed to fetch ElevenLabs voices: {e}")
+                        VoiceManager._global_available_voices = []
+
+        self._initialized = True
 
     async def get_voice(self, character_name: str, gender: str = "unknown") -> str:
         """
-        Retrieves the voice name for a character. Narrator is always the default.
+        Retrieves the voice ID for a character. Narrator is always the default.
+        Assigns a new voice if not already cached, respecting gender if possible.
         """
         if not character_name:
-            return self.NARRATOR_VOICE_ID
+            return self.narrator_voice_id
             
         char_normalized = character_name.lower().strip()
         if char_normalized == "narrator":
-            return self.NARRATOR_VOICE_ID
+            return self.narrator_voice_id
 
-        async with self._lock:
+        async with self._instance_lock:
             await self._init_cache()
             
+            # Check cache (instance and DB)
             if char_normalized in self._voice_cache:
                 return self._voice_cache[char_normalized]
             
-            import random
-            assigned_voice = self.NARRATOR_VOICE_ID
-            if self._available_voices:
-                assigned_voice = random.choice(self._available_voices)
-
+            # Filter available voices
+            gender = gender.lower()
+            available_ids = VoiceManager._global_available_voices or []
+            
+            # Exclude narrator and already assigned voices to maximize variety
+            assigned_ids = set(self._voice_cache.values())
+            candidate_ids = [vid for vid in available_ids if vid != self.narrator_voice_id and vid not in assigned_ids]
+            
+            # If no unassigned voices, allow reuse of non-narrator voices
+            if not candidate_ids:
+                candidate_ids = [vid for vid in available_ids if vid != self.narrator_voice_id]
+            
+            # If STILL no candidates (pool is empty or only narrator exists), use narrator
+            if not candidate_ids:
+                assigned_voice = self.narrator_voice_id
+            else:
+                # Filter by gender if specified
+                gender_candidates = [
+                    vid for vid in candidate_ids 
+                    if VoiceManager._global_voice_metadata.get(vid, {}).get('gender') == gender
+                ]
+                
+                # If no matching gender, fallback to all candidates
+                final_pool = gender_candidates if gender_candidates else candidate_ids
+                
+                # Pick a random voice from the pool
+                assigned_voice = random.choice(final_pool)
+            
+            # Save to cache and DB
             self._voice_cache[char_normalized] = assigned_voice
             if hasattr(self.db, 'save_character_voice'):
                 await self.db.save_character_voice(self.story_id, char_normalized, assigned_voice)
                 
+            logger.debug(f"Assigned voice '{assigned_voice}' ({VoiceManager._global_voice_metadata.get(assigned_voice, {}).get('name', 'Unknown')}) to character '{character_name}' (gender: {gender})")
             return assigned_voice
