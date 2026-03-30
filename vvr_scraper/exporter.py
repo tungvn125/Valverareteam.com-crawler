@@ -330,6 +330,9 @@ async def tao_file_mp3(content_list: ContentList, filename: str, title: str = "C
     # 4. Synthesize each chunk
     try:
         def run_tts_chunked():
+            from elevenlabs.client import ElevenLabs
+            from elevenlabs import VoiceSettings
+            
             client = ElevenLabs(api_key=api_key)
             audio_segments = []
             
@@ -338,11 +341,17 @@ async def tao_file_mp3(content_list: ContentList, filename: str, title: str = "C
                 if not chunk.strip():
                     continue
                 logger.debug(f"Synthesizing chunk {i+1}/{total_chunks}...")
-                # Generate speech using ElevenLabs API v2.x
+                # Generate speech using ElevenLabs API v3
                 audio_stream = client.text_to_speech.convert(
                     voice_id="EXAVITQu4vr4xnSDxMaL", # Default voice ID (Rachel)
                     text=chunk, 
-                    model_id="eleven_multilingual_v2"
+                    model_id="eleven_v3",
+                    voice_settings=VoiceSettings(
+                        stability=0.75, # High stability for audiobook narration
+                        similarity_boost=0.75,
+                        style=0.0,
+                        use_speaker_boost=True
+                    )
                 )
                 # Consume generator into bytes
                 audio_bytes = b"".join(list(audio_stream))
@@ -427,6 +436,7 @@ async def tao_file_audiodrama(
             voice_name = await voice_manager.get_voice(char_name, gender)
             enriched_script.append({
                 'type': 'segment',
+                'role': char_name,
                 'voice': voice_name,
                 'text': text
             })
@@ -446,6 +456,13 @@ async def tao_file_audiodrama(
     
     try:
         def run_audio_drama_v2():
+            from elevenlabs.client import ElevenLabs
+            from elevenlabs import VoiceSettings
+            from pydub import AudioSegment
+            from .bgm_manager import BGMManager
+            from .mixing_engine import MixingEngine
+            import io
+
             api_key = os.getenv("ELEVENLABS_API_KEY")
             if not api_key:
                 raise ValueError("ELEVENLABS_API_KEY environment variable is required")
@@ -479,13 +496,24 @@ async def tao_file_audiodrama(
                 else:
                     voice_id = item['voice']
                     text = item['text']
-                    logger.debug(f"Synthesizing [{voice_id}]: {text[:30]}...")
+                    role = item.get('role', 'narrator')
+                    logger.debug(f"Synthesizing [{voice_id}] as {role}: {text[:30]}...")
 
-                    # Generate speech using ElevenLabs API v2.x
+                    # Stability: Narrator needs to be stable (0.75), Characters need to be expressive (0.35)
+                    # to allow ElevenLabs v3 emotion tags [happy] etc. to work effectively.
+                    stability = 0.75 if role.lower() == 'narrator' else 0.35
+
+                    # Generate speech using ElevenLabs API v3
                     audio_stream = client.text_to_speech.convert(
                         voice_id=voice_id,
                         text=text, 
-                        model_id="eleven_multilingual_v2"
+                        model_id="eleven_v3",
+                        voice_settings=VoiceSettings(
+                            stability=stability,
+                            similarity_boost=0.75,
+                            style=0.0,
+                            use_speaker_boost=True
+                        )
                     )
                     audio_bytes = b"".join(list(audio_stream))
                     voice_segment = AudioSegment.from_file(io.BytesIO(audio_bytes), format="mp3")
