@@ -10,7 +10,7 @@ from typing import List, Dict, Any, Union, cast, Optional
 
 import httpx
 from .audio_drama import OpenAIParser, VoiceManager
-# Heavy AI libraries (numpy, vieneu) are lazy-loaded inside tao_file_mp3 
+# Heavy AI libraries (numpy, ElevenLabs) are lazy-loaded inside tao_file_mp3 
 # to ensure a fast cold start for the CLI and Web UI.
 from ebooklib import epub
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image
@@ -383,7 +383,7 @@ async def tao_file_audiodrama(
     AI-Powered Audio Drama generation.
     1. Extracts text and parses into a script (dialogue/narrator) using OpenAI.
     2. Assigns voices to characters using VoiceManager.
-    3. Synthesizes each segment with Vieneu, mixes with BGM using MixingEngine.
+    3. Synthesizes each segment with ElevenLabs, mixes with BGM using MixingEngine.
     4. Caches the script to <filename>.script.json for persistence/debugging.
     """
 
