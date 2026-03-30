@@ -25,6 +25,7 @@ memory/
 !requirements.txt
 !GEMINI.md
 !example_trang_chinh.html
+!vvr_scraper/prompts/*.md
 *.egg-info/
 dist/
 build/
