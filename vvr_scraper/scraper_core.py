@@ -119,6 +119,7 @@ async def lay_thong_tin_truyen(client: httpx.AsyncClient, ten_truyen: str, verbo
             cover_url = image_url_element['srcset'].split(',')[0].split(' ')[0]
 
     if cover_url:
+        fd = None
         try:
             # Prepend base URL if relative (though usually absolute with B-CDN)
             if cover_url.startswith('/'):
@@ -133,6 +134,14 @@ async def lay_thong_tin_truyen(client: httpx.AsyncClient, ten_truyen: str, verbo
                 f.write(response.content)
         except Exception as e:
             logger.warning(f"Không thể tải ảnh bìa: {e}")
+            if fd is not None:
+                try:
+                    os.close(fd)
+                    if os.path.exists(cover_path):
+                        os.remove(cover_path)
+                except Exception:
+                    pass
+            cover_path = None
 
     return StoryInfo(
         title=title,
