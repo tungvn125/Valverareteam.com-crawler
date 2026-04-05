@@ -39,20 +39,17 @@ class ImageGenerator:
         Converts the image to WebP format.
         """
         prompt_hash = self._get_hash(prompt)
+        filename = f"{prompt_hash}.webp"
         
-        # If output_path is not provided, use the hash-based name in cache_dir
+        # Determine final_path
         if not output_path:
-            filename = f"{prompt_hash}.webp"
             final_path = os.path.join(self.cache_dir, filename)
         else:
-            # If output_path is a directory, use hash-based filename within it
             if os.path.isdir(output_path):
-                filename = f"{prompt_hash}.webp"
                 final_path = os.path.join(output_path, filename)
             else:
-                # If output_path is a file path, ensure it ends with .webp or change it?
-                # The requirement says "convert to WebP".
-                base, ext = os.path.splitext(output_path)
+                # Use provided path but ensure .webp extension
+                base, _ = os.path.splitext(output_path)
                 final_path = base + ".webp"
 
         # Check for deduplication
