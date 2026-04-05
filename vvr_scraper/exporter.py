@@ -13,6 +13,7 @@ from .audio_drama import OpenAIParser, VoiceManager, ScriptResult
 from .bgm_manager import BGMManager
 from .mixing_engine import MixingEngine
 from .freesound_manager import FreesoundManager
+from .image_gen import ImageGenerator
 # Heavy AI libraries (numpy, ElevenLabs) are lazy-loaded inside tao_file_mp3 
 # to ensure a fast cold start for the CLI and Web UI.
 from ebooklib import epub
@@ -462,7 +463,19 @@ async def tao_file_audiodrama(
     bgm_manager.refresh()
     freesound_manager = FreesoundManager()
     mixing_engine = MixingEngine()
+    
+    # Initialize ImageGenerator
+    output_dir = os.path.dirname(filename)
+    backgrounds_dir = os.path.join(output_dir, "backgrounds")
+    os.makedirs(backgrounds_dir, exist_ok=True)
+    image_gen = ImageGenerator(cache_dir=backgrounds_dir)
+    
     semaphore = asyncio.Semaphore(5)
+
+    # Audio timing constants
+    VOICE_OVERLAY_OFFSET_MS = 1000
+    CROSSFADE_MS = 1000
+    GAP_BETWEEN_SEGMENTS_MS = 500
 
     # Group into blocks
     blocks = enriched_script.blocks
@@ -492,7 +505,7 @@ async def tao_file_audiodrama(
     try:
         final_audio = None
         current_block_start_ms = 0
-        all_chapter_alignments = []
+        all_events = []
         
         for i, block in enumerate(blocks):
             mood_info = block['mood_info']
@@ -501,21 +514,72 @@ async def tao_file_audiodrama(
             
             logger.info(f"Processing Block {i+1}/{len(blocks)} (Tags: {tags})...")
             
+            # 1. Background Generation
+            visual_prompt = mood_info.get('visual_prompt')
+            bg_rel_path = None
+            if visual_prompt:
+                try:
+                    bg_full_path = await image_gen.generate(visual_prompt)
+                    # Store as relative path for portability
+                    bg_rel_path = os.path.join("backgrounds", os.path.basename(bg_full_path))
+                except Exception as e:
+                    logger.warning(f"Failed to generate background image: {e}")
+
+            # Record background event in manifest
+            if bg_rel_path:
+                all_events.append({
+                    "type": "background",
+                    "time_ms": current_block_start_ms,
+                    "src": bg_rel_path,
+                    "transition": mood_info.get('transition', 'fade')
+                })
+            
+            # Record VFX event in manifest
+            vfx_list = mood_info.get('vfx', [])
+            if vfx_list:
+                all_events.append({
+                    "type": "vfx",
+                    "time_ms": current_block_start_ms,
+                    "effect": vfx_list[0] if isinstance(vfx_list, list) and vfx_list else str(vfx_list),
+                    "intensity": mood_info.get('intensity', 0.5),
+                    "duration": mood_info.get('duration', 1000)
+                })
+
             # 2. Parallel Synthesis for the block
-            # Each synthesize_segment now returns (AudioSegment, word_alignments)
             synthesis_results = await asyncio.gather(*[synthesize_segment(s) for s in segments])
             voice_segments = [res[0] for res in synthesis_results]
             raw_block_alignments = [res[1] for res in synthesis_results]
             
-            # Adjust word alignments to global timestamps
-            segment_offset_in_block_ms = 1000 # Voice overlay offset in MixingEngine
+            # Adjust word alignments and create dialogue events
+            segment_offset_in_block_ms = VOICE_OVERLAY_OFFSET_MS
             for j, segment_alignments in enumerate(raw_block_alignments):
-                for word in segment_alignments:
-                    word['start_time_ms'] += current_block_start_ms + segment_offset_in_block_ms
-                    word['end_time_ms'] += current_block_start_ms + segment_offset_in_block_ms
-                all_chapter_alignments.extend(segment_alignments)
-                # Update offset for next segment in block (segment duration + 500ms gap)
-                segment_offset_in_block_ms += len(voice_segments[j]) + 500
+                role = segments[j].get('role', 'narrator')
+                text = segments[j].get('text', '')
+                
+                seg_start_ms = current_block_start_ms + segment_offset_in_block_ms
+                seg_duration_ms = len(voice_segments[j])
+                
+                # Create dialogue event with word-level alignment
+                dialogue_event = {
+                    "type": "dialogue",
+                    "time_ms": seg_start_ms,
+                    "role": role,
+                    "text": text,
+                    "alignment": []
+                }
+                
+                for word_data in segment_alignments:
+                    # Create a copy to avoid modifying original and adjust to global timeline
+                    w = {
+                        "word": word_data["word"],
+                        "start": word_data["start"] + seg_start_ms,
+                        "end": word_data["end"] + seg_start_ms
+                    }
+                    dialogue_event["alignment"].append(w)
+                
+                all_events.append(dialogue_event)
+                # Update offset for next segment in block
+                segment_offset_in_block_ms += seg_duration_ms + GAP_BETWEEN_SEGMENTS_MS
 
             # 3. Find BGM (Async)
             bgm_track_path = None
@@ -542,12 +606,12 @@ async def tao_file_audiodrama(
                     bgm_track_path = None
 
             def process_block(v_segments, current_bgm_path, current_final_audio):
-                # 2. Join voice segments with 500ms gaps
+                # 2. Join voice segments with gaps
                 combined_voice = AudioSegment.silent(duration=0)
                 for j, vs in enumerate(v_segments):
                     combined_voice += vs
                     if j < len(v_segments) - 1:
-                        combined_voice += AudioSegment.silent(duration=500)
+                        combined_voice += AudioSegment.silent(duration=GAP_BETWEEN_SEGMENTS_MS)
 
                 # 4. Mix
                 if current_bgm_path and os.path.exists(current_bgm_path):
@@ -564,17 +628,21 @@ async def tao_file_audiodrama(
                 bg_duration = len(combined_voice) + 2000
                 background = mixing_engine.create_looped_background(bgm_audio, bg_duration, gain_db=-20.0)
 
-                # Overlay voice (offset by 1s for better entry)
-                block_audio = mixing_engine.overlay_voice_on_background(background, combined_voice.fade_in(500).fade_out(500))
+                # Overlay voice
+                block_audio = mixing_engine.overlay_voice_on_background(
+                    background, 
+                    combined_voice.fade_in(500).fade_out(500),
+                    position=VOICE_OVERLAY_OFFSET_MS
+                )
 
                 block_audio_duration = len(block_audio)
 
-                # 5. Append to final audio with 1s crossfade
+                # 5. Append to final audio with crossfade
                 new_final = current_final_audio
                 if new_final is None:
                     new_final = block_audio
                 else:
-                    new_final = new_final.append(block_audio, crossfade=1000)
+                    new_final = new_final.append(block_audio, crossfade=CROSSFADE_MS)
 
                 # Cleanup downloaded BGM if it was a temp file
                 if current_bgm_path and "temp_bgm_" in str(current_bgm_path) and os.path.exists(current_bgm_path):
@@ -584,15 +652,23 @@ async def tao_file_audiodrama(
                 return new_final, block_audio_duration
 
             final_audio, block_duration = await asyncio.to_thread(process_block, voice_segments, bgm_track_path, final_audio)
-            # Update current_block_start_ms for next block, account for 1000ms crossfade overlap
-            current_block_start_ms += (block_duration - 1000)
+            # Update current_block_start_ms for next block, account for crossfade overlap
+            current_block_start_ms += (block_duration - CROSSFADE_MS)
         
-        # Save manifest (mock for now, but keeping data)
-        manifest_file = f"{filename}.manifest.json"
+        # Save enriched manifest
+        manifest_base = filename
+        if manifest_base.endswith(".ad.mp3"):
+            manifest_base = manifest_base[:-7]
+        else:
+            manifest_base = os.path.splitext(filename)[0]
+            
+        manifest_file = manifest_base + ".manifest.json"
         with open(manifest_file, 'w', encoding='utf-8') as f:
             json.dump({
                 "title": title,
-                "word_alignments": all_chapter_alignments
+                "audio": os.path.basename(filename),
+                "base_path": "",
+                "events": sorted(all_events, key=lambda x: x["time_ms"])
             }, f, ensure_ascii=False, indent=2)
         logger.info(f"Saved cinematic manifest to {manifest_file}")
 
