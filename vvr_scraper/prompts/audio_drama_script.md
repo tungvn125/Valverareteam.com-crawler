@@ -39,6 +39,8 @@ The output **MUST** be a valid JSON object with a single key `"script"` mapping 
     *   `tags`: A list of English strings (1-3 keywords).
     *   `visual_prompt`: (Required) A 1-sentence English description for image generation. Describe the setting, characters present, and the main action. **Always write this in English.**
     *   `vfx`: (Required) A list of effects, choose from: `shake`, `flash`, `rain`, `fog`, or `none`.
+    *   `intensity`: (Required) A float from 0.1 to 1.0 representing the strength of the effects.
+    *   `duration`: (Required) Duration of the mood/effects in milliseconds (e.g., 2000).
     *   `transition`: (Required) Choose from: `fade`, `cut`, or `zoom`.
 
 ## Constraints
