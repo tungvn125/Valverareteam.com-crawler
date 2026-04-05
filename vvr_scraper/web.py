@@ -7,10 +7,11 @@ import re
 import uuid
 from typing import List, Optional, Dict, Any
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import httpx
 import uvicorn
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
@@ -23,6 +24,7 @@ from .exporter import (
     tao_file_epub, tao_file_pdf, tao_file_html, tao_file_md, tao_file_txt, tao_file_mp3,
     tao_file_audiodrama
 )
+from .freesound_manager import FreesoundManager
 from .utils import (
     sanitize_filename, HEADERS, normalize_vietnamese_url, get_token_from_state,
     BASE_URL, get_config_path
@@ -142,8 +144,9 @@ def websocket_sink(message):
     try:
         if _event_loop and _event_loop.is_running():
             asyncio.run_coroutine_threadsafe(manager.broadcast(log_msg), _event_loop)
-    except Exception:
-        pass
+    except Exception as e:
+        # Don't use logger.warning here as it might cause recursion if the sink fails
+        print(f"Failed to broadcast log via WebSocket: {e}")
 
 # Add sink to loguru
 logger.add(websocket_sink, level="DEBUG")
@@ -159,6 +162,9 @@ class DownloadRequest(BaseModel):
 
 class BatchImportRequest(BaseModel):
     items: List[str]
+
+class FreesoundCallbackRequest(BaseModel):
+    code: str
 
 class Settings(BaseModel):
     num_workers: int = 1
@@ -191,6 +197,7 @@ task_log_buffers: Dict[str, List[dict]] = {}
 async def run_scrape_task(req: DownloadRequest, task_id: str):
     """Orchestrates the scraping task and sends progress via WebSocket."""
     active_tasks_futures[task_id] = asyncio.current_task()
+    is_finished = False
     try:
         await manager.broadcast({"type": "status", "task_id": task_id, "status": "Resolving story..."})
         
@@ -200,7 +207,7 @@ async def run_scrape_task(req: DownloadRequest, task_id: str):
             for c in session_state['cookies']:
                 cookies[c['name']] = c['value']
         
-        async with httpx.AsyncClient(headers=HEADERS, cookies=cookies) as client:
+        async with httpx.AsyncClient(headers=HEADERS, cookies=cookies, timeout=30.0) as client:
             story_info = await lay_thong_tin_truyen(client, req.slug)
             
         await manager.broadcast({"type": "info", "task_id": task_id, "title": story_info.title})
@@ -213,11 +220,19 @@ async def run_scrape_task(req: DownloadRequest, task_id: str):
             try:
                 with open(checkpoint_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                    if isinstance(data, dict) and "scraped" in data:
+                    # A valid new-format checkpoint should be a dict with 'scraped' and 'slug'
+                    if isinstance(data, dict) and "scraped" in data and "slug" in data:
                         checkpoint = data
-                    else:
-                        # Migration for old checkpoints that only stored the 'scraped' dict
+                    elif isinstance(data, dict) and all(isinstance(v, list) for v in data.values()):
+                        # Old format was likely {url: [content_items]}
                         checkpoint["scraped"] = data
+                    else:
+                        # Unknown or extremely old format, try to adapt if it's a dict
+                        if isinstance(data, dict):
+                             checkpoint["scraped"] = data
+                        else:
+                             logger.warning(f"Unexpected checkpoint format in {checkpoint_file}. Starting fresh.")
+                             checkpoint["scraped"] = {}
                 logger.info(f"Loaded checkpoint for task {task_id}. Skipping {len(checkpoint['scraped'])} chapters.")
             except (json.JSONDecodeError, Exception) as e:
                 logger.warning(f"Corrupt checkpoint detected, starting fresh: {e}")
@@ -403,13 +418,6 @@ async def run_scrape_task(req: DownloadRequest, task_id: str):
         if os.path.exists(checkpoint_file):
             os.remove(checkpoint_file)
 
-        # Clean up temp cover file
-        if story_info.cover_path and os.path.exists(story_info.cover_path):
-            try:
-                os.remove(story_info.cover_path)
-            except OSError:
-                pass
-
         await manager.broadcast({"type": "complete", "task_id": task_id, "path": output_folder})
         logger.success(f"Task {task_id} completed: {story_info.title}")
     except asyncio.CancelledError:
@@ -421,9 +429,23 @@ async def run_scrape_task(req: DownloadRequest, task_id: str):
         logger.error(f"Task {task_id} failed: {e}")
         logger.error(traceback.format_exc())
         await manager.broadcast({"type": "error", "task_id": task_id, "error": str(e)})
+        is_finished = True
     finally:
+        # Clean up temp cover file
+        if 'story_info' in locals() and story_info and hasattr(story_info, 'cover_path') and story_info.cover_path and os.path.exists(story_info.cover_path):
+            try:
+                os.remove(story_info.cover_path)
+            except OSError:
+                pass
         if task_id in active_tasks_futures:
             del active_tasks_futures[task_id]
+        if is_finished:
+            if task_id in active_tasks:
+                del active_tasks[task_id]
+            if task_id in task_log_buffers:
+                # Optional: We could delay deletion so logs remain visible for a while.
+                # For now, to stop memory leaks, we delete them when done.
+                del task_log_buffers[task_id]
 
 @app.get("/health")
 async def health_check():
@@ -457,6 +479,28 @@ async def cancel_task(task_id: str):
     if task_id in task_log_buffers:
         del task_log_buffers[task_id]
     return {"status": "cancelled"}
+
+@app.get("/api/freesound/auth")
+async def freesound_auth():
+    """Returns the Freesound authorization URL."""
+    try:
+        fs_manager = FreesoundManager()
+        url = fs_manager.get_auth_url()
+        return {"url": url}
+    except Exception as e:
+        logger.error(f"Error getting Freesound auth URL: {e}")
+        return {"error": str(e)}, 500
+
+@app.post("/api/freesound/callback")
+async def freesound_callback(req: FreesoundCallbackRequest):
+    """Exchanges code for token and saves it."""
+    try:
+        fs_manager = FreesoundManager()
+        token = await fs_manager.exchange_code(req.code)
+        return {"status": "success", "message": "Freesound authentication successful."}
+    except Exception as e:
+        logger.error(f"Error exchanging Freesound code: {e}")
+        return {"error": str(e)}, 500
 
 @app.get("/api/search")
 async def search_novels(q: str = Query(..., min_length=3)):
@@ -549,7 +593,7 @@ async def get_story_info(slug: str):
             for c in session_state['cookies']:
                 cookies[c['name']] = c['value']
         
-        async with httpx.AsyncClient(headers=HEADERS, cookies=cookies) as client:
+        async with httpx.AsyncClient(headers=HEADERS, cookies=cookies, timeout=30.0) as client:
             story_info = await lay_thong_tin_truyen(client, slug)
             return {
                 "title": story_info.title,
@@ -598,6 +642,36 @@ async def websocket_endpoint(websocket: WebSocket):
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(websocket)
+
+@app.get("/api/novels/manifest")
+async def get_novel_manifest(path: str = Query(..., description="Path relative to default output folder")):
+    """Reads and returns the JSON manifest for a given novel/chapter path."""
+    settings = load_vvr_settings()
+    base_dir = Path(settings.default_output_folder or ".").absolute()
+    
+    # Securely join and resolve the path
+    rel_path = path.lstrip("/")
+    target_path = (base_dir / rel_path).resolve()
+    
+    if not str(target_path).startswith(str(base_dir)):
+        raise HTTPException(status_code=403, detail="Access denied: Path is outside the novels directory")
+    
+    manifest_file = target_path / "manifest.json"
+    if not manifest_file.exists():
+        raise HTTPException(status_code=404, detail="Manifest not found")
+    
+    try:
+        with open(manifest_file, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        logger.error(f"Error reading manifest at {manifest_file}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Mount novel assets
+vvr_settings_for_mount = load_vvr_settings()
+novels_mount_dir = os.path.abspath(vvr_settings_for_mount.default_output_folder or ".")
+os.makedirs(novels_mount_dir, exist_ok=True)
+app.mount("/novels", StaticFiles(directory=novels_mount_dir), name="novels")
 
 # Mount static files
 static_dir = os.path.join(os.path.dirname(__file__), "static")
@@ -687,8 +761,6 @@ async def sync_all_novels():
                         active_tasks[task_id] = req
                         await download_queue.add_task(req, task_id)
                         
-                        # Reset has_updates immediately to prevent redundant queuing
-                        await app.state.db.update_library_metadata(slug, {"has_updates": 0})
                         sync_count += 1
                     
                     # Cleanup temp file
