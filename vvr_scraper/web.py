@@ -647,13 +647,13 @@ async def websocket_endpoint(websocket: WebSocket):
 async def get_novel_manifest(path: str = Query(..., description="Path relative to default output folder")):
     """Reads and returns the JSON manifest for a given novel/chapter path."""
     settings = load_vvr_settings()
-    base_dir = Path(settings.default_output_folder or ".").absolute()
+    base_dir = Path(settings.default_output_folder or "novels").absolute()
     
     # Securely join and resolve the path
     rel_path = path.lstrip("/")
     target_path = (base_dir / rel_path).resolve()
     
-    if not str(target_path).startswith(str(base_dir)):
+    if not target_path.is_relative_to(base_dir):
         raise HTTPException(status_code=403, detail="Access denied: Path is outside the novels directory")
     
     manifest_file = target_path / "manifest.json"
@@ -669,7 +669,7 @@ async def get_novel_manifest(path: str = Query(..., description="Path relative t
 
 # Mount novel assets
 vvr_settings_for_mount = load_vvr_settings()
-novels_mount_dir = os.path.abspath(vvr_settings_for_mount.default_output_folder or ".")
+novels_mount_dir = os.path.abspath(vvr_settings_for_mount.default_output_folder or "novels")
 os.makedirs(novels_mount_dir, exist_ok=True)
 app.mount("/novels", StaticFiles(directory=novels_mount_dir), name="novels")
 
