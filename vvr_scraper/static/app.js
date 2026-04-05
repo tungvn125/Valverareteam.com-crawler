@@ -45,6 +45,21 @@ themeToggle.onclick = () => {
     localStorage.setItem('theme', theme);
 };
 
+// VFX Intensity Logic
+const vfxIntensityInput = document.getElementById('vfxIntensity');
+const vfxIntensityValue = document.getElementById('vfxIntensityValue');
+let vfxIntensity = localStorage.getItem('vfxIntensity') || 100;
+
+if (vfxIntensityInput) {
+    vfxIntensityInput.value = vfxIntensity;
+    vfxIntensityValue.textContent = `${vfxIntensity}%`;
+    vfxIntensityInput.oninput = () => {
+        vfxIntensity = vfxIntensityInput.value;
+        vfxIntensityValue.textContent = `${vfxIntensity}%`;
+        localStorage.setItem('vfxIntensity', vfxIntensity);
+    };
+}
+
 // Tab Switching
 navSearch.onclick = () => {
     navSearch.classList.add('active');
@@ -760,16 +775,19 @@ function closeSettingsModal() {
     settingsModal.style.display = 'none';
 }
 
+let defaultOutputFolder = '';
+
 async function fetchSettings() {
     try {
         const response = await fetch('/api/settings');
         const data = await response.json();
+        defaultOutputFolder = data.default_output_folder || '';
         document.getElementById('globalNumWorkers').value = data.num_workers || 1;
-        document.getElementById('defaultOutputFolder').value = data.default_output_folder || '';
+        document.getElementById('defaultOutputFolder').value = defaultOutputFolder;
         
         // Update the download form's default output path if it's empty
-        if (!document.getElementById('outputPathInput').value && data.default_output_folder) {
-            document.getElementById('outputPathInput').value = data.default_output_folder;
+        if (!document.getElementById('outputPathInput').value && defaultOutputFolder) {
+            document.getElementById('outputPathInput').value = defaultOutputFolder;
         }
     } catch (e) {
         console.error('Failed to fetch settings', e);
@@ -847,8 +865,9 @@ function finishTask(taskId, path) {
 }
 
 function openCinema(path) {
+    const intensity = localStorage.getItem('vfxIntensity') || 100;
     // Open the cinema player in a new window/tab
-    window.open(`cinema.html?path=${encodeURIComponent(path)}`, '_blank');
+    window.open(`cinema.html?path=${encodeURIComponent(path)}&vfx=${intensity}`, '_blank');
 }
 
 // Library Management
@@ -948,6 +967,10 @@ function filterLibrary() {
             statusClass = 'archived';
             statusText = 'Đã lưu trữ';
         }
+
+        const hasCinema = novel.formats && novel.formats.includes('AD-MP3');
+        const cinemaBtn = hasCinema && novel.output_folder ? 
+            `<button class="btn-primary btn-sm watch-cinema-btn" style="background: linear-gradient(135deg, #00cfd5, #a855f7); border: none;">Xem Cinema 🎬</button>` : '';
         
         card.innerHTML = `
             ${updateBadge}
@@ -964,10 +987,22 @@ function filterLibrary() {
                 </div>
             </div>
             <div class="card-actions">
+                ${cinemaBtn}
                 <button class="btn-primary btn-sm update-novel-btn" data-slug="${novel.slug}">Cập nhật</button>
                 <button class="btn-secondary btn-sm preview-novel-btn">Chi tiết</button>
             </div>
         `;
+        
+        if (hasCinema && novel.output_folder) {
+            card.querySelector('.watch-cinema-btn').onclick = (e) => {
+                e.stopPropagation();
+                let relPath = novel.output_folder;
+                if (relPath && defaultOutputFolder && relPath.startsWith(defaultOutputFolder)) {
+                    relPath = relPath.substring(defaultOutputFolder.length).replace(/^[\\\/]+/, '');
+                }
+                openCinema(relPath);
+            };
+        }
         
         card.querySelector('.update-novel-btn').onclick = (e) => {
             e.stopPropagation();

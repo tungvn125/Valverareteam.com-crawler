@@ -311,7 +311,7 @@ class CinemaPlayer {
     }
 
     /**
-     * Handles background transitions with a cross-fade.
+     * Handles background transitions with a cross-fade and random Ken Burns effect.
      */
     updateBackground(event, immediate = false) {
         const imageUrl = `url('/novels/${this.novelPath}/${event.src}')`;
@@ -319,9 +319,13 @@ class CinemaPlayer {
         // If it's already the current background, do nothing
         if (this.bgCurrent.style.backgroundImage === imageUrl) return;
 
+        // Pick a random Ken Burns variation
+        const kbEffects = ['ken-burns-in', 'ken-burns-out', 'ken-burns-left', 'ken-burns-right'];
+        const randomKB = kbEffects[Math.floor(Math.random() * kbEffects.length)];
+
         if (immediate) {
             this.bgCurrent.style.backgroundImage = imageUrl;
-            this.bgCurrent.classList.add('ken-burns');
+            this.bgCurrent.className = 'bg-layer ' + randomKB;
             this.bgNext.classList.add('hidden');
             this.bgNext.style.backgroundImage = '';
             return;
@@ -329,14 +333,14 @@ class CinemaPlayer {
 
         // Use bgNext to load and fade in
         this.bgNext.style.backgroundImage = imageUrl;
+        this.bgNext.className = 'bg-layer ' + randomKB;
         this.bgNext.classList.remove('hidden');
-        this.bgNext.classList.add('ken-burns');
 
         // After transition (defined in CSS as 1.5s), swap them
         setTimeout(() => {
             if (this.bgNext.style.backgroundImage === imageUrl) {
                 this.bgCurrent.style.backgroundImage = imageUrl;
-                this.bgCurrent.classList.add('ken-burns');
+                this.bgCurrent.className = 'bg-layer ' + randomKB;
                 this.bgNext.classList.add('hidden');
                 this.bgNext.style.backgroundImage = '';
             }
@@ -449,4 +453,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (path) {
         window.player.loadManifest(path);
     }
+
+    // Set VFX scaling from URL
+    const vfxIntensity = urlParams.get('vfx') || 100;
+    document.documentElement.style.setProperty('--vfx-scale', vfxIntensity / 100);
 });
