@@ -66,41 +66,61 @@ class ImageGenerator:
         return await self._generate_new(prompt, final_path)
 
     async def _generate_new(self, prompt: str, final_path: str) -> str:
-        """Actually calls DALL-E and saves the image."""
-        logger.info(f"Generating new image for prompt: {prompt[:50]}...")
-        
-        try:
-            response = await self.client.images.generate(
-                model="dall-e-3",
-                prompt=prompt,
-                size="1024x1024", # or "1792x1024" for wide
-                quality="standard",
-                n=1,
-            )
+        """Actually calls DALL-E and saves the image with concurrency limit and robust error handling."""
+        async with self._semaphore:
+            logger.info(f"Generating new image for prompt: {prompt[:50]}...")
             
-            image_url = response.data[0].url
-            if not image_url:
-                raise Exception("No image URL returned from OpenAI")
+            try:
+                response = await self.client.images.generate(
+                    model="dall-e-3",
+                    prompt=prompt,
+                    size="1024x1024", # or "1792x1024" for wide
+                    quality="standard",
+                    n=1,
+                )
+                
+                if not response.data:
+                    raise Exception("No image data in OpenAI response")
+                    
+                image_url = response.data[0].url
+                if not image_url:
+                    raise Exception("No image URL returned from OpenAI")
 
-            # Download image
-            async with httpx.AsyncClient() as client:
-                resp = await client.get(image_url)
-                resp.raise_for_status()
-                image_data = resp.content
+                # Download image using shared client
+                try:
+                    resp = await self.httpx_client.get(image_url)
+                    resp.raise_for_status()
+                    image_data = resp.content
+                except httpx.HTTPError as e:
+                    logger.error(f"Network error during image download: {e}")
+                    raise
 
-            # Convert to WebP and save
-            await asyncio.to_thread(self._save_as_webp, image_data, final_path)
-            
-            logger.info(f"Image saved to {final_path}")
-            return final_path
+                # Convert to WebP and save
+                try:
+                    await asyncio.to_thread(self._save_as_webp, image_data, final_path)
+                except Exception as e:
+                    logger.error(f"Image processing error: {e}")
+                    raise
+                
+                logger.info(f"Image saved to {final_path}")
+                return final_path
 
-        except Exception as e:
-            logger.error(f"Failed to generate image: {e}")
-            raise
+            except openai.OpenAIError as e:
+                logger.error(f"OpenAI API error: {e}")
+                raise
+            except Exception as e:
+                logger.error(f"Unexpected error in image generation: {e}")
+                raise
 
     def _save_as_webp(self, image_data: bytes, output_path: str):
         """Converts raw image data (PNG/JPG) to WebP using Pillow."""
-        img = Image.open(io.BytesIO(image_data))
-        # Ensure directory exists for final_path
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        img.save(output_path, format="WEBP", quality=80)
+        try:
+            img = Image.open(io.BytesIO(image_data))
+            # Ensure directory exists for final_path
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            # Add RGB conversion for maximum compatibility
+            img = img.convert("RGB")
+            img.save(output_path, format="WEBP", quality=80)
+        except Exception as e:
+            logger.error(f"Failed to save image as WebP: {e}")
+            raise
