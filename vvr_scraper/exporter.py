@@ -410,22 +410,22 @@ async def tao_file_audiodrama(
     # 2. Parse if needed
     if not script:
         logger.info(f"Generating audio drama script for {title}...")
-            parser = OpenAIParser()
-            script = await parser.parse_chapter(full_text)
-            if not script:
-                logger.error("OpenAI failed to generate script. Aborting Audio Drama generation.")
-                return
-            try:
-                with open(script_file, 'w', encoding='utf-8') as f:
-                    json.dump(script, f, ensure_ascii=False, indent=2)
-                logger.info(f"Saved script checkpoint to {script_file}")
-            except Exception as e:
-                logger.warning(f"Failed to save script checkpoint: {e}")
+        parser = OpenAIParser()
+        script = await parser.parse_chapter(full_text)
+        if not script:
+            logger.error("OpenAI failed to generate script. Aborting Audio Drama generation.")
+            return
+        try:
+            with open(script_file, 'w', encoding='utf-8') as f:
+                json.dump(script, f, ensure_ascii=False, indent=2)
+            logger.info(f"Saved script checkpoint to {script_file}")
+        except Exception as e:
+            logger.warning(f"Failed to save script checkpoint: {e}")
 
 
     # 3. Prepare voice assignments and handle mood shifts
     voice_manager = VoiceManager(db_manager, story_id)
-    enriched_script = []
+    enriched_script = ScriptResult()
     for item in script:
         if item.get('type') == 'mood_shift':
             enriched_script.append(item)
@@ -445,8 +445,6 @@ async def tao_file_audiodrama(
 
     # 4. Synthesis and Mixing pipeline
     try:
-        from elevenlabs.client import ElevenLabs
-        from elevenlabs import VoiceSettings
         from pydub import AudioSegment
         import io
     except ImportError as e:
@@ -460,7 +458,6 @@ async def tao_file_audiodrama(
         logger.error("ELEVENLABS_API_KEY environment variable is required")
         return
 
-    client = ElevenLabs(api_key=api_key)
     bgm_manager = BGMManager()
     bgm_manager.refresh()
     freesound_manager = FreesoundManager()
@@ -468,18 +465,7 @@ async def tao_file_audiodrama(
     semaphore = asyncio.Semaphore(5)
 
     # Group into blocks
-    blocks = []
-    current_block = {'mood_info': {'type': 'mood_shift', 'mood': 'peaceful', 'tags': ['peaceful']}, 'segments': []}
-    
-    for item in enriched_script:
-        if item.get('type') == 'mood_shift':
-            if current_block['segments']:
-                blocks.append(current_block)
-            current_block = {'mood_info': item, 'segments': []}
-        else:
-            current_block['segments'].append(item)
-    if current_block['segments']:
-        blocks.append(current_block)
+    blocks = enriched_script.blocks
 
     async def synthesize_segment(item):
         async with semaphore:
@@ -491,29 +477,22 @@ async def tao_file_audiodrama(
             stability = 0.75 if role.lower() == 'narrator' else 0.35
             
             try:
-                # Run sync ElevenLabs call in thread
-                def call_elevenlabs():
-                    audio_stream = client.text_to_speech.convert(
-                        voice_id=voice_id,
-                        text=text, 
-                        model_id="eleven_v3",
-                        voice_settings=VoiceSettings(
-                            stability=stability,
-                            similarity_boost=0.75,
-                            style=0.0,
-                            use_speaker_boost=True
-                        )
-                    )
-                    return b"".join(list(audio_stream))
-                
-                audio_bytes = await asyncio.to_thread(call_elevenlabs)
-                return AudioSegment.from_file(io.BytesIO(audio_bytes), format="mp3")
+                # Use VoiceManager's synthesis to get word-level timestamps
+                audio_bytes, word_alignments = await voice_manager.synthesize(
+                    voice_id=voice_id,
+                    text=text,
+                    stability=stability
+                )
+                segment = AudioSegment.from_file(io.BytesIO(audio_bytes), format="mp3")
+                return segment, word_alignments
             except Exception as e:
                 logger.error(f"Error synthesizing segment: {e}")
-                return AudioSegment.silent(duration=500)
+                return AudioSegment.silent(duration=500), []
 
     try:
         final_audio = None
+        current_block_start_ms = 0
+        all_chapter_alignments = []
         
         for i, block in enumerate(blocks):
             mood_info = block['mood_info']
@@ -523,7 +502,20 @@ async def tao_file_audiodrama(
             logger.info(f"Processing Block {i+1}/{len(blocks)} (Tags: {tags})...")
             
             # 2. Parallel Synthesis for the block
-            voice_segments = await asyncio.gather(*[synthesize_segment(s) for s in segments])
+            # Each synthesize_segment now returns (AudioSegment, word_alignments)
+            synthesis_results = await asyncio.gather(*[synthesize_segment(s) for s in segments])
+            voice_segments = [res[0] for res in synthesis_results]
+            raw_block_alignments = [res[1] for res in synthesis_results]
+            
+            # Adjust word alignments to global timestamps
+            segment_offset_in_block_ms = 1000 # Voice overlay offset in MixingEngine
+            for j, segment_alignments in enumerate(raw_block_alignments):
+                for word in segment_alignments:
+                    word['start_time_ms'] += current_block_start_ms + segment_offset_in_block_ms
+                    word['end_time_ms'] += current_block_start_ms + segment_offset_in_block_ms
+                all_chapter_alignments.extend(segment_alignments)
+                # Update offset for next segment in block (segment duration + 500ms gap)
+                segment_offset_in_block_ms += len(voice_segments[j]) + 500
 
             # 3. Find BGM (Async)
             bgm_track_path = None
@@ -575,6 +567,8 @@ async def tao_file_audiodrama(
                 # Overlay voice (offset by 1s for better entry)
                 block_audio = mixing_engine.overlay_voice_on_background(background, combined_voice.fade_in(500).fade_out(500))
 
+                block_audio_duration = len(block_audio)
+
                 # 5. Append to final audio with 1s crossfade
                 new_final = current_final_audio
                 if new_final is None:
@@ -587,9 +581,21 @@ async def tao_file_audiodrama(
                     try: os.remove(current_bgm_path)
                     except: pass
 
-                return new_final
+                return new_final, block_audio_duration
 
-            final_audio = await asyncio.to_thread(process_block, voice_segments, bgm_track_path, final_audio)
+            final_audio, block_duration = await asyncio.to_thread(process_block, voice_segments, bgm_track_path, final_audio)
+            # Update current_block_start_ms for next block, account for 1000ms crossfade overlap
+            current_block_start_ms += (block_duration - 1000)
+        
+        # Save manifest (mock for now, but keeping data)
+        manifest_file = f"{filename}.manifest.json"
+        with open(manifest_file, 'w', encoding='utf-8') as f:
+            json.dump({
+                "title": title,
+                "word_alignments": all_chapter_alignments
+            }, f, ensure_ascii=False, indent=2)
+        logger.info(f"Saved cinematic manifest to {manifest_file}")
+
         if final_audio:
             logger.info(f"Exporting final Audio Drama to {filename}...")
             
