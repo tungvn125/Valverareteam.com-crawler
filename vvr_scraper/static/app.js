@@ -820,9 +820,17 @@ function finishTask(taskId, path) {
 
     const completedItem = document.createElement('div');
     completedItem.className = 'completed-item';
+    
+    // Normalize path for cinema player if it looks like a chapter path
+    // Path usually is "Novel Title/Chapter Title"
+    const cinemaButton = path ? `<button class="btn-primary btn-sm ml-10" onclick="openCinema('${path.replace(/\\/g, '/')}')">Xem Cinema 🎬</button>` : '';
+
     completedItem.innerHTML = `
         <div class="status-dot"></div>
-        <span>${task ? task.title : 'Nhiệm vụ'} (Đã xong)</span>
+        <div class="completed-task-row">
+            <span>${task ? task.title : 'Nhiệm vụ'} (Đã xong)</span>
+            ${cinemaButton}
+        </div>
     `;
     completedList.prepend(completedItem);
     
@@ -836,6 +844,11 @@ function finishTask(taskId, path) {
     if (taskList.children.length === 0) {
         taskList.innerHTML = '<p class="empty-msg">Chưa có nhiệm vụ nào.</p>';
     }
+}
+
+function openCinema(path) {
+    // Open the cinema player in a new window/tab
+    window.open(`cinema.html?path=${encodeURIComponent(path)}`, '_blank');
 }
 
 // Library Management
