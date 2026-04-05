@@ -9,7 +9,7 @@
 <body>
     <div id="cinema-player">
         <!-- Background images with Ken Burns effect -->
-        <div id="bg-canvas">
+        <div id="cinema-canvas">
             <div id="bg-image-current" class="bg-layer"></div>
             <div id="bg-image-next" class="bg-layer hidden"></div>
         </div>
@@ -36,6 +36,22 @@
                     <span id="pause-icon" class="hidden">⏸</span>
                 </button>
                 <div id="time-display">00:00 / 00:00</div>
+                
+                <!-- New Controls -->
+                <button id="scene-selector-btn" class="control-btn" title="Scene Selector">🖼️</button>
+                
+                <select id="speed-selector" class="control-select">
+                    <option value="0.5">0.5x</option>
+                    <option value="1" selected>1.0x</option>
+                    <option value="1.5">1.5x</option>
+                    <option value="2.0">2.0x</option>
+                </select>
+
+                <div class="volume-container">
+                    <span class="icon">🔊</span>
+                    <input type="range" id="volume-slider" min="0" max="1" step="0.1" value="0.8">
+                </div>
+
                 <button id="close-btn" class="control-btn" aria-label="Close">✕</button>
             </div>
         </div>
