@@ -9,7 +9,10 @@ from io import BytesIO
 from typing import List, Dict, Any, Union, cast, Optional
 
 import httpx
-from .audio_drama import OpenAIParser, VoiceManager
+from .audio_drama import OpenAIParser, VoiceManager, ScriptResult
+from .bgm_manager import BGMManager
+from .mixing_engine import MixingEngine
+from .freesound_manager import FreesoundManager
 # Heavy AI libraries (numpy, ElevenLabs) are lazy-loaded inside tao_file_mp3 
 # to ensure a fast cold start for the CLI and Web UI.
 from ebooklib import epub
@@ -398,16 +401,15 @@ async def tao_file_audiodrama(
     if os.path.exists(script_file):
         try:
             with open(script_file, 'r', encoding='utf-8') as f:
-                script = json.load(f)
+                raw_script = json.load(f)
+                script = ScriptResult(raw_script)
             logger.info(f"Loaded cached script from {script_file}")
         except Exception as e:
             logger.warning(f"Failed to load cached script: {e}")
 
-    # 2. Parse or load cached JSON script from <filename>.script.json
+    # 2. Parse if needed
     if not script:
-        # 2. Parse if needed
-        if not script:
-            logger.info(f"Generating audio drama script for {title}...")
+        logger.info(f"Generating audio drama script for {title}...")
             parser = OpenAIParser()
             script = await parser.parse_chapter(full_text)
             if not script:
@@ -444,67 +446,53 @@ async def tao_file_audiodrama(
     # 4. Synthesis and Mixing pipeline
     try:
         from elevenlabs.client import ElevenLabs
+        from elevenlabs import VoiceSettings
         from pydub import AudioSegment
-        from .bgm_manager import BGMManager
-        from .mixing_engine import MixingEngine
         import io
     except ImportError as e:
-        logger.error(f"Required libraries for Audio Drama v2 not found: {e}")
+        logger.error(f"Required libraries for Audio Drama v2.5 not found: {e}")
         return
 
-    logger.info(f"Synthesizing audio drama v2: {filename}...")
+    logger.info(f"Synthesizing audio drama v2.5 (Parallel & Block-based): {filename}...")
     
-    try:
-        def run_audio_drama_v2():
-            from elevenlabs.client import ElevenLabs
-            from elevenlabs import VoiceSettings
-            from pydub import AudioSegment
-            from .bgm_manager import BGMManager
-            from .mixing_engine import MixingEngine
-            import io
+    api_key = os.getenv("ELEVENLABS_API_KEY")
+    if not api_key:
+        logger.error("ELEVENLABS_API_KEY environment variable is required")
+        return
 
-            api_key = os.getenv("ELEVENLABS_API_KEY")
-            if not api_key:
-                raise ValueError("ELEVENLABS_API_KEY environment variable is required")
-                
-            client = ElevenLabs(api_key=api_key)
-            bgm_manager = BGMManager()
-            bgm_manager.refresh() # Ensure we have latest BGM files
-            mixing_engine = MixingEngine()
+    client = ElevenLabs(api_key=api_key)
+    bgm_manager = BGMManager()
+    bgm_manager.refresh()
+    freesound_manager = FreesoundManager()
+    mixing_engine = MixingEngine()
+    semaphore = asyncio.Semaphore(5)
+
+    # Group into blocks
+    blocks = []
+    current_block = {'mood_info': {'type': 'mood_shift', 'mood': 'peaceful', 'tags': ['peaceful']}, 'segments': []}
+    
+    for item in enriched_script:
+        if item.get('type') == 'mood_shift':
+            if current_block['segments']:
+                blocks.append(current_block)
+            current_block = {'mood_info': item, 'segments': []}
+        else:
+            current_block['segments'].append(item)
+    if current_block['segments']:
+        blocks.append(current_block)
+
+    async def synthesize_segment(item):
+        async with semaphore:
+            voice_id = item['voice']
+            text = item['text']
+            role = item.get('role', 'narrator')
             
-            master_audio = AudioSegment.silent(duration=0)
-            current_bgm = None
-            current_time_ms = 0
+            # Stability: Narrator needs to be stable (0.75), Characters need to be expressive (0.35)
+            stability = 0.75 if role.lower() == 'narrator' else 0.35
             
-            total_items = len(enriched_script)
-            for i, item in enumerate(enriched_script):
-                if item.get('type') == 'mood_shift':
-                    mood = item.get('mood')
-                    logger.debug(f"Mood shift detected: {mood}")
-                    
-                    # Finalize current BGM before switching
-                    if current_bgm:
-                        finalize_pos = current_time_ms + 1000
-                        master_audio += current_bgm[:finalize_pos].fade_out(1000)
-                    
-                    bgm_track = bgm_manager.get_random_track(mood)
-                    if bgm_track:
-                        current_bgm = AudioSegment.from_file(bgm_track)
-                    else:
-                        current_bgm = AudioSegment.silent(duration=600000) # 10m fallback
-                    
-                    current_time_ms = 0
-                else:
-                    voice_id = item['voice']
-                    text = item['text']
-                    role = item.get('role', 'narrator')
-                    logger.debug(f"Synthesizing [{voice_id}] as {role}: {text[:30]}...")
-
-                    # Stability: Narrator needs to be stable (0.75), Characters need to be expressive (0.35)
-                    # to allow ElevenLabs v3 emotion tags [happy] etc. to work effectively.
-                    stability = 0.75 if role.lower() == 'narrator' else 0.35
-
-                    # Generate speech using ElevenLabs API v3
+            try:
+                # Run sync ElevenLabs call in thread
+                def call_elevenlabs():
                     audio_stream = client.text_to_speech.convert(
                         voice_id=voice_id,
                         text=text, 
@@ -516,39 +504,109 @@ async def tao_file_audiodrama(
                             use_speaker_boost=True
                         )
                     )
-                    audio_bytes = b"".join(list(audio_stream))
-                    voice_segment = AudioSegment.from_file(io.BytesIO(audio_bytes), format="mp3")
+                    return b"".join(list(audio_stream))
+                
+                audio_bytes = await asyncio.to_thread(call_elevenlabs)
+                return AudioSegment.from_file(io.BytesIO(audio_bytes), format="mp3")
+            except Exception as e:
+                logger.error(f"Error synthesizing segment: {e}")
+                return AudioSegment.silent(duration=500)
 
-                    
-                    # Ensure we have a BGM even if script didn't start with mood_shift
-                    if current_bgm is None:
-                        bgm_track = bgm_manager.get_random_track("peaceful")
-                        if bgm_track:
-                            current_bgm = AudioSegment.from_file(bgm_track)
-                        else:
-                            current_bgm = AudioSegment.silent(duration=600000)
-                    
-                    # Mix voice into BGM
-                    current_bgm = mixing_engine.mix_with_ducking(current_bgm, voice_segment, current_time_ms)
-                    current_time_ms += len(voice_segment) + 500 # 500ms gap
+    try:
+        final_audio = None
+        
+        for i, block in enumerate(blocks):
+            mood_info = block['mood_info']
+            segments = block['segments']
+            tags = mood_info.get('tags', [mood_info.get('mood', 'peaceful')])
             
-            # Finalize last BGM
-            if current_bgm:
-                finalize_pos = current_time_ms + 1000
-                master_audio += current_bgm[:finalize_pos].fade_out(1000)
+            logger.info(f"Processing Block {i+1}/{len(blocks)} (Tags: {tags})...")
             
-            if len(master_audio) > 0:
-                logger.debug(f"Exporting Audio Drama to {filename}...")
-                master_audio.export(filename, format="mp3")
-                return True
-            return False
+            # 2. Parallel Synthesis for the block
+            voice_segments = await asyncio.gather(*[synthesize_segment(s) for s in segments])
+
+            # 3. Find BGM (Async)
+            bgm_track_path = None
+            # Check local first
+            for tag in tags:
+                bgm_track_path = bgm_manager.get_random_track(tag)
+                if bgm_track_path:
+                    logger.debug(f"Found local BGM for tag '{tag}': {bgm_track_path}")
+                    break
+
+            # If not found locally, try Freesound
+            if not bgm_track_path:
+                logger.info(f"No local BGM for {tags}, searching Freesound...")
+                try:
+                    fs_results = await freesound_manager.search_bgm(tags, limit=5)
+                    if fs_results:
+                        sound = fs_results[0]
+                        # Use a unique temp filename for downloaded BGM
+                        bgm_track_path = f"temp_bgm_{i}_{sound.id}.wav"
+                        await freesound_manager.download_and_convert(sound.id, bgm_track_path)
+                        logger.debug(f"Downloaded Freesound BGM: {bgm_track_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to fetch from Freesound: {e}")
+                    bgm_track_path = None
+
+            def process_block(v_segments, current_bgm_path, current_final_audio):
+                # 2. Join voice segments with 500ms gaps
+                combined_voice = AudioSegment.silent(duration=0)
+                for j, vs in enumerate(v_segments):
+                    combined_voice += vs
+                    if j < len(v_segments) - 1:
+                        combined_voice += AudioSegment.silent(duration=500)
+
+                # 4. Mix
+                if current_bgm_path and os.path.exists(current_bgm_path):
+                    bgm_audio = AudioSegment.from_file(current_bgm_path)
+                else:
+                    # Fallback to peaceful if everything fails
+                    fallback_path = bgm_manager.get_random_track("peaceful")
+                    if fallback_path:
+                        bgm_audio = AudioSegment.from_file(fallback_path)
+                    else:
+                        bgm_audio = AudioSegment.silent(duration=10000)
+
+                # Create looped background matching combined_voice + 2s padding
+                bg_duration = len(combined_voice) + 2000
+                background = mixing_engine.create_looped_background(bgm_audio, bg_duration, gain_db=-20.0)
+
+                # Overlay voice (offset by 1s for better entry)
+                block_audio = mixing_engine.overlay_voice_on_background(background, combined_voice.fade_in(500).fade_out(500))
+
+                # 5. Append to final audio with 1s crossfade
+                new_final = current_final_audio
+                if new_final is None:
+                    new_final = block_audio
+                else:
+                    new_final = new_final.append(block_audio, crossfade=1000)
+
+                # Cleanup downloaded BGM if it was a temp file
+                if current_bgm_path and "temp_bgm_" in str(current_bgm_path) and os.path.exists(current_bgm_path):
+                    try: os.remove(current_bgm_path)
+                    except: pass
+
+                return new_final
+
+            final_audio = await asyncio.to_thread(process_block, voice_segments, bgm_track_path, final_audio)
+        if final_audio:
+            logger.info(f"Exporting final Audio Drama to {filename}...")
             
-        success = await asyncio.to_thread(run_audio_drama_v2)
-        if not success:
-            logger.error("Audio Drama v2 failed to produce audio.")
+            def export_final():
+                final_audio.export(filename, format="mp3")
+            await asyncio.to_thread(export_final)
+            
+            # Cleanup script checkpoint if successful
+            script_file = f"{filename}.script.json"
+            if os.path.exists(script_file):
+                try: os.remove(script_file)
+                except: pass
         else:
-            logger.info(f"Tạo file Audio Drama v2 thành công: {filename}")
+            logger.error("Audio Drama generation failed: No audio produced.")
 
     except Exception as e:
-        logger.error(f"Lỗi khi tạo Audio Drama v2: {e}")
+        logger.error(f"Lỗi khi tạo Audio Drama v2.5: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
 

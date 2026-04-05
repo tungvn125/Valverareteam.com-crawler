@@ -23,8 +23,10 @@ class ScriptResult(list):
                 'mood': 'peaceful', 
                 'tags': ['peaceful'],
                 'visual_prompt': 'A peaceful setting.',
-                'vfx': ['none'],
-                'transition': 'fade'
+                'vfx': [],
+                'transition': 'fade',
+                'intensity': 0.5,
+                'duration': 1000
             }, 
             'segments': []
         }
@@ -191,6 +193,21 @@ class OpenAIParser:
                                 
                                 item["tags"] = tags
                                 item["mood"] = mood
+
+                                # New normalization (Task 1 fix)
+                                if "visual_prompt" not in item:
+                                    item["visual_prompt"] = ""
+                                if "vfx" not in item:
+                                    item["vfx"] = []
+                                elif isinstance(item["vfx"], str):
+                                    item["vfx"] = [item["vfx"]]
+                                    
+                                if "transition" not in item:
+                                    item["transition"] = "fade"
+                                if "intensity" not in item:
+                                    item["intensity"] = 0.5
+                                if "duration" not in item:
+                                    item["duration"] = 1000
                                 
                         full_script.extend(script_part)
                         chunk_success = True
