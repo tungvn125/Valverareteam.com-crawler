@@ -4,6 +4,7 @@ import asyncio
 import io
 from typing import Optional
 import httpx
+import openai
 from openai import AsyncOpenAI
 from PIL import Image
 from loguru import logger
@@ -16,9 +17,16 @@ class ImageGenerator:
             logger.warning("OPENAI_API_KEY not found in environment. Image generation will fail.")
         
         self.client = AsyncOpenAI(api_key=self.api_key) if self.api_key else None
+        # Add shared httpx client and semaphore
+        self.httpx_client = httpx.AsyncClient(timeout=60.0)
+        self._semaphore = asyncio.Semaphore(2)
         
         # Ensure cache directory exists
         os.makedirs(self.cache_dir, exist_ok=True)
+
+    async def close(self):
+        """Closes the shared httpx client."""
+        await self.httpx_client.aclose()
 
     def _get_hash(self, prompt: str) -> str:
         """Returns the SHA-256 hash of the prompt."""
