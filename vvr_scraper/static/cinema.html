@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VVR-Cinema Player</title>
+    <link rel="stylesheet" href="cinema.css">
+</head>
+<body>
+    <div id="cinema-player">
+        <!-- Background images with Ken Burns effect -->
+        <div id="bg-canvas">
+            <div id="bg-image-current" class="bg-layer"></div>
+            <div id="bg-image-next" class="bg-layer hidden"></div>
+        </div>
+
+        <!-- VFX Overlay for weather, flash, shake, etc. -->
+        <div id="vfx-overlay"></div>
+
+        <!-- Dialogue Container -->
+        <div id="dialogue-container">
+            <div id="character-name"></div>
+            <div id="text-display">
+                <!-- Karaoke words will be injected here -->
+            </div>
+        </div>
+
+        <!-- Player Controls -->
+        <div id="player-controls">
+            <div id="progress-container">
+                <div id="progress-bar"></div>
+            </div>
+            <div class="control-buttons">
+                <button id="play-pause-btn" class="control-btn" aria-label="Play/Pause">
+                    <span id="play-icon">▶</span>
+                    <span id="pause-icon" class="hidden">⏸</span>
+                </button>
+                <div id="time-display">00:00 / 00:00</div>
+                <button id="close-btn" class="control-btn" aria-label="Close">✕</button>
+            </div>
+        </div>
+
+        <!-- Hidden audio element -->
+        <audio id="audio-player"></audio>
+    </div>
+
+    <!-- Script will be created in Task 3 -->
+    <script src="cinema.js"></script>
+</body>
+</html>

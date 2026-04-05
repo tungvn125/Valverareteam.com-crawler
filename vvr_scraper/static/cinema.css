@@ -1,0 +1,220 @@
+/* Reset and Base Styles */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body, html {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background-color: #000;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: #fff;
+}
+
+/* Cinema Player Layout */
+#cinema-player {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+}
+
+/* Background Canvas */
+#bg-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+}
+
+.bg-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-size: cover;
+    background-position: center;
+    transition: opacity 1s ease-in-out;
+}
+
+.bg-layer.hidden {
+    opacity: 0;
+}
+
+/* Ken Burns Effect Animation */
+@keyframes ken-burns {
+    0% {
+        transform: scale(1) translate(0, 0);
+    }
+    100% {
+        transform: scale(1.1) translate(-1%, -1%);
+    }
+}
+
+.ken-burns {
+    animation: ken-burns 15s ease-in-out infinite alternate;
+}
+
+/* VFX Overlay */
+#vfx-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 5;
+}
+
+/* VFX Effects */
+.vfx-flash {
+    animation: flash-animation 0.2s ease-out;
+}
+
+@keyframes flash-animation {
+    0% { background-color: rgba(255, 255, 255, 0.8); }
+    100% { background-color: rgba(255, 255, 255, 0); }
+}
+
+.vfx-shake {
+    animation: shake-animation 0.5s cubic-bezier(.36,.07,.19,.97) both;
+}
+
+@keyframes shake-animation {
+    10%, 90% { transform: translate3d(-1px, 0, 0); }
+    20%, 80% { transform: translate3d(2px, 0, 0); }
+    30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+    40%, 60% { transform: translate3d(4px, 0, 0); }
+}
+
+/* Dialogue Container */
+#dialogue-container {
+    position: relative;
+    z-index: 10;
+    margin: 0 auto 40px auto;
+    width: 80%;
+    max-width: 1000px;
+    min-height: 150px;
+    background: rgba(0, 0, 0, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    padding: 20px 30px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+}
+
+#character-name {
+    font-size: 1.2rem;
+    font-weight: bold;
+    color: #00d4ff;
+    margin-bottom: 10px;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+#text-display {
+    font-size: 1.4rem;
+    line-height: 1.6;
+    color: #e0e0e0;
+}
+
+/* Karaoke Highlighting */
+.word {
+    display: inline-block;
+    transition: all 0.2s ease;
+    margin-right: 4px;
+}
+
+.word.active {
+    color: #00d4ff;
+    text-shadow: 0 0 10px #00d4ff;
+    transform: scale(1.05);
+}
+
+/* Player Controls */
+#player-controls {
+    position: relative;
+    z-index: 20;
+    background: rgba(0, 0, 0, 0.8);
+    padding: 10px 20px;
+    display: flex;
+    flex-direction: column;
+}
+
+#progress-container {
+    width: 100%;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.2);
+    margin-bottom: 10px;
+    cursor: pointer;
+    border-radius: 2px;
+}
+
+#progress-bar {
+    width: 0%;
+    height: 100%;
+    background: #00d4ff;
+    border-radius: 2px;
+    transition: width 0.1s linear;
+}
+
+.control-buttons {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+.control-btn {
+    background: none;
+    border: none;
+    color: #fff;
+    cursor: pointer;
+    font-size: 1.5rem;
+    transition: color 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.control-btn:hover {
+    color: #00d4ff;
+}
+
+#time-display {
+    font-size: 0.9rem;
+    color: #aaa;
+    font-family: monospace;
+}
+
+#close-btn {
+    margin-left: auto;
+    font-size: 1.2rem;
+}
+
+/* Helper Classes */
+.hidden {
+    display: none !important;
+}
+
+/* Mobile Responsiveness */
+@media (max-width: 768px) {
+    #dialogue-container {
+        width: 95%;
+        margin-bottom: 20px;
+        padding: 15px;
+    }
+
+    #text-display {
+        font-size: 1.1rem;
+    }
+
+    #character-name {
+        font-size: 1rem;
+    }
+}
