@@ -50,19 +50,34 @@ body, html {
     opacity: 0;
 }
 
-/* Ken Burns Effect Animation */
-@keyframes ken-burns {
-    0% {
-        transform: scale(1) translate(0, 0);
-    }
-    100% {
-        transform: scale(1.1) translate(-1%, -1%);
-    }
+/* Ken Burns Effect Variations */
+@keyframes ken-burns-in {
+    0% { transform: scale(1) translate(0, 0); }
+    100% { transform: scale(1.1) translate(-1%, -1%); }
 }
 
-.ken-burns {
-    animation: ken-burns 15s ease-in-out infinite alternate;
+@keyframes ken-burns-out {
+    0% { transform: scale(1.2) translate(1%, 1%); }
+    100% { transform: scale(1) translate(0, 0); }
 }
+
+@keyframes ken-burns-left {
+    0% { transform: scale(1.1) translateX(1%); }
+    100% { transform: scale(1.1) translateX(-1%); }
+}
+
+@keyframes ken-burns-right {
+    0% { transform: scale(1.1) translateX(-1%); }
+    100% { transform: scale(1.1) translateX(1%); }
+}
+
+.ken-burns-in { animation: ken-burns-in 20s ease-in-out infinite alternate; }
+.ken-burns-out { animation: ken-burns-out 20s ease-in-out infinite alternate; }
+.ken-burns-left { animation: ken-burns-left 20s ease-in-out infinite alternate; }
+.ken-burns-right { animation: ken-burns-right 20s ease-in-out infinite alternate; }
+
+/* Default fallback */
+.ken-burns { animation: ken-burns-in 15s ease-in-out infinite alternate; }
 
 /* VFX Overlay */
 #vfx-overlay {
@@ -73,6 +88,7 @@ body, html {
     height: 100%;
     pointer-events: none;
     z-index: 5;
+    transition: opacity 0.5s ease;
 }
 
 /* VFX Effects */
@@ -90,10 +106,10 @@ body, html {
 }
 
 @keyframes shake-animation {
-    10%, 90% { transform: translate3d(-1px, 0, 0); }
-    20%, 80% { transform: translate3d(2px, 0, 0); }
-    30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
-    40%, 60% { transform: translate3d(4px, 0, 0); }
+    10%, 90% { transform: translate3d(calc(-1px * var(--vfx-scale, 1)), 0, 0); }
+    20%, 80% { transform: translate3d(calc(2px * var(--vfx-scale, 1)), 0, 0); }
+    30%, 50%, 70% { transform: translate3d(calc(-4px * var(--vfx-scale, 1)), 0, 0); }
+    40%, 60% { transform: translate3d(calc(4px * var(--vfx-scale, 1)), 0, 0); }
 }
 
 /* Weather Effects */
@@ -113,6 +129,7 @@ body, html {
     );
     animation: rain-fall 0.5s linear infinite;
     pointer-events: none;
+    opacity: var(--vfx-scale, 1);
 }
 
 @keyframes rain-fall {
@@ -133,7 +150,7 @@ body, html {
     background-size: 20px 20px, 40px 40px;
     background-position: 0 0, 10px 10px;
     animation: snow-fall 10s linear infinite;
-    opacity: 0.6;
+    opacity: calc(0.6 * var(--vfx-scale, 1));
     pointer-events: none;
 }
 
@@ -144,7 +161,7 @@ body, html {
 
 .vfx-fog {
     background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.2) 0%, transparent 70%);
-    opacity: 0.6;
+    opacity: calc(0.6 * var(--vfx-scale, 1));
     mix-blend-mode: overlay;
     animation: fog-drift 20s ease-in-out infinite alternate;
     pointer-events: none;
@@ -160,28 +177,35 @@ body, html {
     position: relative;
     z-index: 10;
     margin: 0 auto 40px auto;
-    width: 80%;
-    max-width: 1000px;
-    min-height: 150px;
-    background: rgba(0, 0, 0, 0.75);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 8px;
-    padding: 20px 30px;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+    width: 85%;
+    max-width: 1100px;
+    min-height: 160px;
+    background: rgba(15, 23, 42, 0.8);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 16px;
+    padding: 25px 35px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+    transition: all 0.3s ease;
 }
 
 #character-name {
-    font-size: 1.2rem;
-    font-weight: bold;
-    color: #00d4ff;
-    margin-bottom: 10px;
-    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+    font-size: 1.3rem;
+    font-weight: 800;
+    color: #38bdf8;
+    margin-bottom: 12px;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
 }
 
 #text-display {
-    font-size: 1.4rem;
+    font-size: 1.5rem;
     line-height: 1.6;
-    color: #e0e0e0;
+    color: #f1f5f9;
+    font-weight: 400;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
 /* Karaoke Highlighting */
