@@ -26,13 +26,17 @@ class CinemaPlayer {
         // State
         this.manifest = null;
         this.events = [];
+        this.nextEventIndex = 0;
+        this.currentWordSpans = [];
         this.currentDialogue = null;
         this.activeVFX = new Map(); // Effect name -> timeout ID
         this.lastTimeMs = -1;
         this.isSyncing = false;
+        this.syncId = null;
         this.novelPath = '';
 
         this.initPlayer();
+        this.setupVisibilityHandler();
     }
 
     /**
@@ -46,7 +50,7 @@ class CinemaPlayer {
         this.progressContainer.addEventListener('click', (e) => {
             const rect = this.progressContainer.getBoundingClientRect();
             const pos = (e.clientX - rect.left) / rect.width;
-            this.seekTo(pos * this.audio.duration);
+            this.seekTo(pos * this.audio.duration * 1000); // Pass ms as requested
         });
 
         // Volume control
@@ -61,7 +65,7 @@ class CinemaPlayer {
 
         // Close player
         this.closeBtn.addEventListener('click', () => {
-            this.audio.pause();
+            this.destroy();
             window.parent.postMessage({ type: 'close-cinema' }, '*');
             // If not in iframe, try to go back
             if (window.self === window.top) {
@@ -79,16 +83,52 @@ class CinemaPlayer {
         this.audio.addEventListener('pause', () => {
             this.playIcon.classList.remove('hidden');
             this.pauseIcon.classList.add('hidden');
-            this.isSyncing = false;
+            this.stopSyncLoop();
         });
 
         this.audio.addEventListener('ended', () => {
-            this.isSyncing = false;
+            this.stopSyncLoop();
+        });
+
+        this.audio.addEventListener('error', () => {
+            console.error('Audio error:', this.audio.error);
+            this.showError(`Audio playback error: ${this.audio.error ? this.audio.error.message : 'Unknown error'}`);
         });
 
         this.audio.addEventListener('timeupdate', () => {
             this.updateUI();
         });
+    }
+
+    setupVisibilityHandler() {
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                if (this.syncId) {
+                    cancelAnimationFrame(this.syncId);
+                    this.syncId = null;
+                }
+            } else if (this.isSyncing && !this.syncId) {
+                this.startSyncLoop();
+            }
+        });
+    }
+
+    showError(message) {
+        const errorOverlay = document.createElement('div');
+        errorOverlay.className = 'error-overlay';
+        errorOverlay.innerHTML = `
+            <div class="error-content">
+                <h3>Error</h3>
+                <p>${message}</p>
+                <button onclick="location.reload()">Reload Page</button>
+            </div>
+        `;
+        document.body.appendChild(errorOverlay);
+    }
+
+    destroy() {
+        this.audio.pause();
+        this.stopSyncLoop();
     }
 
     /**
@@ -99,38 +139,44 @@ class CinemaPlayer {
         try {
             this.novelPath = path;
             const response = await fetch(`/api/novels/manifest?path=${encodeURIComponent(path)}`);
-            if (!response.ok) throw new Error('Failed to load manifest');
+            if (!response.ok) throw new Error(`Failed to load manifest: ${response.statusText}`);
             
             this.manifest = await response.json();
             this.events = this.manifest.events || [];
             
-            // Sort events by start time just in case
+            // Sort events by start time
             this.events.sort((a, b) => a.start - b.start);
             
-            // Set audio source
-            // The audio path in manifest is relative to the chapter folder
             const audioSrc = `/novels/${path}/${this.manifest.audio}`;
             this.audio.src = audioSrc;
             
             console.log(`Manifest loaded for ${path}. Total events: ${this.events.length}`);
-            
-            // Reset state
             this.resetState();
             
         } catch (error) {
             console.error('Error loading manifest:', error);
-            alert('Error loading cinema manifest. Check console for details.');
+            this.showError(`Error loading cinema manifest: ${error.message}`);
         }
     }
 
     resetState() {
         this.lastTimeMs = -1;
+        this.nextEventIndex = 0;
         this.currentDialogue = null;
+        this.currentWordSpans = [];
         this.textDisplay.innerHTML = '';
         this.charName.textContent = '';
         this.bgCurrent.style.backgroundImage = '';
         this.bgNext.style.backgroundImage = '';
         this.bgNext.classList.add('hidden');
+        this.clearAllVFX();
+    }
+
+    clearAllVFX() {
+        this.activeVFX.forEach((timeoutId, effect) => {
+            clearTimeout(timeoutId);
+        });
+        this.activeVFX.clear();
         this.vfxOverlay.className = '';
     }
 
@@ -142,14 +188,39 @@ class CinemaPlayer {
         }
     }
 
-    seekTo(time) {
+    seekTo(timeMs) {
         const wasPlaying = !this.audio.paused;
-        this.audio.currentTime = time;
+        this.audio.currentTime = timeMs / 1000;
         
-        // Reset and re-process events from the beginning up to the new time
+        // Reset state and find correct index
         this.resetState();
-        this.processEvents(time * 1000);
         
+        let lastBackgroundEvent = null;
+        let activeDialogue = null;
+        
+        for (let i = 0; i < this.events.length; i++) {
+            const event = this.events[i];
+            if (event.start <= timeMs) {
+                if (event.type === 'background') {
+                    lastBackgroundEvent = event;
+                } else if (event.type === 'dialogue' && (!event.end || event.end > timeMs)) {
+                    activeDialogue = event;
+                }
+                this.nextEventIndex = i + 1;
+            } else {
+                this.nextEventIndex = i;
+                break;
+            }
+        }
+        
+        // Apply state
+        if (lastBackgroundEvent) this.updateBackground(lastBackgroundEvent, true);
+        if (activeDialogue) {
+            this.renderDialogue(activeDialogue);
+            this.updateKaraoke(activeDialogue, timeMs);
+        }
+        
+        this.lastTimeMs = timeMs;
         if (wasPlaying) this.audio.play();
         this.updateUI();
     }
@@ -158,43 +229,54 @@ class CinemaPlayer {
      * Main synchronization loop using requestAnimationFrame.
      */
     startSyncLoop() {
-        if (this.isSyncing) return;
+        if (this.isSyncing && this.syncId) return;
         this.isSyncing = true;
 
         const loop = () => {
             if (!this.isSyncing) return;
             
             const currentTimeMs = this.audio.currentTime * 1000;
-            if (currentTimeMs !== this.lastTimeMs) {
+            if (Math.abs(currentTimeMs - this.lastTimeMs) > 16) { // ~60fps check
                 this.processEvents(currentTimeMs);
                 this.lastTimeMs = currentTimeMs;
             }
             
-            requestAnimationFrame(loop);
+            this.syncId = requestAnimationFrame(loop);
         };
         
-        requestAnimationFrame(loop);
+        this.syncId = requestAnimationFrame(loop);
+    }
+
+    stopSyncLoop() {
+        this.isSyncing = false;
+        if (this.syncId) {
+            cancelAnimationFrame(this.syncId);
+            this.syncId = null;
+        }
     }
 
     /**
-     * Processes events based on the current playback time.
+     * Processes events based on the current playback time using index optimization.
      * @param {number} currentTimeMs 
      */
     processEvents(currentTimeMs) {
-        // Find events that should be active or triggered
-        for (const event of this.events) {
-            // Case 1: Event starts now (or just started)
-            if (event.start <= currentTimeMs && (!event.end || event.end > currentTimeMs)) {
+        // Trigger upcoming events
+        while (this.nextEventIndex < this.events.length) {
+            const event = this.events[this.nextEventIndex];
+            if (event.start <= currentTimeMs) {
                 this.handleEvent(event, currentTimeMs);
-            }
-            
-            // Case 2: Cleanup for events that just ended
-            if (event.end && event.end <= currentTimeMs) {
-                this.cleanupEvent(event);
+                this.nextEventIndex++;
+            } else {
+                break;
             }
         }
         
-        // Update karaoke if there's an active dialogue
+        // Cleanup current dialogue if it ended
+        if (this.currentDialogue && this.currentDialogue.end && this.currentDialogue.end <= currentTimeMs) {
+            this.cleanupEvent(this.currentDialogue);
+        }
+        
+        // Update karaoke
         if (this.currentDialogue) {
             this.updateKaraoke(this.currentDialogue, currentTimeMs);
         }
@@ -222,6 +304,7 @@ class CinemaPlayer {
     cleanupEvent(event) {
         if (event.type === 'dialogue' && this.currentDialogue === event) {
             this.currentDialogue = null;
+            this.currentWordSpans = [];
             this.charName.textContent = '';
             this.textDisplay.innerHTML = '';
         }
@@ -230,11 +313,19 @@ class CinemaPlayer {
     /**
      * Handles background transitions with a cross-fade.
      */
-    updateBackground(event) {
+    updateBackground(event, immediate = false) {
         const imageUrl = `url('/novels/${this.novelPath}/${event.src}')`;
         
         // If it's already the current background, do nothing
         if (this.bgCurrent.style.backgroundImage === imageUrl) return;
+
+        if (immediate) {
+            this.bgCurrent.style.backgroundImage = imageUrl;
+            this.bgCurrent.classList.add('ken-burns');
+            this.bgNext.classList.add('hidden');
+            this.bgNext.style.backgroundImage = '';
+            return;
+        }
 
         // Use bgNext to load and fade in
         this.bgNext.style.backgroundImage = imageUrl;
@@ -261,6 +352,7 @@ class CinemaPlayer {
         this.charName.style.color = event.color || '#00d4ff';
         
         this.textDisplay.innerHTML = '';
+        this.currentWordSpans = [];
         
         if (event.alignment && event.alignment.length > 0) {
             // Render words as spans for karaoke
@@ -268,9 +360,10 @@ class CinemaPlayer {
                 const span = document.createElement('span');
                 span.className = 'word';
                 span.textContent = item.word;
-                span.dataset.start = item.start; // Relative or absolute? Usually absolute in my implementation
+                span.dataset.start = item.start;
                 span.dataset.end = item.end;
                 this.textDisplay.appendChild(span);
+                this.currentWordSpans.push(span);
                 
                 // Add space if not the last word
                 if (index < event.alignment.length - 1) {
@@ -287,17 +380,14 @@ class CinemaPlayer {
      * Highlights the current word in the dialogue.
      */
     updateKaraoke(event, currentTimeMs) {
-        const words = this.textDisplay.querySelectorAll('.word');
-        words.forEach(span => {
+        this.currentWordSpans.forEach(span => {
             const start = parseFloat(span.dataset.start);
             const end = parseFloat(span.dataset.end);
             
             if (currentTimeMs >= start && currentTimeMs <= end) {
                 span.classList.add('active');
             } else if (currentTimeMs > end) {
-                span.classList.add('active'); // Keep previous words highlighted or not? 
-                // Instruction: "apply the .active class". 
-                // Common karaoke style: keep active until end of line.
+                span.classList.add('active'); 
             } else {
                 span.classList.remove('active');
             }
