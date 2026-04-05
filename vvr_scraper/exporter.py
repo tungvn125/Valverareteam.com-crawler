@@ -529,7 +529,7 @@ async def tao_file_audiodrama(
             if bg_rel_path:
                 all_events.append({
                     "type": "background",
-                    "time_ms": current_block_start_ms,
+                    "start": current_block_start_ms,
                     "src": bg_rel_path,
                     "transition": mood_info.get('transition', 'fade')
                 })
@@ -539,7 +539,8 @@ async def tao_file_audiodrama(
             if vfx_list:
                 all_events.append({
                     "type": "vfx",
-                    "time_ms": current_block_start_ms,
+                    "start": current_block_start_ms,
+                    "end": current_block_start_ms + mood_info.get('duration', 1000),
                     "effect": vfx_list[0] if isinstance(vfx_list, list) and vfx_list else str(vfx_list),
                     "intensity": mood_info.get('intensity', 0.5),
                     "duration": mood_info.get('duration', 1000)
@@ -558,12 +559,14 @@ async def tao_file_audiodrama(
                 
                 seg_start_ms = current_block_start_ms + segment_offset_in_block_ms
                 seg_duration_ms = len(voice_segments[j])
+                seg_end_ms = seg_start_ms + seg_duration_ms
                 
                 # Create dialogue event with word-level alignment
                 dialogue_event = {
                     "type": "dialogue",
-                    "time_ms": seg_start_ms,
-                    "role": role,
+                    "start": seg_start_ms,
+                    "end": seg_end_ms,
+                    "character": role,
                     "text": text,
                     "alignment": []
                 }
@@ -655,20 +658,14 @@ async def tao_file_audiodrama(
             # Update current_block_start_ms for next block, account for crossfade overlap
             current_block_start_ms += (block_duration - CROSSFADE_MS)
         
-        # Save enriched manifest
-        manifest_base = filename
-        if manifest_base.endswith(".ad.mp3"):
-            manifest_base = manifest_base[:-7]
-        else:
-            manifest_base = os.path.splitext(filename)[0]
-            
-        manifest_file = manifest_base + ".manifest.json"
+        # Save cinematic manifest as manifest.json in the same folder as the MP3
+        manifest_file = os.path.join(os.path.dirname(filename), "manifest.json")
         with open(manifest_file, 'w', encoding='utf-8') as f:
             json.dump({
                 "title": title,
                 "audio": os.path.basename(filename),
                 "base_path": "",
-                "events": sorted(all_events, key=lambda x: x["time_ms"])
+                "events": sorted(all_events, key=lambda x: x["start"])
             }, f, ensure_ascii=False, indent=2)
         logger.info(f"Saved cinematic manifest to {manifest_file}")
 
