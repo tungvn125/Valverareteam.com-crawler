@@ -3,6 +3,8 @@ from openai import AsyncOpenAI
 import os
 import json
 import random
+import base64
+import httpx
 from typing import List, Dict, Optional
 from loguru import logger
 from .db import DatabaseManager
@@ -357,3 +359,98 @@ class VoiceManager:
                 
             logger.debug(f"Assigned voice '{assigned_voice}' ({VoiceManager._global_voice_metadata.get(assigned_voice, {}).get('name', 'Unknown')}) to character '{character_name}' (gender: {gender})")
             return assigned_voice
+
+    async def synthesize(self, voice_id: str, text: str, stability: float = 0.35) -> tuple[bytes, List[Dict]]:
+        """
+        Synthesizes text using ElevenLabs stream-with-timestamps endpoint.
+        Returns a tuple of (audio_bytes, word_alignments).
+        """
+        api_key = os.getenv("ELEVENLABS_API_KEY")
+        if not api_key:
+            logger.error("ELEVENLABS_API_KEY not found in environment")
+            raise ValueError("ELEVENLABS_API_KEY required")
+
+        url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream-with-timestamps"
+        headers = {
+            "xi-api-key": api_key,
+            "Content-Type": "application/json",
+        }
+        data = {
+            "text": text,
+            "model_id": "eleven_v3",
+            "voice_settings": {
+                "stability": stability,
+                "similarity_boost": 0.75,
+                "style": 0.0,
+                "use_speaker_boost": True
+            }
+        }
+
+        audio_chunks = []
+        all_alignments = []
+
+        async with httpx.AsyncClient() as client:
+            async with client.stream("POST", url, headers=headers, json=data, timeout=None) as response:
+                if response.status_code != 200:
+                    error_msg = await response.aread()
+                    logger.error(f"ElevenLabs error ({response.status_code}): {error_msg}")
+                    raise Exception(f"ElevenLabs API error: {response.status_code}")
+
+                async for line in response.aiter_lines():
+                    if not line:
+                        continue
+                    try:
+                        chunk = json.loads(line)
+                        if "audio_base64" in chunk:
+                            audio_chunks.append(base64.b64decode(chunk["audio_base64"]))
+                        if "alignment" in chunk:
+                            all_alignments.append(chunk["alignment"])
+                    except Exception as e:
+                        logger.warning(f"Error parsing alignment chunk: {e}")
+                        continue
+
+        # Combine audio
+        full_audio = b"".join(audio_chunks)
+
+        # Process alignments into word-level timestamps as requested
+        # alignment contains: characters, character_start_times_seconds, character_end_times_seconds
+        word_alignments = []
+        
+        current_word_chars = []
+        current_word_start = None
+        last_end = 0
+        
+        for alignment in all_alignments:
+            chars = alignment.get('characters', [])
+            starts = alignment.get('character_start_times_seconds', [])
+            ends = alignment.get('character_end_times_seconds', [])
+            
+            for char, start, end in zip(chars, starts, ends):
+                if char.isspace():
+                    if current_word_chars:
+                        # Finish current word
+                        word_text = "".join(current_word_chars)
+                        word_alignments.append({
+                            "word": word_text,
+                            "start": int(current_word_start * 1000),
+                            "end": int(last_end * 1000)
+                        })
+                        current_word_chars = []
+                        current_word_start = None
+                    continue
+                
+                if not current_word_chars:
+                    current_word_start = start
+                current_word_chars.append(char)
+                last_end = end
+                
+        # Handle last word if any
+        if current_word_chars:
+            word_text = "".join(current_word_chars)
+            word_alignments.append({
+                "word": word_text,
+                "start": int(current_word_start * 1000),
+                "end": int(last_end * 1000)
+            })
+            
+        return full_audio, word_alignments

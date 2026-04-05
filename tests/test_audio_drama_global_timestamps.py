@@ -42,8 +42,8 @@ async def test_global_timestamp_calculation():
         mock_audio_bytes = b"fake audio"
         async def get_mock_alignments(*args, **kwargs):
             return mock_audio_bytes, [
-                {"characters": "Hắn", "start_time_ms": 100, "end_time_ms": 200},
-                {"characters": "bước", "start_time_ms": 300, "end_time_ms": 400}
+                {"word": "Hắn", "start": 100, "end": 200},
+                {"word": "bước", "start": 300, "end": 400}
             ]
         vm_instance.synthesize.side_effect = get_mock_alignments
         
@@ -69,33 +69,42 @@ async def test_global_timestamp_calculation():
         await tao_file_audiodrama(content_list, filename, story_id, db_manager)
         
         # Verify manifest
-        manifest_file = f"{filename}.manifest.json"
+        manifest_file = "test_audio_drama.manifest.json"
         assert os.path.exists(manifest_file)
         
         with open(manifest_file, 'r', encoding='utf-8') as f:
             data = json.load(f)
-            alignments = data['word_alignments']
+            events = data['events']
             
+            dialogue_events = [e for e in events if e['type'] == 'dialogue']
             # Trace:
             # Block 1:
             # current_block_start_ms = 0
-            # segment_offset = 1000
-            # word 1: 100 + 0 + 1000 = 1100
-            # word 2: 300 + 0 + 1000 = 1300
-            # segment_offset becomes 1000 + 2000 + 500 = 3500
-            # block_duration (bg_duration) = 2000 + 2000 = 4000
-            # current_block_start_ms becomes 0 + (4000 - 1000) = 3000
+            # segment_offset = 1000 (VOICE_OVERLAY_OFFSET_MS)
+            # word 1: 100 + 0 + 1000 = 1100, role = narrator
+            # word 2: 300 + 0 + 1000 = 1300, role = narrator
+            # segment_offset becomes 1000 + 2000 (len) + 500 (GAP) = 3500
+            # block_duration (bg_duration) = 2000 (combined_voice) + 2000 (padding) = 4000
+            # current_block_start_ms becomes 0 + (4000 - 1000) = 3000 (CROSSFADE_MS = 1000)
             
             # Block 2:
             # current_block_start_ms = 3000
             # segment_offset = 1000
-            # word 1: 100 + 3000 + 1000 = 4100
-            # word 2: 300 + 3000 + 1000 = 4300
+            # word 1: 100 + 3000 + 1000 = 4100, role = narrator
+            # word 2: 300 + 3000 + 1000 = 4300, role = narrator
             
-            assert alignments[0]['start_time_ms'] == 1100
-            assert alignments[1]['start_time_ms'] == 1300
-            assert alignments[2]['start_time_ms'] == 4100
-            assert alignments[3]['start_time_ms'] == 4300
+            assert dialogue_events[0]['time_ms'] == 1000
+            assert dialogue_events[1]['time_ms'] == 4000 # 3000 + 1000
+            
+            alignments_0 = dialogue_events[0]['alignment']
+            assert alignments_0[0]['start'] == 1100
+            assert dialogue_events[0]['role'] == 'narrator'
+            assert alignments_0[1]['start'] == 1300
+
+            alignments_1 = dialogue_events[1]['alignment']
+            assert alignments_1[0]['start'] == 4100
+            assert dialogue_events[1]['role'] == 'narrator'
+            assert alignments_1[1]['start'] == 4300
             
         # Cleanup
         if os.path.exists(manifest_file):
