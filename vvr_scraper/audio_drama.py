@@ -7,6 +7,51 @@ from typing import List, Dict, Optional
 from loguru import logger
 from .db import DatabaseManager
 
+class ScriptResult(list):
+    """
+    A list subclass that holds script segments but also provides 
+    a 'blocks' view for cinematic grouping.
+    """
+    @property
+    def blocks(self) -> List[Dict]:
+        """Groups segments into blocks based on mood_shifts."""
+        blocks = []
+        # Default initial mood if none provided
+        current_block = {
+            'mood_info': {
+                'type': 'mood_shift', 
+                'mood': 'peaceful', 
+                'tags': ['peaceful'],
+                'visual_prompt': 'A peaceful setting.',
+                'vfx': ['none'],
+                'transition': 'fade'
+            }, 
+            'segments': []
+        }
+        
+        has_started = False
+        for item in self:
+            if item.get('type') == 'mood_shift':
+                if not has_started:
+                    # First mood shift replaces the default
+                    current_block['mood_info'] = item
+                    has_started = True
+                else:
+                    if current_block['segments']:
+                        blocks.append(current_block)
+                    current_block = {'mood_info': item, 'segments': []}
+            else:
+                current_block['segments'].append(item)
+        
+        if current_block['segments']:
+            blocks.append(current_block)
+        return blocks
+
+    def __getitem__(self, key):
+        if isinstance(key, str) and key == 'blocks':
+            return self.blocks
+        return super().__getitem__(key)
+
 class OpenAIParser:
     def __init__(self, api_key: Optional[str] = None, base_url: Optional[str] = None):
         self.api_key = api_key or os.getenv("VVR_API_KEY")
@@ -129,6 +174,24 @@ class OpenAIParser:
                         raise ValueError(f"Expected list or dict, got {type(data)}")
                     
                     if isinstance(script_part, list):
+                        # Normalize mood_shift objects for backward/forward compatibility (v2.5)
+                        for item in script_part:
+                            if isinstance(item, dict) and item.get("type") == "mood_shift":
+                                tags = item.get("tags")
+                                if tags is None:
+                                    tags = []
+                                elif not isinstance(tags, list):
+                                    tags = [str(tags)]
+                                
+                                mood = item.get("mood")
+                                if not mood and tags:
+                                    mood = str(tags[0])
+                                elif mood and not tags:
+                                    tags = [str(mood)]
+                                
+                                item["tags"] = tags
+                                item["mood"] = mood
+                                
                         full_script.extend(script_part)
                         chunk_success = True
                     else:
@@ -152,12 +215,17 @@ class OpenAIParser:
                             continue
                     except ImportError:
                         # Fallback to standard input if rich is missing (unlikely)
-                        choice = input(f"Chunk {i+1} gặp lỗi. Thử lại? (Y/n): ").strip().lower()
-                        if choice in ('', 'y', 'yes'):
-                            continue
+                        import sys
+                        if sys.stdin.isatty():
+                            choice = input(f"Chunk {i+1} gặp lỗi. Thử lại? (Y/n): ").strip().lower()
+                            if choice in ('', 'y', 'yes'):
+                                continue
+                        else:
+                            # Not a terminal, do not block
+                            pass
                         break
         
-        return full_script
+        return ScriptResult(full_script)
 
 class VoiceManager:
     # Default narrator voice: "Anh" (Vietnamese Female)
