@@ -105,6 +105,13 @@ class DatabaseManager:
                 logger.warning(f"No novel found with slug: {slug} to update metadata.")
         await db.commit()
 
+    async def get_novel_by_slug(self, slug: str) -> Optional[Dict[str, Any]]:
+        """Retrieves a novel entry by its slug."""
+        db = await self.get_db()
+        async with db.execute("SELECT * FROM novels WHERE slug = ?", (slug,)) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
     async def save_character_voice(self, story_id: str, character_name: str, voice_name: str):
         """Saves or updates a voice mapping for a character in a story."""
         db = await self.get_db()
@@ -205,7 +212,7 @@ class DatabaseManager:
             ORDER BY last_downloaded_at DESC
             LIMIT ? OFFSET ?
         """
-        async with db.execute(sql, (search_query, search_query, size, (page - 1) * (size - 1))) as cursor:
+        async with db.execute(sql, (search_query, search_query, size, (page - 1) * size)) as cursor:
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
 
