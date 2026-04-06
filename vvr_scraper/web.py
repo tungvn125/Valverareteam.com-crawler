@@ -91,12 +91,15 @@ async def lifespan(app: FastAPI):
     global _event_loop
     # Startup
     _event_loop = asyncio.get_running_loop()
-    app.state.db = DatabaseManager(db_path=get_config_path("vvr_library.db"))
-    await app.state.db.init_db()
+    if not hasattr(app.state, "db") or app.state.db is None:
+        app.state.db = DatabaseManager(db_path=get_config_path("vvr_library.db"))
+        await app.state.db.init_db()
     await download_queue.start_workers()
     yield
     # Shutdown
     await download_queue.stop_workers()
+    if hasattr(app.state, "db") and app.state.db:
+        await app.state.db.close()
 
 app = FastAPI(title="Valvrare Team Scraper Web UI", lifespan=lifespan)
 
@@ -946,8 +949,13 @@ async def opds_root(request: Request, user: str = Depends(get_current_user)):
     feed = opds.create_feed("Valvrare Library", f"{base_url}/opds/v1/root")
     
     # Navigation items as entries in root feed (or link relation)
-    # For simplicity, we add them as navigation links
     from lxml import etree
+    
+    # Search link (OpenSearch template style)
+    etree.SubElement(feed, "{%s}link" % opds.ATOM_NS,
+                     rel="search",
+                     href=f"{base_url}/opds/v1/search?q={{searchTerms}}",
+                     type="application/atom+xml")
     
     # Newest
     entry_new = etree.SubElement(feed, "{http://www.w3.org/2005/Atom}entry")
@@ -992,26 +1000,63 @@ async def opds_root(request: Request, user: str = Depends(get_current_user)):
     return Response(content=opds.to_string(feed), media_type="application/atom+xml;profile=opds-catalog;kind=navigation")
 
 @app.get("/opds/v1/newest")
-async def opds_newest(request: Request, user: str = Depends(get_current_user)):
+async def opds_newest(request: Request, page: int = 1, size: int = 20, user: str = Depends(get_current_user)):
     base_url = str(request.base_url).rstrip("/")
-    feed = opds.create_feed("Mới tải", f"{base_url}/opds/v1/newest")
     
-    novels = await app.state.db.get_newest_novels(limit=20)
+    # Get novels with size+1 to check if there's a next page
+    novels = await app.state.db.get_newest_novels(limit=size + 1, page=page)
+    
+    next_url = None
+    if len(novels) > size:
+        next_url = f"{base_url}/opds/v1/newest?page={page + 1}&size={size}"
+        novels = novels[:size]
+        
+    feed = opds.create_feed("Mới tải", f"{base_url}/opds/v1/newest?page={page}&size={size}", next_url=next_url)
+    
     for novel in novels:
         opds.add_entry(feed, novel, base_url)
         
     return Response(content=opds.to_string(feed), media_type="application/atom+xml;profile=opds-catalog;kind=acquisition")
 
 @app.get("/opds/v1/all")
-async def opds_all(request: Request, user: str = Depends(get_current_user)):
+async def opds_all(request: Request, page: int = 1, size: int = 20, user: str = Depends(get_current_user)):
     base_url = str(request.base_url).rstrip("/")
-    feed = opds.create_feed("Tất cả truyện", f"{base_url}/opds/v1/all")
     
-    novels = await app.state.db.get_all_novels()
+    # Get novels with size+1 to check if there's a next page
+    novels = await app.state.db.get_all_novels(page=page, size=size + 1)
+    
+    next_url = None
+    if len(novels) > size:
+        next_url = f"{base_url}/opds/v1/all?page={page + 1}&size={size}"
+        novels = novels[:size]
+
+    feed = opds.create_feed("Tất cả truyện", f"{base_url}/opds/v1/all?page={page}&size={size}", next_url=next_url)
+    
     for novel in novels:
         opds.add_entry(feed, novel, base_url)
         
     return Response(content=opds.to_string(feed), media_type="application/atom+xml;profile=opds-catalog;kind=acquisition")
+
+@app.get("/opds/v1/search")
+async def opds_search(request: Request, q: str = Query(...), page: int = 1, size: int = 20, user: str = Depends(get_current_user)):
+    base_url = str(request.base_url).rstrip("/")
+    
+    # Get novels with size+1 to check if there's a next page
+    novels = await app.state.db.search_novels(query=q, page=page, size=size + 1)
+    
+    next_url = None
+    if len(novels) > size:
+        next_url = f"{base_url}/opds/v1/search?q={q}&page={page + 1}&size={size}"
+        novels = novels[:size]
+        
+    feed = opds.create_feed(f"Kết quả tìm kiếm: {q}", f"{base_url}/opds/v1/search?q={q}&page={page}&size={size}", next_url=next_url)
+    
+    for novel in novels:
+        opds.add_entry(feed, novel, base_url)
+        
+    return Response(content=opds.to_string(feed), media_type="application/atom+xml;profile=opds-catalog;kind=acquisition")
+
+@app.get("/opds/v1/genres")
 
 @app.get("/opds/v1/genres")
 async def opds_genres(request: Request, user: str = Depends(get_current_user)):

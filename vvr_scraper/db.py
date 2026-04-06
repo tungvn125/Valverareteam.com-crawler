@@ -170,10 +170,42 @@ class DatabaseManager:
         ))
         await db.commit()
 
-    async def get_all_novels(self) -> List[Dict[str, Any]]:
-        """Returns all entries in the library."""
+    async def get_all_novels(self, page: Optional[int] = None, size: int = 20) -> List[Dict[str, Any]]:
+        """Returns entries in the library with optional pagination."""
         db = await self.get_db()
-        async with db.execute("SELECT * FROM novels") as cursor:
+        if page is not None:
+            # We might want to fetch size+1 to check for next page without changing offset
+            # But the standard way is to keep size fixed for offset calculation
+            offset = (page - 1) * (size - 1 if "LIMIT ? OFFSET ?" in "Check if we are over-fetching" else size)
+            # Re-evaluating: The issue is web.py calls it with size+1.
+            # Let's make the offset calculation use a fixed size if we are just checking for next page.
+            # Better: Pass an explicit limit and offset to the DB methods.
+            
+            # Simple fix for now: the caller in web.py passes size+1 as the 'size' parameter here.
+            # We need the 'size' for LIMIT, but (size-1) for OFFSET if we want 
+            # standard pagination while over-fetching by 1.
+            # Actually, let's just use an optional limit parameter.
+            query = "SELECT * FROM novels ORDER BY id LIMIT ? OFFSET ?"
+            params = (size, (page - 1) * (size - 1))
+        else:
+            query = "SELECT * FROM novels ORDER BY id"
+            params = ()
+            
+        async with db.execute(query, params) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+    async def search_novels(self, query: str, page: int = 1, size: int = 20) -> List[Dict[str, Any]]:
+        """Searches for novels by title or author with pagination."""
+        db = await self.get_db()
+        search_query = f"%{query}%"
+        sql = """
+            SELECT * FROM novels 
+            WHERE title LIKE ? OR author LIKE ? 
+            ORDER BY last_downloaded_at DESC
+            LIMIT ? OFFSET ?
+        """
+        async with db.execute(sql, (search_query, search_query, size, (page - 1) * (size - 1))) as cursor:
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
 
@@ -192,12 +224,16 @@ class DatabaseManager:
             )
         await db.commit()
 
-    async def get_newest_novels(self, limit: int = 20) -> List[Dict[str, Any]]:
-        """Returns the newest novels based on last_downloaded_at."""
+    async def get_newest_novels(self, limit: int = 20, page: int = 1) -> List[Dict[str, Any]]:
+        """Returns the newest novels based on last_downloaded_at with pagination."""
         db = await self.get_db()
+        # Same fix as get_all_novels: limit is (size+1), but offset should be (page-1)*size
+        # Actually, in web.py, newest uses limit=size+1
+        size = limit - 1
+        offset = (page - 1) * size
         async with db.execute(
-            "SELECT * FROM novels ORDER BY last_downloaded_at DESC LIMIT ?",
-            (limit,)
+            "SELECT * FROM novels ORDER BY last_downloaded_at DESC LIMIT ? OFFSET ?",
+            (limit, offset)
         ) as cursor:
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
