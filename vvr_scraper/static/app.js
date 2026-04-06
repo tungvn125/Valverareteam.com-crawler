@@ -876,6 +876,15 @@ let libraryData = [];
 async function renderLibrary() {
     libraryGrid.innerHTML = '<div class="loading-msg">Đang tải thư viện...</div>';
     
+    // Add warning if it doesn't exist
+    if (!document.getElementById('libraryWarning')) {
+        const warning = document.createElement('p');
+        warning.id = 'libraryWarning';
+        warning.className = 'warning-text';
+        warning.textContent = 'Lưu ý: Không di chuyển thư mục truyện sau khi tải để tránh lỗi OPDS.';
+        libraryView.insertBefore(warning, libraryGrid);
+    }
+    
     try {
         const response = await fetch('/api/library');
         libraryData = await response.json();

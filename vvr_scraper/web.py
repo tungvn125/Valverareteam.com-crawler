@@ -95,6 +95,7 @@ async def lifespan(app: FastAPI):
         app.state.db = DatabaseManager(db_path=get_config_path("vvr_library.db"))
         await app.state.db.init_db()
     await download_queue.start_workers()
+    logger.warning("OPDS Server active. Tránh di chuyển thư mục truyện thủ công để không làm hỏng liên kết thư viện.")
     yield
     # Shutdown
     await download_queue.stop_workers()
