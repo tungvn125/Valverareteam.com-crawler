@@ -16,7 +16,11 @@ class MockAudio:
         return MockAudio(self.length + len(other))
     def __getitem__(self, index):
         return self
+    def __mul__(self, multiplier):
+        return MockAudio(self.length * multiplier)
     def fade_out(self, duration):
+        return self
+    def fade_in(self, duration):
         return self
     def export(self, *args, **kwargs):
         pass
@@ -24,6 +28,8 @@ class MockAudio:
         return self
     def overlay(self, other, position=0):
         return self
+    def append(self, other, crossfade=0):
+        return MockAudio(self.length + len(other))
 
 @pytest.mark.asyncio
 async def test_tao_file_audiodrama_flow(tmp_path):
@@ -47,30 +53,33 @@ async def test_tao_file_audiodrama_flow(tmp_path):
         parser_instance = MockParser.return_value
         parser_instance.parse_chapter = AsyncMock(return_value=mock_script)
         
-        # Mock ElevenLabs, pydub
+        # Mock VoiceManager, pydub
         with patch.dict(os.environ, {"ELEVENLABS_API_KEY": "fake_key"}), \
-             patch("elevenlabs.client.ElevenLabs") as MockElevenLabs, \
+             patch("vvr_scraper.exporter.VoiceManager") as MockVoiceManager, \
              patch("pydub.AudioSegment.from_file") as MockFromFile, \
              patch("pydub.AudioSegment.silent") as MockSilent, \
-             patch("vvr_scraper.bgm_manager.BGMManager") as MockBGM, \
-             patch("vvr_scraper.mixing_engine.MixingEngine") as MockMixing:
+             patch("vvr_scraper.exporter.BGMManager") as MockBGM, \
+             patch("vvr_scraper.exporter.MixingEngine") as MockMixing, \
+             patch("vvr_scraper.exporter.FreesoundManager") as MockFreesound:
             
-            client_instance = MockElevenLabs.return_value
-            client_instance.text_to_speech.convert.return_value = [b"fake_audio_chunk"]
+            vm_instance = MockVoiceManager.return_value
+            vm_instance.get_voice = AsyncMock(return_value="fake_voice_id")
+            vm_instance.synthesize = AsyncMock(return_value=(b"fake_audio", [{"characters": "Hello", "start_time_ms": 0, "end_time_ms": 500}]))
             
             MockSilent.side_effect = lambda duration: MockAudio(duration)
             MockFromFile.return_value = MockAudio(1000)
             
             mixing_instance = MockMixing.return_value
-            mixing_instance.mix_with_ducking.return_value = MockAudio(1000)
+            mixing_instance.create_looped_background.return_value = MockAudio(1000)
+            mixing_instance.overlay_voice_on_background.return_value = MockAudio(1000)
             
             await tao_file_audiodrama(content_list, filename, story_id, mock_db)
             
             # Verify OpenAI was called
             parser_instance.parse_chapter.assert_called_once()
             
-            # Verify ElevenLabs was called for each segment (2 segments)
-            assert client_instance.text_to_speech.convert.call_count == 2
+            # Verify VoiceManager.synthesize was called for each segment (2 segments)
+            assert vm_instance.synthesize.call_count == 2
 
 @pytest.mark.asyncio
 async def test_tao_file_audiodrama_v2_with_moods(tmp_path):
@@ -92,14 +101,16 @@ async def test_tao_file_audiodrama_v2_with_moods(tmp_path):
         parser_instance.parse_chapter = AsyncMock(return_value=mock_script)
         
         with patch.dict(os.environ, {"ELEVENLABS_API_KEY": "fake_key"}), \
-             patch("elevenlabs.client.ElevenLabs") as MockElevenLabs, \
+             patch("vvr_scraper.exporter.VoiceManager") as MockVoiceManager, \
              patch("pydub.AudioSegment.from_file") as MockFromFile, \
              patch("pydub.AudioSegment.silent") as MockSilent, \
-             patch("vvr_scraper.bgm_manager.BGMManager") as MockBGM, \
-             patch("vvr_scraper.mixing_engine.MixingEngine") as MockMixing:
+             patch("vvr_scraper.exporter.BGMManager") as MockBGM, \
+             patch("vvr_scraper.exporter.MixingEngine") as MockMixing, \
+             patch("vvr_scraper.exporter.FreesoundManager") as MockFreesound:
             
-            client_instance = MockElevenLabs.return_value
-            client_instance.text_to_speech.convert.return_value = [b"audio"]
+            vm_instance = MockVoiceManager.return_value
+            vm_instance.get_voice = AsyncMock(return_value="fake_voice_id")
+            vm_instance.synthesize = AsyncMock(return_value=(b"audio", []))
             
             bgm_instance = MockBGM.return_value
             bgm_instance.get_random_track.return_value = "fake_bgm.mp3"
@@ -108,12 +119,13 @@ async def test_tao_file_audiodrama_v2_with_moods(tmp_path):
             MockFromFile.return_value = MockAudio(1000)
             
             mixing_instance = MockMixing.return_value
-            mixing_instance.mix_with_ducking.return_value = MockAudio(1000)
+            mixing_instance.create_looped_background.return_value = MockAudio(1000)
+            mixing_instance.overlay_voice_on_background.return_value = MockAudio(1000)
             
             await tao_file_audiodrama(content_list, filename, story_id, mock_db)
             
             assert bgm_instance.get_random_track.called
-            assert client_instance.text_to_speech.convert.call_count == 1
+            assert vm_instance.synthesize.call_count == 1
 
 @pytest.mark.asyncio
 async def test_tao_file_mp3_flow(tmp_path):

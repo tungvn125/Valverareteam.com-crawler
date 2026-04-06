@@ -1,4 +1,5 @@
 import asyncio
+import io
 from openai import AsyncOpenAI
 import os
 import json
@@ -386,7 +387,7 @@ class VoiceManager:
             }
         }
 
-        audio_chunks = []
+        audio_buffer = io.BytesIO()
         all_alignments = []
 
         async with httpx.AsyncClient() as client:
@@ -402,15 +403,16 @@ class VoiceManager:
                     try:
                         chunk = json.loads(line)
                         if "audio_base64" in chunk:
-                            audio_chunks.append(base64.b64decode(chunk["audio_base64"]))
+                            audio_buffer.write(base64.b64decode(chunk["audio_base64"]))
                         if "alignment" in chunk:
                             all_alignments.append(chunk["alignment"])
                     except Exception as e:
                         logger.warning(f"Error parsing alignment chunk: {e}")
                         continue
 
-        # Combine audio
-        full_audio = b"".join(audio_chunks)
+        # Get full audio bytes
+        full_audio = audio_buffer.getvalue()
+        audio_buffer.close()
 
         # Process alignments into word-level timestamps as requested
         # alignment contains: characters, character_start_times_seconds, character_end_times_seconds

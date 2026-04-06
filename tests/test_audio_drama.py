@@ -32,6 +32,79 @@ async def test_openai_parser_success():
         assert result[1]["text"] == "Chào buổi sáng!"
 
 @pytest.mark.asyncio
+async def test_openai_parser_mood_shift_tags():
+    """Tests OpenAIParser with mood_shift containing tags (v2.5)."""
+    with patch("vvr_scraper.audio_drama.AsyncOpenAI") as MockOpenAI:
+        mock_client = MockOpenAI.return_value
+        mock_response = MagicMock()
+        
+        mock_message = MagicMock()
+        # Mocking new LLM output format
+        mock_message.content = json.dumps({
+            "script": [
+                {"type": "mood_shift", "tags": ["mysterious", "dark piano"]},
+                {"type": "segment", "role": "narrator", "text": "He entered the room.", "gender": "unknown"},
+                # Backward compatibility: old format
+                {"type": "mood_shift", "mood": "action"}
+            ]
+        })
+        mock_choice = MagicMock()
+        mock_choice.message = mock_message
+        mock_response.choices = [mock_choice]
+        
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+        
+        parser = OpenAIParser(api_key="fake_key", base_url="fake_url")
+        result = await parser.parse_chapter("Nội dung...")
+        
+        assert len(result) == 3
+        # Check first mood shift (new format)
+        assert result[0]["type"] == "mood_shift"
+        assert result[0]["tags"] == ["mysterious", "dark piano"]
+        # It should probably also have 'mood' for backward compatibility with old exporter
+        assert result[0]["mood"] == "mysterious"
+        
+        # Check second mood shift (old format)
+        assert result[2]["type"] == "mood_shift"
+        assert result[2].get("tags") == ["action"]
+        assert result[2]["mood"] == "action"
+
+@pytest.mark.asyncio
+async def test_openai_parser_mood_shift_edge_cases():
+    """Tests OpenAIParser with weird mood_shift inputs."""
+    with patch("vvr_scraper.audio_drama.AsyncOpenAI") as MockOpenAI:
+        mock_client = MockOpenAI.return_value
+        mock_response = MagicMock()
+        mock_message = MagicMock()
+        mock_message.content = json.dumps({
+            "script": [
+                {"type": "mood_shift", "tags": "mysterious"}, # String instead of list
+                {"type": "mood_shift", "tags": None},       # None
+                {"type": "mood_shift"}                      # Missing both
+            ]
+        })
+        mock_choice = MagicMock()
+        mock_choice.message = mock_message
+        mock_response.choices = [mock_choice]
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+        
+        parser = OpenAIParser(api_key="fake_key", base_url="fake_url")
+        result = await parser.parse_chapter("...")
+        
+        assert len(result) == 3
+        # String case
+        assert result[0]["tags"] == ["mysterious"]
+        assert result[0]["mood"] == "mysterious"
+        
+        # None case
+        assert result[1]["tags"] == []
+        assert result[1].get("mood") is None
+        
+        # Missing case
+        assert result[2]["tags"] == []
+        assert result[2].get("mood") is None
+
+@pytest.mark.asyncio
 async def test_openai_parser_error():
     """Tests OpenAIParser handling of errors and verification of MAX_RETRIES."""
     with patch("vvr_scraper.audio_drama.AsyncOpenAI") as MockOpenAI:

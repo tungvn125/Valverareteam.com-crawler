@@ -127,18 +127,21 @@ async def lay_thong_tin_truyen(client: httpx.AsyncClient, ten_truyen: str, verbo
                 
             response = await client.get(cover_url, timeout=30.0)
             response.raise_for_status()
-            # Use a unique temp file to avoid race conditions in multi-download
-            fd, cover_path = tempfile.mkstemp(suffix='.jpg', prefix='vvr_cover_')
+            
+            def save_cover():
+                # Use a unique temp file to avoid race conditions in multi-download
+                _fd, _cover_path = tempfile.mkstemp(suffix='.jpg', prefix='vvr_cover_')
+                with os.fdopen(_fd, 'wb') as f:
+                    f.write(response.content)
+                return _fd, _cover_path
+                
+            fd, cover_path = await asyncio.to_thread(save_cover)
             logger.info(f"Đã tải ảnh bìa: {cover_path}")
-            with os.fdopen(fd, 'wb') as f:
-                f.write(response.content)
         except Exception as e:
             logger.warning(f"Không thể tải ảnh bìa: {e}")
-            if fd is not None:
+            if cover_path and os.path.exists(cover_path):
                 try:
-                    os.close(fd)
-                    if os.path.exists(cover_path):
-                        os.remove(cover_path)
+                    os.remove(cover_path)
                 except Exception:
                     pass
             cover_path = None

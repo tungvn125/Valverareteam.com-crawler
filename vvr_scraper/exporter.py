@@ -5,6 +5,7 @@ import os
 import json
 import asyncio
 import urllib.parse
+import uuid
 from io import BytesIO
 from typing import List, Dict, Any, Union, cast, Optional
 
@@ -433,7 +434,7 @@ async def tao_file_audiodrama(
         else:
             char_name = item.get('role', 'narrator')
             text = item.get('text', '').strip()
-            gender = item.get('gender', 'unknown').lower()
+            gender = (item.get('gender') or 'unknown').lower()
             if not text:
                 continue
             voice_name = await voice_manager.get_voice(char_name, gender)
@@ -601,7 +602,7 @@ async def tao_file_audiodrama(
                     if fs_results:
                         sound = fs_results[0]
                         # Use a unique temp filename for downloaded BGM
-                        bgm_track_path = f"temp_bgm_{i}_{sound.id}.wav"
+                        bgm_track_path = f"temp_bgm_{uuid.uuid4().hex[:8]}_{sound.id}.wav"
                         await freesound_manager.download_and_convert(sound.id, bgm_track_path)
                         logger.debug(f"Downloaded Freesound BGM: {bgm_track_path}")
                 except Exception as e:
