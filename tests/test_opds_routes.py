@@ -101,3 +101,45 @@ def test_opds_data_integration():
         assert b"OPDS Author" in response.content
         assert b"Action" in response.content
         assert b"Adventure" in response.content
+
+def test_opds_download_endpoint():
+    """Test the OPDS download endpoint."""
+    slug = "truyen/test-novel-download"
+    title = "Test Novel Download"
+    output_folder = "test_novels_opds/test_novel"
+    os.makedirs(output_folder, exist_ok=True)
+    # sanitize_filename("Test Novel Download") -> "Test Novel Download"
+    from vvr_scraper.utils import sanitize_filename
+    filename = sanitize_filename(title)
+    file_path = os.path.join(output_folder, f"{filename}.epub")
+    with open(file_path, "wb") as f:
+        f.write(b"fake epub content")
+        
+    import asyncio
+    async def setup_data():
+        db = app.state.db
+        await db.upsert_novel({
+            "slug": slug,
+            "title": title,
+            "output_folder": os.path.abspath(output_folder),
+            "formats": "epub"
+        })
+    
+    with TestClient(app) as client:
+        # lifespan has run here, so app.state.db is initialized
+        asyncio.run(setup_data())
+        
+        headers = get_auth_headers()
+        # Use URL-encoded slug for the path if needed, but path params handle slashes if defined as :path
+        response = client.get(f"/api/opds/download/{slug}?fmt=epub", headers=headers)
+        assert response.status_code == 200
+        assert response.content == b"fake epub content"
+        # Starlette/FastAPI might use filename*=utf-8'' encoding for filenames with spaces
+        cd = response.headers["content-disposition"]
+        assert "attachment" in cd
+        assert "Test" in cd and "Novel" in cd and "Download.epub" in cd
+    
+    import shutil
+    # Cleanup
+    if os.path.exists("test_novels_opds"):
+        shutil.rmtree("test_novels_opds")

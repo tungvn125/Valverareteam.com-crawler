@@ -2,9 +2,11 @@
 OPDS XML Generator Module for Valvrare Team Web Novel Scraper.
 Provides functions to create OPDS catalogs (Atom XML format).
 """
+import os
 from lxml import etree
 from datetime import datetime
 from typing import Dict, Any, Optional
+from .utils import sanitize_filename
 
 # Standard Namespaces
 ATOM_NS = "http://www.w3.org/2005/Atom"
@@ -86,9 +88,11 @@ def add_entry(feed: etree._Element, novel_data: Dict[str, Any], base_url: str) -
     etree.SubElement(entry, "{%s}summary" % ATOM_NS).text = summary
     
     # Genres/Categories
-    genres = novel_data.get("genres", "")
-    if isinstance(genres, str):
-        genres = [g.strip() for g in genres.split(",") if g.strip()]
+    genres_raw = novel_data.get("genres") or ""
+    if isinstance(genres_raw, str):
+        genres = [g.strip() for g in genres_raw.split(",") if g.strip()]
+    else:
+        genres = genres_raw if genres_raw else []
     
     for genre in genres:
         etree.SubElement(entry, "{%s}category" % ATOM_NS, term=genre, label=genre)
@@ -127,9 +131,19 @@ def add_entry(feed: etree._Element, novel_data: Dict[str, Any], base_url: str) -
         "pdf": "application/pdf"
     }
     
+    # Get the base folder name from output_folder path
+    output_folder = novel_data.get("output_folder")
+    if output_folder:
+        folder_name = os.path.basename(output_folder.rstrip("/"))
+    else:
+        # Fallback to slug's last part if output_folder not available
+        folder_name = novel_data.get("slug", "unknown").split("/")[-1]
+        
+    filename = sanitize_filename(novel_data.get("title", "novel"))
+    
     for fmt in format_list:
         if fmt in mime_types:
-            file_url = f"{base_url}/novels/{slug}/{slug}.{fmt}"
+            file_url = f"{base_url}/api/opds/download/{slug}?fmt={fmt}"
             etree.SubElement(entry, "{%s}link" % ATOM_NS,
                              rel="http://opds-spec.org/acquisition",
                              href=file_url,

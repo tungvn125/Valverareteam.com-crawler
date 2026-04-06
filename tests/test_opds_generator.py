@@ -55,11 +55,11 @@ def test_add_entry_basic():
     epub_link = entry.find("{%s}link[@type='application/epub+zip']" % ATOM_NS)
     assert epub_link is not None
     assert epub_link.get("rel") == "http://opds-spec.org/acquisition"
-    assert epub_link.get("href") == "http://example.com/novels/novel-slug/novel-slug.epub"
+    assert epub_link.get("href") == "http://example.com/api/opds/download/novel-slug?fmt=epub"
     
     pdf_link = entry.find("{%s}link[@type='application/pdf']" % ATOM_NS)
     assert pdf_link is not None
-    assert pdf_link.get("href") == "http://example.com/novels/novel-slug/novel-slug.pdf"
+    assert pdf_link.get("href") == "http://example.com/api/opds/download/novel-slug?fmt=pdf"
 
 def test_to_string():
     feed = create_feed("Catalog", "http://example.com")
@@ -98,3 +98,18 @@ def test_add_entry_list_formats():
     
     epub_link = entry.find("{%s}link[@type='application/epub+zip']" % ATOM_NS)
     assert epub_link is not None
+
+def test_add_entry_none_genres():
+    feed = create_feed("Catalog", "http://example.com")
+    novel_data = {
+        "title": "None Genres",
+        "slug": "none-genres",
+        "genres": None
+    }
+    base_url = "http://example.com"
+    
+    # This should not raise TypeError
+    entry = add_entry(feed, novel_data, base_url)
+    
+    categories = entry.findall("{%s}category" % ATOM_NS)
+    assert len(categories) == 0
