@@ -14,7 +14,7 @@ NSMAP = {
     "opds": OPDS_NS
 }
 
-def create_feed(title: str, url: str, icon: Optional[str] = None) -> etree._Element:
+def create_feed(title: str, url: str, icon: Optional[str] = None, next_url: Optional[str] = None) -> etree._Element:
     """
     Initializes the root <feed> element with standard namespaces.
     
@@ -22,6 +22,7 @@ def create_feed(title: str, url: str, icon: Optional[str] = None) -> etree._Elem
         title: The catalog title.
         url: The self-referencing URL of this feed.
         icon: Optional URL to an icon.
+        next_url: Optional URL to the next page of the catalog.
         
     Returns:
         The root <feed> element.
@@ -37,6 +38,12 @@ def create_feed(title: str, url: str, icon: Optional[str] = None) -> etree._Elem
                      rel="self", 
                      href=url, 
                      type="application/atom+xml;profile=opds-catalog;kind=navigation")
+    
+    if next_url:
+        etree.SubElement(feed, "{%s}link" % ATOM_NS,
+                         rel="next",
+                         href=next_url,
+                         type="application/atom+xml;profile=opds-catalog;kind=navigation")
     
     if icon:
         etree.SubElement(feed, "{%s}icon" % ATOM_NS).text = icon
