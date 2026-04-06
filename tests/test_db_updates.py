@@ -42,13 +42,15 @@ async def test_init_db_adds_columns(tmp_path):
     
     # 3. Verify columns exist
     async with aiosqlite.connect(str(db_path)) as db:
-        async with db.execute("PRAGMA table_info(library)") as cursor:
+        async with db.execute("PRAGMA table_info(novels)") as cursor:
             columns = [row[1] for row in await cursor.fetchall()]
             
     assert "last_synced_count" in columns
     assert "server_chapter_count" in columns
     assert "has_updates" in columns
     assert "last_checked_at" in columns
+    assert "genres" in columns
+    assert "description" in columns
 
 @pytest.mark.asyncio
 async def test_update_library_metadata(db_manager):
@@ -85,3 +87,22 @@ async def test_update_library_metadata_nonexistent_slug(db_manager, caplog_logur
     await db_manager.init_db()
     await db_manager.update_library_metadata("non-existent", {"has_updates": 1})
     assert "No novel found with slug: non-existent" in caplog_loguru.text
+
+@pytest.mark.asyncio
+async def test_get_novel_by_slug(db_manager):
+    await db_manager.init_db()
+    
+    novel_data = {
+        "title": "Test Novel",
+        "slug": "truyen/test-novel-12345678",
+        "author": "Test Author",
+        "output_folder": "novels/Test Novel"
+    }
+    await db_manager.upsert_novel(novel_data)
+    
+    retrieved = await db_manager.get_novel_by_slug("truyen/test-novel-12345678")
+    assert retrieved is not None
+    assert retrieved["title"] == "Test Novel"
+    
+    # Non-existent slug
+    assert await db_manager.get_novel_by_slug("non-existent") is None
