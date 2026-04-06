@@ -478,6 +478,14 @@ main {
 /* Utils */
 .w-100 { width: 100%; }
 .mb-10 { margin-bottom: 10px; }
+.ml-10 { margin-left: 10px; }
+
+.completed-task-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex: 1;
+}
 
 /* Dashboard Layout Adjustments */
 @media (max-width: 900px) {
@@ -1075,4 +1083,22 @@ h2 {
 #selectedChaptersCount {
     color: var(--primary);
     font-weight: 700;
+}
+
+.warning-text {
+    background-color: rgba(255, 160, 0, 0.1);
+    border-left: 4px solid #ffa000;
+    padding: 12px 16px;
+    margin-bottom: 20px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.warning-text::before {
+    content: "⚠️";
+    font-size: 1.2rem;
 }
