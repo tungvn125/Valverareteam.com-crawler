@@ -1,97 +1,41 @@
-# Valvrare Team Web Novel Scraper
+# Valvrare Team Web Novel Scraper - Technical Documentation
 
-## Project Overview
+## Kiến trúc hệ thống
+Dự án được xây dựng trên mô hình **Asynchronous Event-Driven**, chia thành các module chức năng chuyên biệt:
 
-**Purpose:** This project is a high-performance, asynchronous command-line and web-based tool designed to scrape and download web novels from [Valvrare Team](https://valvrareteam.net). It allows users to export stories into multiple formats including **EPUB, PDF, HTML, Markdown, TXT, MP3 (Audiobook), and AD-MP3 (Audio Drama)**, with a focus on speed, reliable content extraction, and a modern user experience.
+- **`vvr_scraper/scraper_core.py`**: Trái tim của hệ thống scraping. 
+    - Sử dụng mô hình Hybrid: HTTPX qua SSR Proxy (Fast) và Playwright (Reliable).
+- **`vvr_scraper/exporter.py`**: Module xuất bản tập trung.
+    - Tích hợp **Pipeline VVR-Cinema**: Orchestrator kết nối LLM Director, TTS Sync và Visual Generator.
+    - Xử lý tính toán **Global Timestamps**: Chuyển đổi mốc thời gian TTS tương đối sang tuyệt đối (ms) để đồng bộ toàn cục.
+- **`vvr_scraper/audio_drama.py`**: 
+    - `OpenAIParser`: Trích xuất kịch bản kèm `visual_prompt` (English), `vfx_triggers` và `transitions`.
+    - `VoiceManager`: Sử dụng ElevenLabs `stream-with-timestamps` để lấy dữ liệu đồng bộ cấp độ từ (word-level alignment).
+- **`vvr_scraper/image_gen.py` (New)**: Module sinh ảnh bối cảnh AI.
+    - Tích hợp DALL-E 3 (OpenAI) với cơ chế **SHA-256 Deduplication** để tránh sinh trùng ảnh.
+    - Tối ưu hóa **WebP Conversion** (Pillow) để tăng tốc độ tải và tiết kiệm dung lượng.
+- **`vvr_scraper/web.py`**: FastAPI server.
+    - Cung cấp API phục vụ tài nguyên tĩnh (`/novels`) và Manifest API cho trình phát Cinema.
+    - **Personal OPDS Server (New):** Tích hợp chuẩn OPDS 1.1 và OpenSearch cho phép các ứng dụng đọc sách kết nối trực tiếp.
+- **`vvr_scraper/opds.py` (New)**: Module sinh Atom XML Feed.
+    - Xử lý logic phân trang (Pagination), tìm kiếm (Search) và ánh xạ dữ liệu novel sang chuẩn OPDS metadata.
+    - Hỗ trợ đa định dạng (EPUB/PDF) và proxy ảnh bìa thông minh.
+- **Giao diện Cinema Player (Frontend)**:
+    - Xây dựng bằng Vanilla JS & CSS3 Animations.
+    - Sử dụng `requestAnimationFrame` để đồng bộ hóa hình ảnh/VFX với âm thanh ở độ chính xác mili giây.
+    - Hiệu ứng **Ken Burns** đa biến thể giúp ảnh tĩnh trở nên sống động.
 
-**Main Technologies:**
-- **Python (3.10+):** The core programming language.
-- **FastAPI & Uvicorn:** Powers the Web Dashboard and REST API.
-- **Playwright (`async_playwright`):** Used for navigating the website and extracting content, providing a "Reliable Mode" that can bypass complex DOM structures or dynamic content.
-- **httpx:** Used for fast, asynchronous HTTP requests. It powers the "Fast Mode" scraping via a DigitalOcean SSR fallback.
-- **WebSockets:** Provides real-time log streaming and progress updates from the scraper to the Web UI.
-- **aiosqlite:** Async SQLite driver for the library database (`vvr_library.db`).
-- **openai:** Python client for utilizing standard LLM APIs to parse dialogues and **mood shifts** from web novel chapters, powering the Audio-Drama generator. Requires `VVR_API_KEY`, `VVR_BASE_URL`, and optionally `VVR_MODEL`.
-- **pydub:** Used for multi-track audio mixing, implementing **Auto-Ducking** and BGM cross-fades in Audio Drama.
-- **BeautifulSoup4 & lxml:** Used for parsing HTML and XML (sitemaps).
-- **EbookLib & reportlab:** Used for generating EPUB and PDF output files, respectively.
-- **ElevenLabs & pydub:** Cloud-based AI text-to-speech synthesis (TTS) for generating high-quality audiobooks and audio dramas. Requires `ELEVENLABS_API_KEY`.
-- **Loguru & Rich:** Used for structured logging and professional terminal UI elements.
+## Quyết định thiết kế then chốt
+1. **Cinematic Bundle:** Mọi tài nguyên (audio, backgrounds, manifest) được tạo sẵn và lưu trữ local. Điều này đảm bảo trải nghiệm xem mượt mà 60fps và không phụ thuộc internet/API khi thưởng thức.
+2. **Absolute Timing:** Mốc thời gian Karaoke được tính toán ngay tại Backend (bao gồm cả padding, gap và crossfade). Frontend chỉ việc "diễn" theo script, giảm tải logic tính toán cho trình duyệt.
+3. **Hardware Acceleration:** Toàn bộ VFX (Shake, Rain, Fog) và Ken Burns sử dụng thuộc tính CSS `transform` và `opacity` để tận dụng GPU.
 
-**Architecture:**
-The application follows a modular, asynchronous architecture:
-- **`vvr_scraper/cli.py`:** The main orchestrator that handles argument parsing, interactive UI, and high-level workflow. It also manages the launch of the web server.
-- **`vvr_scraper/web.py`:** Implements the FastAPI web server, including:
-    1. **REST Endpoints:** For searching novels, triggering download tasks, batch import, library management, and update checking.
-    2. **WebSocket Manager:** Broadcasts real-time logs and progress updates to connected clients.
-    3. **DownloadManager:** Worker-pool based task queue with pause/resume/cancel support.
-    4. **Background Tasks:** Orchestrates scraping using `scraper_core.scrape_chapters()` with a progress callback — no duplicated scraping logic.
-- **`vvr_scraper/scraper_core.py`:** Implements a **Hybrid Scraping Architecture** (Fast Mode via SSR fallback and Reliable Mode via Playwright). The central `scrape_chapters()` function accepts an `on_chapter_done` callback and `pre_scraped` dict for checkpoint resumption, making it reusable by both CLI and Web.
-- **`vvr_scraper/exporter.py`:** Handles asynchronous exports with concurrent image downloading and **lazy-loaded AI audiobook & audio drama generation** (TTS). The Audio Drama exporter (`tao_file_audiodrama`) integrates BGM mixing and auto-ducking using `MixingEngine`.
-- **`vvr_scraper/audio_drama.py`:** Houses `OpenAIParser` and `VoiceManager`. Uses an LLM to parse dialogue, character names, and infer genders/moods from text segments.
-- **`vvr_scraper/bgm_manager.py`:** Manages the background music library. Scans the `bgm/` directory for mood folders and provides random track selection.
-- **`vvr_scraper/mixing_engine.py`:** Implements the core audio mixing logic. Layers voice over BGM with auto-ducking (-15dB) and handles padding with silence.
-- **`vvr_scraper/db.py`:** Async SQLite database manager for the novel library. Tracks downloaded novels, chapter counts, download timestamps, and update status.
-- **`vvr_scraper/tao_so_do_cay.py`:** Utility module for extracting chapter lists and volume structures from the novel page using Playwright.
-- **`vvr_scraper/static/`:** Contains the Vanilla HTML/CSS/JS frontend for the Web Dashboard.
+## Quy trình Phát triển (Conventions)
+- **Async First:** Sử dụng `httpx.AsyncClient` dùng chung (shared client) và giới hạn luồng qua `asyncio.Semaphore`.
+- **Manifest-Driven:** File `manifest.json` là "Source of Truth" duy nhất cho mỗi chương truyện Cinematic.
 
-## Building and Running
-
-### Installation
-
-1. **Install the package:**
-   ```bash
-   pip install vvr-scraper
-   ```
-
-2. **Install browser dependencies:**
-   ```bash
-   playwright install chromium-headless-shell
-   ```
-
-3. **Linux Folder Picker (Optional):**
-   For the "Browse" feature on Web UI, install `zenity` or `kdialog`.
-
-### Execution
-
-1. **Web Dashboard (Recommended):**
-   ```bash
-   vvrt web --port 8000
-   ```
-
-2. **Interactive CLI:**
-   ```bash
-   vvrt
-   ```
-
-3. **Advanced CLI Mode:**
-   ```bash
-   vvrt "slug-1" "slug-2" -f EPUB PDF -g tatca -t 10 --verbose
-   ```
-
-### Testing
-The project uses `pytest` with `pytest-asyncio`:
-```bash
-pytest
-```
-
-## Key Design Decisions
-
-- **Unified Scraping Logic:** Both CLI and Web use `scraper_core.scrape_chapters()`. Web passes an `on_chapter_done` callback for WebSocket progress broadcasting and checkpoint saving. No duplicated scraping code.
-- **Per-Novel Cover Files:** Cover images are saved to unique temp files (`tempfile.mkstemp`) instead of a shared `cover.jpg`, preventing cover mix-ups during concurrent multi-novel downloads.
-- **Failure Threshold:** If >30% of chapters fail to download, the task aborts without exporting, preventing empty or incomplete output files.
-- **Chapter Tree Always Fetched:** The Web server always fetches the full chapter tree (even when `selected_urls` is provided) to ensure proper volume/chapter titles in EPUB TOC, matching CLI output quality.
-- **Checkpoint Serialization:** `ContentItem` dataclass objects are converted to plain dicts via `dataclasses.asdict()` before JSON checkpoint serialization. Corrupt checkpoints are auto-deleted and the task starts fresh.
-- **Audio Drama Voice Allocation:** `VoiceManager` utilizes an `asyncio.Lock` and an in-memory cache pre-populated via `get_all_story_voices()` to globally coordinate character voice assignment during multi-threaded chunk processing. It guarantees a unique gender-appropriate voice is assigned to auxiliary characters to prevent collision.
-- **Atmospheric Immersion & Auto-Ducking:** Audio Drama v2 implements a multi-track mixing pipeline. It detects mood shifts (Action, Peaceful, etc.) using LLM analysis and switches BGM accordingly. The `MixingEngine` applies a `-15dB` gain reduction (ducking) to the BGM track specifically during voice segments, with 500ms cross-fades to ensure smooth acoustic transitions.
-
-## Development Conventions
-
-- **Asynchronous First:** All network I/O, file exports, and web server operations must be `async`.
-- **Hybrid Scraping:** Always prefer the SSR fallback (Fast Mode) but maintain Playwright as a reliable fallback.
-- **Single Source of Truth:** Scraping logic lives in `scraper_core.py`. Web and CLI consume it via callbacks/parameters — never duplicate it.
-- **WebSocket Communication:** Real-time updates should follow the JSON format: `{"type": "log|progress|status|info|complete|error", ...}`.
-- **Clean UI:** Maintain the "Modern Clean" aesthetic for the web frontend using Vanilla CSS variables.
-- **Structured Logging:** Use `loguru` everywhere (not `print()`). The `websocket_sink` in `web.py` ensures logs are broadcasted to the dashboard.
-- **Vietnamese Support:** Ensure all exports and UI elements correctly handle Vietnamese characters.
-- **Resource Cleanup:** Temp files (covers, chapter JSONs) must be cleaned up after use. Use `try/finally` or context managers for Playwright browsers.
+## Các vấn đề cần cải thiện (Backlog)
+- [ ] **Character Sprites:** Hỗ trợ hiển thị Portrait nhân vật kèm hiệu ứng chuyển động môi (lip-sync) cơ bản.
+- [ ] **Interactive Choices:** Cho phép người dùng chọn nhánh rẽ câu chuyện qua LLM sinh nội dung thời gian thực.
+- [x] **TTS Segment Caching:** Đã tích hợp qua cơ chế Script Result.
+- [x] **Memory Optimization:** Sử dụng WebP và shared HTTP client.

@@ -1,82 +1,60 @@
 import pytest
-from unittest.mock import MagicMock, patch
-import sys
-
-# Mock pydub before importing MixingEngine
-mock_pydub = MagicMock()
-mock_audio_segment = MagicMock()
-mock_pydub.AudioSegment = mock_audio_segment
-sys.modules['pydub'] = mock_pydub
-
+from pydub import AudioSegment
 from vvr_scraper.mixing_engine import MixingEngine
 
-def test_mixing_engine_ducking():
-    # Setup mocks
-    bgm = MagicMock()
-    bgm.__len__.return_value = 10000  # 10 seconds
-    
-    voice = MagicMock()
-    voice.__len__.return_value = 2000   # 2 seconds
-    
-    # Mock slicing
-    during_segment = MagicMock()
-    # Mock bgm[1000:3000]
-    bgm.__getitem__.side_effect = lambda s: during_segment if s == slice(1000, 3000) else MagicMock()
-    
-    # Mock AudioSegment.silent
-    mock_audio_segment.silent.return_value = MagicMock()
-    
-    # Mock methods used in implementation
-    during_segment.apply_gain.return_value = during_segment
-    during_segment.overlay.return_value = during_segment
-    
+def test_create_looped_background():
     engine = MixingEngine()
-    start_ms = 1000
+    # Create a short BGM segment (100ms)
+    # Using silent(duration=100) creates a 100ms segment. 
+    # But for testing looping logic, it's better if it's not silent 
+    # so we can potentially see the structure, but silent is fine for duration.
+    bgm = AudioSegment.silent(duration=100, frame_rate=44100)
     
-    # Test with default duck_db (-15.0)
-    result = engine.mix_with_ducking(bgm, voice, start_ms)
+    # Target duration: 250ms
+    duration_ms = 250
+    gain_db = -10.0
     
-    # Verification
-    # Implementation should split BGM: 0-1000, 1000-3000, 3000-end
-    assert bgm.__getitem__.called
+    result = engine.create_looped_background(bgm, duration_ms, gain_db)
     
-    # It should apply gain to the "during" part with default -15.0
-    during_segment.apply_gain.assert_called_once_with(-15.0)
+    # Check duration
+    assert len(result) == duration_ms
     
-    # And then overlay voice on it
-    during_segment.overlay.assert_called_once_with(voice)
-    
-    assert result is not None
+    # Check that it's actually longer than the original
+    assert len(result) > len(bgm)
 
-def test_mixing_engine_padding():
-    # Setup mocks
-    bgm = MagicMock()
-    bgm.__len__.return_value = 1000  # 1 second
-    bgm.frame_rate = 44100
-    
-    voice = MagicMock()
-    voice.__len__.return_value = 2000   # 2 seconds
-    
-    # Mock AudioSegment.silent
-    silent_segment = MagicMock()
-    mock_audio_segment.silent.return_value = silent_segment
-    
-    # Mock slicing
-    bgm.__getitem__.side_effect = lambda s: MagicMock()
-    
-    # Mock methods used in implementation
-    bgm.apply_gain.return_value = bgm
-    bgm.overlay.return_value = bgm
-    bgm.__add__.return_value = bgm
-    
+def test_create_looped_background_empty():
     engine = MixingEngine()
-    start_ms = 2000  # Voice starts after BGM ends
+    bgm = AudioSegment.silent(duration=0, frame_rate=44100)
+    result = engine.create_looped_background(bgm, 500)
+    assert len(result) == 500
+
+def test_create_looped_background_no_loop_needed():
+    engine = MixingEngine()
+    bgm = AudioSegment.silent(duration=1000, frame_rate=44100)
+    result = engine.create_looped_background(bgm, 500)
+    assert len(result) == 500
+
+def test_overlay_voice_on_background():
+    engine = MixingEngine()
+    # 500ms background
+    background = AudioSegment.silent(duration=500, frame_rate=44100)
+    # 200ms voice
+    voice = AudioSegment.silent(duration=200, frame_rate=44100)
     
-    result = engine.mix_with_ducking(bgm, voice, start_ms)
+    result = engine.overlay_voice_on_background(background, voice)
     
-    # Verification
-    # Should pad with silence
-    # padding = end_ms (4000) - len(bgm) (1000) = 3000ms
-    mock_audio_segment.silent.assert_called_with(duration=3000, frame_rate=44100)
-    assert bgm.__add__.called
-    assert result is not None
+    # Result should have same length as background (pydub's overlay behavior)
+    assert len(result) == len(background)
+
+def test_overlay_voice_longer_than_background():
+    engine = MixingEngine()
+    background = AudioSegment.silent(duration=200, frame_rate=44100)
+    voice = AudioSegment.silent(duration=500, frame_rate=44100)
+    
+    result = engine.overlay_voice_on_background(background, voice)
+    
+    # pydub.overlay: "The resulting AudioSegment will be the same length as the 
+    # AudioSegment it was called on (the background)."
+    # Wait, actually pydub's overlay can extend the length if specified, 
+    # but by default it doesn't? No, actually it does NOT extend by default.
+    assert len(result) == 200

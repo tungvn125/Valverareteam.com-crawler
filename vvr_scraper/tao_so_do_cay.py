@@ -22,7 +22,7 @@ async def get_chapter_tree(url: str, output_file: str, cookies: Optional[Dict[st
     """
     logger.info("Đang tạo sơ đồ cây...")
     try:
-        async with httpx.AsyncClient(headers=HEADERS, cookies=cookies) as client:
+        async with httpx.AsyncClient(headers=HEADERS, cookies=cookies, timeout=30.0) as client:
             response = await client.get(url, follow_redirects=True)
             response.raise_for_status()
             html_content = response.text
@@ -78,7 +78,7 @@ async def get_chapter_tree_folder(url: str, output_file: str, cookies: Optional[
     """
     logger.info("Đang tạo thư mục...")
     try:
-        async with httpx.AsyncClient(headers=HEADERS, cookies=cookies) as client:
+        async with httpx.AsyncClient(headers=HEADERS, cookies=cookies, timeout=30.0) as client:
             response = await client.get(url, follow_redirects=True)
             response.raise_for_status()
             html_content = response.text
@@ -266,7 +266,8 @@ async def get_chapter_range_urls(
     from .utils import BASE_URL
     url = slug_or_url if slug_or_url.startswith("http") else f"{BASE_URL}/{slug_or_url}"
 
-    temp_filename = f"temp_sync_{uuid4().hex[:8]}.json"
+    short_hash = uuid4().hex[:8]
+    temp_filename = f"temp_sync_{short_hash}.json"
     chapter_tree = await get_chapter_tree_list(
         url,
         output_file=temp_filename,

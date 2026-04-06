@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vvr-scraper"
-version = "1.7.0"
-description = "Công cụ tải web novel từ Valvrare Team (Async, Web UI & Download Queue)"
+version = "1.8.0"
+description = "Công cụ tải truyện CỰC ĐỘC ĐÁO từ Valvrareteam.net"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
@@ -30,6 +30,7 @@ dependencies = [
     "websockets>=11.0",
     "aiosqlite>=0.19.0",
     "openai>=2.30.0",
+    "freesound-python",
 ]
 
 [project.optional-dependencies]
@@ -44,3 +45,6 @@ include = ["vvr_scraper*"]
 
 [tool.setuptools.package-data]
 "vvr_scraper" = ["static/*", "prompts/*.md"]
+
+[tool.uv.sources]
+freesound-python = { git = "https://github.com/MTG/freesound-python.git" }

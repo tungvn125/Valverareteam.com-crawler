@@ -45,13 +45,29 @@ HEADERS = {
 def sanitize_filename(name: str) -> str:
     """
     Sanitizes a string to be used as a valid filename or directory name.
-    It removes illegal characters for most OSes.
+    It removes illegal characters and handles Windows reserved names.
     """
     if not name:
         return ""
+    
+    # Remove illegal characters
     sanitized_name = re.sub(r'[\\/*?:\"<>|]', "", name)
     sanitized_name = sanitized_name.strip(' .')
     sanitized_name = re.sub(r'\s+', ' ', sanitized_name).strip()
+    
+    # Windows reserved filenames
+    reserved_names = {
+        "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", 
+        "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", 
+        "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
+    }
+    
+    upper_name = sanitized_name.upper()
+    # Check if the name (without extension) is a reserved name
+    name_only = upper_name.split('.')[0]
+    if name_only in reserved_names:
+        sanitized_name = f"_{sanitized_name}"
+        
     return sanitized_name
 
 

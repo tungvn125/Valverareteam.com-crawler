@@ -3,6 +3,7 @@ CLI interface and main logic for the web novel scraper.
 """
 import argparse
 import asyncio
+import glob
 import json
 import os
 import sys
@@ -28,7 +29,7 @@ from .exporter import (
 )
 from .db import DatabaseManager
 from .utils import (
-    sanitize_filename, create_folders_from_tree, normalize_vietnamese_url, 
+    sanitize_filename, normalize_vietnamese_url, 
     get_token_from_state, HEADERS, configure_logger, BASE_URL, get_config_path
 )
 from .models import StoryInfo, ContentItem
@@ -42,6 +43,18 @@ class NovelCompleter(Completer):
     """Completer for live novel search using the Valvrare Team API."""
     def __init__(self, token: Optional[str] = None):
         self.token = token
+        self._client: Optional[httpx.Client] = None
+
+    @property
+    def client(self) -> httpx.Client:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.Client(timeout=3.0)
+        return self._client
+
+    def close(self):
+        if self._client:
+            self._client.close()
+            self._client = None
 
     def get_completions(self, document, complete_event):
         text = document.text.strip()
@@ -49,22 +62,21 @@ class NovelCompleter(Completer):
             return
 
         try:
-            with httpx.Client(timeout=3.0) as client:
-                headers = {
-                    "User-Agent": HEADERS["User-Agent"],
-                    "Origin": BASE_URL,
-                    "Referer": f"{BASE_URL}/",
-                    "Accept": "application/json, text/plain, */*"
-                }
-                if self.token:
-                    headers["Authorization"] = f"Bearer {self.token}"
-                
-                url = f"https://val-ssr-2kzit.ondigitalocean.app/api/novels/search?title={text}"
-                response = client.get(url, headers=headers)
-                
-                if response.status_code == 200:
-                    results = response.json()
-                    for item in results:
+            headers = {
+                "User-Agent": HEADERS["User-Agent"],
+                "Origin": BASE_URL,
+                "Referer": f"{BASE_URL}/",
+                "Accept": "application/json, text/plain, */*"
+            }
+            if self.token:
+                headers["Authorization"] = f"Bearer {self.token}"
+            
+            url = f"https://val-ssr-2kzit.ondigitalocean.app/api/novels/search?title={text}"
+            response = self.client.get(url, headers=headers)
+            
+            if response.status_code == 200:
+                results = response.json()
+                for item in results:
                         title = item.get('title', '').strip()
                         author = item.get('author', 'Unknown')
                         _id = item.get('_id', '')
@@ -98,21 +110,23 @@ class InteractiveUI:
             show_multi_select_hint=multi_select
         )
         return menu.show()
-
     @staticmethod
     async def get_novel_name_interactive(token: Optional[str] = None) -> str:
         console.print("[yellow]Nhập tên truyện hoặc tìm kiếm (tối thiểu 3 ký tự để hiện gợi ý)...[/yellow]")
+        completer = NovelCompleter(token=token)
         try:
             session = PromptSession()
             name = await session.prompt_async(
                 "Tên truyện: ",
-                completer=ThreadedCompleter(NovelCompleter(token=token)),
+                completer=ThreadedCompleter(completer),
                 complete_while_typing=True
             )
             return name.strip()
         except (KeyboardInterrupt, Exception) as e:
             if isinstance(e, KeyboardInterrupt): raise
-            return input("Nhập tên truyện bạn muốn tải: ").strip()
+            return ""
+        finally:
+            completer.close()
 
     @staticmethod
     def display_story_summary(info: StoryInfo):
@@ -248,6 +262,8 @@ class ValvrareScraperCLI:
             skip_minh_hoa = not choice or choice in ["y", "yes"]
 
         if skip_minh_hoa:
+            for vol in chapter_data:
+                vol['chapters'] = [c for c in vol['chapters'] if "Minh họa" not in c['title']]
             return [vol for vol in chapter_data if vol['chapters']]
         return chapter_data
 
@@ -287,6 +303,29 @@ class ValvrareScraperCLI:
 
     async def run(self):
         """Main execution flow."""
+        # Handle 'freesound-login' command
+        if self.args.ten_truyen and self.args.ten_truyen[0] == 'freesound-login':
+            from .freesound_manager import FreesoundManager
+            try:
+                fs = FreesoundManager()
+                auth_url = fs.get_auth_url()
+                console.print(f"[bold cyan]Mở trình duyệt và đăng nhập tại:[/bold cyan]\n{auth_url}")
+                
+                code = input("\nDán mã xác thực (code) tại đây: ").strip()
+                
+                if code:
+                    with console.status("[bold green]Đang xác thực với Freesound...[/bold green]"):
+                        await fs.exchange_code(code)
+                    console.print("[bold green]Đăng nhập Freesound thành công![/bold green]")
+                else:
+                    console.print("[bold yellow]Hủy đăng nhập do không có mã xác thực.[/bold yellow]")
+            except ValueError as ve:
+                logger.error(f"Lỗi cấu hình Freesound: {ve}")
+                logger.info("Hãy đảm bảo FREESOUND_CLIENT_ID và FREESOUND_CLIENT_SECRET đã được thiết lập.")
+            except Exception as e:
+                logger.error(f"Lỗi khi đăng nhập Freesound: {e}")
+            return
+
         # Handle 'web' command as a positional argument
         if self.args.ten_truyen and self.args.ten_truyen[0] == 'web':
             from .web import run_web_server
@@ -436,10 +475,7 @@ class ValvrareScraperCLI:
             ["Gộp tất cả (mặc định)", "Xuất riêng từng chương", "Gộp theo Volume"],
             "Chọn cách thức xuất file"
         )
-        if mode_idx in [1, 2]:
-            tree_path = os.path.join(self.output_folder, "tree_map.txt")
-            await tao_so_do_cay.get_chapter_tree_folder(url=story_url, output_file=tree_path, cookies=self.cookies)
-            create_folders_from_tree(tree_path, self.output_folder)
+        if mode_idx is None: mode_idx = 0
 
         format_items = ["PDF", "EPUB", "HTML", "Markdown (.md)", "Text (.txt)", "MP3 (Audiobook)", "MP3 (Audio Drama - AI Script)"]
         f_idxs = InteractiveUI.show_menu(format_items, "Chọn định dạng file", multi_select=True)
@@ -550,7 +586,7 @@ def main():
         console.print("\n[bold red]Chương trình bị dừng bởi người dùng.[/bold red]")
     finally:
         # Cleanup temporary files
-        for temp_file in ["chapter_list.json"]:
+        for temp_file in glob.glob("chapters_*.json") + ["chapter_list.json"]:
             if os.path.exists(temp_file):
                 try:
                     os.remove(temp_file)
