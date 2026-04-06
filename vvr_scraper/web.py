@@ -11,9 +11,10 @@ from pathlib import Path
 
 import httpx
 import uvicorn
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, HTTPException, Depends, Response, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel
 from loguru import logger
 import json
@@ -33,6 +34,7 @@ from .session_manager import load_session, save_session
 from .tao_so_do_cay import get_chapter_tree_list, get_chapter_range_urls
 from playwright.async_api import async_playwright
 from .db import DatabaseManager
+from . import opds
 
 class DownloadManager:
     def __init__(self, num_workers: int = 1):
@@ -97,6 +99,24 @@ async def lifespan(app: FastAPI):
     await download_queue.stop_workers()
 
 app = FastAPI(title="Valvrare Team Scraper Web UI", lifespan=lifespan)
+
+# OPDS Authentication
+security = HTTPBasic()
+
+def get_current_user(credentials: HTTPBasicCredentials = Depends(security)):
+    user = os.getenv("VVR_OPDS_USER", "admin")
+    password = os.getenv("VVR_OPDS_PASS", "password")
+    
+    if not os.getenv("VVR_OPDS_USER") or not os.getenv("VVR_OPDS_PASS"):
+        logger.warning("VVR_OPDS_USER or VVR_OPDS_PASS not set. Using default 'admin/password'.")
+        
+    if credentials.username != user or credentials.password != password:
+        raise HTTPException(
+            status_code=401,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return credentials.username
 
 SSR_API_URL = "https://val-ssr-2kzit.ondigitalocean.app/api/novels/search"
 
@@ -489,7 +509,7 @@ async def freesound_auth():
         return {"url": url}
     except Exception as e:
         logger.error(f"Error getting Freesound auth URL: {e}")
-        return {"error": str(e)}, 500
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/freesound/callback")
 async def freesound_callback(req: FreesoundCallbackRequest):
@@ -650,6 +670,9 @@ async def get_novel_manifest(path: str = Query(..., description="Path relative t
     base_dir = Path(settings.default_output_folder or "novels").absolute()
     
     # Securely join and resolve the path
+    if ".." in path:
+        raise HTTPException(status_code=400, detail="Invalid path: Parent directory traversal not allowed")
+
     rel_path = path.lstrip("/")
     target_path = (base_dir / rel_path).resolve()
     
@@ -750,7 +773,8 @@ async def sync_all_novels():
                     
                     if all_urls:
                         task_id = str(uuid.uuid4())[:8]
-                        formats = novel.get('formats').split(',') if novel.get('formats') else default_formats
+                        formats_val = novel.get('formats')
+                        formats = formats_val.split(',') if formats_val else default_formats
                         
                         req = DownloadRequest(
                             slug=slug,
@@ -913,6 +937,113 @@ async def batch_import(req: BatchImportRequest):
         added_count += 1
         
     return {"status": "ok", "count": added_count}
+
+# --- OPDS ROUTES ---
+
+@app.get("/opds/v1/root")
+async def opds_root(request: Request, user: str = Depends(get_current_user)):
+    base_url = str(request.base_url).rstrip("/")
+    feed = opds.create_feed("Valvrare Library", f"{base_url}/opds/v1/root")
+    
+    # Navigation items as entries in root feed (or link relation)
+    # For simplicity, we add them as navigation links
+    from lxml import etree
+    
+    # Newest
+    entry_new = etree.SubElement(feed, "{http://www.w3.org/2005/Atom}entry")
+    etree.SubElement(entry_new, "{http://www.w3.org/2005/Atom}title").text = "Mới tải"
+    etree.SubElement(entry_new, "{http://www.w3.org/2005/Atom}link", 
+                     rel="subsection", 
+                     href=f"{base_url}/opds/v1/newest", 
+                     type="application/atom+xml;profile=opds-catalog;kind=navigation")
+    etree.SubElement(entry_new, "{http://www.w3.org/2005/Atom}id").text = f"{base_url}/opds/v1/newest"
+    etree.SubElement(entry_new, "{http://www.w3.org/2005/Atom}updated").text = datetime.now().isoformat() + "Z"
+
+    # All
+    entry_all = etree.SubElement(feed, "{http://www.w3.org/2005/Atom}entry")
+    etree.SubElement(entry_all, "{http://www.w3.org/2005/Atom}title").text = "Tất cả truyện"
+    etree.SubElement(entry_all, "{http://www.w3.org/2005/Atom}link", 
+                     rel="subsection", 
+                     href=f"{base_url}/opds/v1/all", 
+                     type="application/atom+xml;profile=opds-catalog;kind=navigation")
+    etree.SubElement(entry_all, "{http://www.w3.org/2005/Atom}id").text = f"{base_url}/opds/v1/all"
+    etree.SubElement(entry_all, "{http://www.w3.org/2005/Atom}updated").text = datetime.now().isoformat() + "Z"
+
+    # Genres
+    entry_gen = etree.SubElement(feed, "{http://www.w3.org/2005/Atom}entry")
+    etree.SubElement(entry_gen, "{http://www.w3.org/2005/Atom}title").text = "Theo Thể loại"
+    etree.SubElement(entry_gen, "{http://www.w3.org/2005/Atom}link", 
+                     rel="subsection", 
+                     href=f"{base_url}/opds/v1/genres", 
+                     type="application/atom+xml;profile=opds-catalog;kind=navigation")
+    etree.SubElement(entry_gen, "{http://www.w3.org/2005/Atom}id").text = f"{base_url}/opds/v1/genres"
+    etree.SubElement(entry_gen, "{http://www.w3.org/2005/Atom}updated").text = datetime.now().isoformat() + "Z"
+
+    # Authors
+    entry_auth = etree.SubElement(feed, "{http://www.w3.org/2005/Atom}entry")
+    etree.SubElement(entry_auth, "{http://www.w3.org/2005/Atom}title").text = "Theo Tác giả"
+    etree.SubElement(entry_auth, "{http://www.w3.org/2005/Atom}link", 
+                     rel="subsection", 
+                     href=f"{base_url}/opds/v1/authors", 
+                     type="application/atom+xml;profile=opds-catalog;kind=navigation")
+    etree.SubElement(entry_auth, "{http://www.w3.org/2005/Atom}id").text = f"{base_url}/opds/v1/authors"
+    etree.SubElement(entry_auth, "{http://www.w3.org/2005/Atom}updated").text = datetime.now().isoformat() + "Z"
+
+    return Response(content=opds.to_string(feed), media_type="application/atom+xml;profile=opds-catalog;kind=navigation")
+
+@app.get("/opds/v1/newest")
+async def opds_newest(request: Request, user: str = Depends(get_current_user)):
+    base_url = str(request.base_url).rstrip("/")
+    feed = opds.create_feed("Mới tải", f"{base_url}/opds/v1/newest")
+    
+    novels = await app.state.db.get_newest_novels(limit=20)
+    for novel in novels:
+        opds.add_entry(feed, novel, base_url)
+        
+    return Response(content=opds.to_string(feed), media_type="application/atom+xml;profile=opds-catalog;kind=acquisition")
+
+@app.get("/opds/v1/all")
+async def opds_all(request: Request, user: str = Depends(get_current_user)):
+    base_url = str(request.base_url).rstrip("/")
+    feed = opds.create_feed("Tất cả truyện", f"{base_url}/opds/v1/all")
+    
+    novels = await app.state.db.get_all_novels()
+    for novel in novels:
+        opds.add_entry(feed, novel, base_url)
+        
+    return Response(content=opds.to_string(feed), media_type="application/atom+xml;profile=opds-catalog;kind=acquisition")
+
+@app.get("/opds/v1/genres")
+async def opds_genres(request: Request, user: str = Depends(get_current_user)):
+    base_url = str(request.base_url).rstrip("/")
+    feed = opds.create_feed("Theo Thể loại", f"{base_url}/opds/v1/genres")
+    
+    genres = await app.state.db.get_unique_genres()
+    from lxml import etree
+    for genre in genres:
+        entry = etree.SubElement(feed, "{http://www.w3.org/2005/Atom}entry")
+        etree.SubElement(entry, "{http://www.w3.org/2005/Atom}title").text = genre
+        etree.SubElement(entry, "{http://www.w3.org/2005/Atom}id").text = f"genre:{genre}"
+        etree.SubElement(entry, "{http://www.w3.org/2005/Atom}updated").text = datetime.now().isoformat() + "Z"
+        # Since we don't have a per-genre route yet, we can just link to "all" or leave it as navigation
+        # In a real OPDS, clicking a genre would lead to /opds/v1/genre/{genre}
+        
+    return Response(content=opds.to_string(feed), media_type="application/atom+xml;profile=opds-catalog;kind=navigation")
+
+@app.get("/opds/v1/authors")
+async def opds_authors(request: Request, user: str = Depends(get_current_user)):
+    base_url = str(request.base_url).rstrip("/")
+    feed = opds.create_feed("Theo Tác giả", f"{base_url}/opds/v1/authors")
+    
+    authors = await app.state.db.get_unique_authors()
+    from lxml import etree
+    for author in authors:
+        entry = etree.SubElement(feed, "{http://www.w3.org/2005/Atom}entry")
+        etree.SubElement(entry, "{http://www.w3.org/2005/Atom}title").text = author
+        etree.SubElement(entry, "{http://www.w3.org/2005/Atom}id").text = f"author:{author}"
+        etree.SubElement(entry, "{http://www.w3.org/2005/Atom}updated").text = datetime.now().isoformat() + "Z"
+        
+    return Response(content=opds.to_string(feed), media_type="application/atom+xml;profile=opds-catalog;kind=navigation")
 
 async def run_web_server(host: str = "127.0.0.1", port: int = 8000, num_workers: Optional[int] = None):
     """Starts the Uvicorn server in the current event loop."""
