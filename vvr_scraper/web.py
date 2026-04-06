@@ -13,7 +13,7 @@ import httpx
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, HTTPException, Depends, Response, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel
 from loguru import logger
@@ -191,7 +191,7 @@ class FreesoundCallbackRequest(BaseModel):
 
 class Settings(BaseModel):
     num_workers: int = 1
-    default_output_folder: str = ""
+    default_output_folder: str = "novels"
 
 SETTINGS_FILE_NAME = "vvr_settings.json"
 
@@ -235,7 +235,14 @@ async def run_scrape_task(req: DownloadRequest, task_id: str):
             
         await manager.broadcast({"type": "info", "task_id": task_id, "title": story_info.title})
         
-        output_folder = req.output_folder or sanitize_filename(story_info.title)
+        # Ensure we have an output folder relative to default_output_folder if not provided
+        settings = load_vvr_settings()
+        if not req.output_folder:
+            base_dir = settings.default_output_folder or "novels"
+            output_folder = os.path.join(base_dir, sanitize_filename(story_info.title))
+        else:
+            output_folder = req.output_folder
+            
         os.makedirs(output_folder, exist_ok=True)
         checkpoint_file = os.path.join(output_folder, ".vvr_checkpoint.json")
         checkpoint = {"slug": req.slug, "title": story_info.title, "cover_url": story_info.cover_url, "scraped": {}}
@@ -647,10 +654,13 @@ async def update_settings(settings: Settings):
 async def download_novel(req: DownloadRequest):
     task_id = str(uuid.uuid4())[:8]
     
-    # Use default output folder if not provided
+    # We delegate default folder naming to run_scrape_task which has the story title.
+    # We only pre-set it if the user/settings explicitly provided a base path.
     if not req.output_folder:
         settings = load_vvr_settings()
-        if settings.default_output_folder:
+        # Only set if it's an absolute path or special config. 
+        # For default 'novels', we let run_scrape_task handle it.
+        if settings.default_output_folder and settings.default_output_folder != "novels":
             req.output_folder = os.path.join(settings.default_output_folder, sanitize_filename(req.slug.split('/')[-1]))
 
     active_tasks[task_id] = req
@@ -1089,6 +1099,37 @@ async def opds_authors(request: Request, user: str = Depends(get_current_user)):
         etree.SubElement(entry, "{http://www.w3.org/2005/Atom}updated").text = datetime.now().isoformat() + "Z"
         
     return Response(content=opds.to_string(feed), media_type="application/atom+xml;profile=opds-catalog;kind=navigation")
+
+@app.get("/api/opds/download/{slug:path}")
+async def opds_download(slug: str, fmt: str = "epub", user: str = Depends(get_current_user)):
+    """Streams a novel file based on its slug and requested format."""
+    novel = await app.state.db.get_novel_by_slug(slug)
+    if not novel:
+        raise HTTPException(status_code=404, detail="Novel not found in database")
+    
+    output_folder = novel.get("output_folder")
+    if not output_folder or not os.path.exists(output_folder):
+        raise HTTPException(status_code=404, detail="Novel output folder not found on disk")
+    
+    filename = sanitize_filename(novel["title"])
+    file_path = os.path.join(output_folder, f"{filename}.{fmt.lower()}")
+    
+    if not os.path.exists(file_path):
+        # Try alternate extensions if fmt is special or case-sensitive issue
+        raise HTTPException(status_code=404, detail=f"File {filename}.{fmt} not found in output folder")
+    
+    media_types = {
+        "epub": "application/epub+zip",
+        "pdf": "application/pdf",
+        "mobi": "application/x-mobipocket-ebook",
+        "azw3": "application/vnd.amazon.mobi8-ebook"
+    }
+    
+    return FileResponse(
+        path=file_path,
+        media_type=media_types.get(fmt.lower(), "application/octet-stream"),
+        filename=f"{filename}.{fmt.lower()}"
+    )
 
 async def run_web_server(host: str = "127.0.0.1", port: int = 8000, num_workers: Optional[int] = None):
     """Starts the Uvicorn server in the current event loop."""
