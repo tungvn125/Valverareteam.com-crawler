@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vvr-scraper"
-version = "1.8.0"
+version = "1.8.6"
 description = "Công cụ tải truyện CỰC ĐỘC ĐÁO từ Valvrareteam.net"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -30,11 +30,13 @@ dependencies = [
     "websockets>=11.0",
     "aiosqlite>=0.19.0",
     "openai>=2.30.0",
-    "freesound-python",
+    "freesound-api>=1.0.0",
+    "pydub>=0.25.1",
+    "elevenlabs>=2.40.0",
+    "audioop-lts; python_version >= '3.13'"
 ]
 
-[project.optional-dependencies]
-audio = ["elevenlabs>=1.0.0", "pydub>=0.25.1"]
+
 
 [project.scripts]
 vvrt = "vvr_scraper.cli:main"
@@ -45,6 +47,3 @@ include = ["vvr_scraper*"]
 
 [tool.setuptools.package-data]
 "vvr_scraper" = ["static/*", "prompts/*.md"]
-
-[tool.uv.sources]
-freesound-python = { git = "https://github.com/MTG/freesound-python.git" }
