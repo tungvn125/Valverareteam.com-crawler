@@ -1129,13 +1129,14 @@ wheels = [
 
 [[package]]
 name = "vvr-scraper"
-version = "1.7.0"
+version = "1.8.2"
 source = { editable = "." }
 dependencies = [
     { name = "aiosqlite" },
     { name = "alive-progress" },
     { name = "beautifulsoup4" },
     { name = "ebooklib" },
+    { name = "elevenlabs" },
     { name = "fastapi" },
     { name = "freesound-python" },
     { name = "httpx" },
@@ -1145,6 +1146,7 @@ dependencies = [
     { name = "pillow" },
     { name = "playwright" },
     { name = "prompt-toolkit" },
+    { name = "pydub" },
     { name = "reportlab" },
     { name = "rich" },
     { name = "simple-term-menu" },
@@ -1164,6 +1166,7 @@ requires-dist = [
     { name = "alive-progress", specifier = "==3.3.0" },
     { name = "beautifulsoup4", specifier = "==4.13.4" },
     { name = "ebooklib", specifier = "==0.19" },
+    { name = "elevenlabs" },
     { name = "elevenlabs", marker = "extra == 'audio'", specifier = ">=1.0.0" },
     { name = "fastapi", specifier = ">=0.100.0" },
     { name = "freesound-python", git = "https://github.com/MTG/freesound-python.git" },
@@ -1174,6 +1177,7 @@ requires-dist = [
     { name = "pillow", specifier = ">=11.3.0" },
     { name = "playwright", specifier = ">=1.54.0" },
     { name = "prompt-toolkit", specifier = ">=3.0.43" },
+    { name = "pydub" },
     { name = "pydub", marker = "extra == 'audio'", specifier = ">=0.25.1" },
     { name = "reportlab", specifier = ">=4.4.3" },
     { name = "rich", specifier = ">=13.7.0" },
