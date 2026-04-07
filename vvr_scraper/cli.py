@@ -165,7 +165,7 @@ class ValvrareScraperCLI:
             description="Tải truyện từ Valvrare Team dưới dạng PDF, EPUB, và các định dạng khác.",
             formatter_class=argparse.RawTextHelpFormatter
         )
-        parser.add_argument('ten_truyen', nargs='*', help="Tên truyện cần tải (slug). Hoặc dùng 'web' để mở giao diện.")
+        parser.add_argument('ten_truyen', nargs='*', help="Tên truyện cần tải (slug). Hoặc dùng 'web' để mở giao diện, 'run <file>' để chạy manifest.")
         parser.add_argument('-o', '--output', dest='output_folder', help="Thư mục đầu ra.")
         parser.add_argument('-f', '--format', nargs='+', default=['EPUB'], 
                            choices=['PDF', 'EPUB', 'HTML', 'MD', 'TXT', 'MP3', 'AD-MP3', 'MP4'], help="Định dạng file.")
@@ -306,6 +306,15 @@ class ValvrareScraperCLI:
 
     async def run(self):
         """Main execution flow."""
+        # Handle 'run' command
+        if self.args.ten_truyen and self.args.ten_truyen[0] == 'run':
+            if len(self.args.ten_truyen) < 2:
+                logger.error("Vui lòng cung cấp đường dẫn đến file manifest JSON.")
+                return
+            from .job_runner import run_manifest
+            run_manifest(self.args.ten_truyen[1])
+            return
+
         # Handle 'freesound-login' command
         if self.args.ten_truyen and self.args.ten_truyen[0] == 'freesound-login':
             from .freesound_manager import FreesoundManager
