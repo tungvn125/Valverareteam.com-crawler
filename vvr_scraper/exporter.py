@@ -690,6 +690,9 @@ async def tao_file_audiodrama(
         logger.error(f"Lỗi khi tạo Audio Drama v2.5: {e}")
         import traceback
         logger.error(traceback.format_exc())
+    finally:
+        if 'voice_manager' in locals():
+            await voice_manager.close()
 
 async def tao_file_mp4(
     content_list: List[ContentItem], 

@@ -110,51 +110,59 @@ class VideoRenderer:
             thread.daemon = True
             thread.start()
             
-            # Wait for server to be ready
-            time.sleep(1)
+            try:
+                # Wait for server to be ready
+                time.sleep(1)
 
-            # Get the slug from manifest path
-            novel_slug = os.path.basename(root_dir)
-            file_url = f"http://127.0.0.1:{port}/static/cinema.html?vfx={self.vfx_scale}&path={novel_slug}"
-            
-            await page.goto(file_url)
-            
-            # Wait for the player to initialize
-            await page.wait_for_function("window.player !== undefined")
-            
-            # Inject manifest and prepare for rendering
-            await page.evaluate("window.player.prepareForRendering();")
-            
-            # Loop through each frame
-            from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
-            
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                BarColumn(),
-                TaskProgressColumn(),
-                transient=True
-            ) as progress:
-                task = progress.add_task("[cyan]Rendering frames...", total=total_frames)
+                # Get the slug from manifest path
+                novel_slug = os.path.basename(root_dir)
+                file_url = f"http://127.0.0.1:{port}/static/cinema.html?vfx={self.vfx_scale}&path={novel_slug}"
                 
-                for frame_idx in range(total_frames):
-                    current_time_ms = (frame_idx / self.fps) * 1000
+                await page.goto(file_url)
+                
+                # Wait for the player to initialize
+                await page.wait_for_function("window.player !== undefined")
+                
+                # Inject manifest and prepare for rendering
+                await page.evaluate("window.player.prepareForRendering();")
+                
+                # Loop through each frame
+                from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+                
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    BarColumn(),
+                    TaskProgressColumn(),
+                    transient=True
+                ) as progress:
+                    task = progress.add_task("[cyan]Rendering frames...", total=total_frames)
                     
-                    # Seek player to the exact time
-                    # We use evaluate to execute on the browser context
-                    await page.evaluate(f"window.player.seekTo({current_time_ms});")
-                    
-                    # Capture screenshot as PNG
-                    screenshot = await page.screenshot(type='png', full_page=False)
-                    
-                    # Write to FFmpeg pipe
-                    process.stdin.write(screenshot)
-                    
-                    progress.update(task, advance=1)
-            
-            # Stop server
-            server.should_exit = True
-            thread.join(timeout=2)
+                    for frame_idx in range(total_frames):
+                        current_time_ms = (frame_idx / self.fps) * 1000
+                        
+                        # Seek player to the exact time
+                        await page.evaluate(f"window.player.seekTo({current_time_ms});")
+                        
+                        # Capture screenshot as PNG
+                        screenshot = await page.screenshot(type='png', full_page=False)
+                        
+                        # Write to FFmpeg pipe
+                        process.stdin.write(screenshot)
+                        
+                        progress.update(task, advance=1)
+            finally:
+                # Always ensure cleanup
+                if process.stdin:
+                    try: process.stdin.close()
+                    except: pass
+                process.wait()
+                
+                # Stop server
+                server.should_exit = True
+                if thread.is_alive():
+                    thread.join(timeout=2)
+                logger.debug("Render resources cleaned up.")
 
         process.stdin.close()
         process.wait()

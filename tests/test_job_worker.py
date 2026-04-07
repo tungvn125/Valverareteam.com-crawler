@@ -9,3 +9,38 @@ async def test_job_worker_basic():
     job = ScrapeJob(payload=ScrapePayload(slug="test-slug", formats=["epub"]))
     await worker.enqueue_job(1, job) # Using (id, job)
     assert worker.queue.qsize() == 1
+
+@pytest.mark.asyncio
+async def test_job_worker_error_reporting():
+    # Need a mock db to capture updates
+    class MockDB:
+        def __init__(self): self.updates = []
+        async def update_job_status(self, *args, **kwargs): self.updates.append((args, kwargs))
+        
+    db = MockDB()
+    worker = JobWorker(db)
+    
+    job_manifest = ScrapeJob(payload=ScrapePayload(slug="fail", formats=[]))
+    
+    # Manually trigger error handler
+    try:
+        raise ValueError("Simulated failure")
+    except Exception as e:
+        await worker.handle_job_error(1, job_manifest, e)
+    
+    assert len(db.updates) == 1
+    assert db.updates[0][1]["status"] == "failed"
+    
+    # Check if log file exists
+    log_path = db.updates[0][1]["error_log_path"]
+    import os
+    assert os.path.exists(log_path)
+    with open(log_path, 'r') as f:
+        content = f.read()
+        assert "Job Manifest JSON" in content
+        assert "Simulated failure" in content
+        assert "Stack Trace" in content
+    
+    # Cleanup
+    if os.path.exists(log_path):
+        os.remove(log_path)

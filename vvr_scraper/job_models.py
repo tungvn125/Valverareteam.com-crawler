@@ -1,5 +1,5 @@
 from typing import List, Optional, Union, Literal, Annotated
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, RootModel
 
 class ScrapePayload(BaseModel):
     slug: str
@@ -30,4 +30,16 @@ class ServerJob(BaseModel):
     task: Literal["server"] = "server"
     payload: ServerPayload
 
-JobManifest = Annotated[Union[ScrapeJob, RenderJob, ServerJob], Field(discriminator="task")]
+class JobManifest(RootModel):
+    root: Annotated[Union[ScrapeJob, RenderJob, ServerJob], Field(discriminator="task")]
+
+    @property
+    def task(self):
+        return self.root.task
+
+    @property
+    def payload(self):
+        return self.root.payload
+
+    def model_dump_json(self, **kwargs):
+        return self.root.model_dump_json(**kwargs)

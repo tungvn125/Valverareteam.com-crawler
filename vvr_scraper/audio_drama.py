@@ -220,30 +220,24 @@ class OpenAIParser:
                 except Exception as e:
                     logger.error(f"Error parsing chunk {i+1} with OpenAI: {e}")
                     
-                    # Ask user to retry if in a terminal
-                    try:
-                        from rich.prompt import Confirm
-                        import sys
-                        if sys.stdin.isatty():
-                            if Confirm.ask(f"[bold yellow]Chunk {i+1} gặp lỗi. Bạn có muốn thử lại không?[/]", default=True):
-                                continue # Retry the same chunk
-                            else:
-                                logger.warning(f"Bỏ qua chunk {i+1} theo yêu cầu người dùng.")
-                                break # Skip to next chunk
-                        else:
-                            # Not a terminal, retry automatically up to MAX_RETRIES
-                            continue
-                    except ImportError:
-                        # Fallback to standard input if rich is missing (unlikely)
-                        import sys
-                        if sys.stdin.isatty():
-                            choice = input(f"Chunk {i+1} gặp lỗi. Thử lại? (Y/n): ").strip().lower()
-                            if choice in ('', 'y', 'yes'):
-                                continue
-                        else:
-                            # Not a terminal, do not block
-                            pass
-                        break
+                    # Automate retry up to 2 times (total 3 attempts)
+                    retries = 0
+                    while retries < 2:
+                        retries += 1
+                        logger.info(f"Retrying chunk {i+1} (Attempt {retries+1}/3)...")
+                        await asyncio.sleep(2)
+                        try:
+                            # Re-call OpenAI inside retry loop
+                            script = await self._parse_chunk(chunks[i])
+                            if script:
+                                full_script.extend(script)
+                                break
+                        except Exception as inner_e:
+                            if retries == 2:
+                                logger.error(f"Chunk {i+1} failed after 3 attempts: {inner_e}. Skipping.")
+                    
+                    # If failed all retries, proceed to next chunk
+                    continue
         
         return ScriptResult(full_script)
 
@@ -265,6 +259,12 @@ class VoiceManager:
         
         # Override narrator ID from env if provided
         self.narrator_voice_id = os.getenv("VVR_NARRATOR_VOICE_ID", self.DEFAULT_NARRATOR_VOICE_ID)
+        self._client = httpx.AsyncClient(timeout=None)
+
+    async def close(self):
+        """Closes the internal httpx client."""
+        await self._client.aclose()
+        logger.debug("VoiceManager HTTP client closed.")
 
     async def _init_cache(self):
         if self._initialized:
@@ -390,8 +390,8 @@ class VoiceManager:
         audio_buffer = io.BytesIO()
         all_alignments = []
 
-        async with httpx.AsyncClient() as client:
-            async with client.stream("POST", url, headers=headers, json=data, timeout=None) as response:
+        try:
+            async with self._client.stream("POST", url, headers=headers, json=data) as response:
                 if response.status_code != 200:
                     error_msg = await response.aread()
                     logger.error(f"ElevenLabs error ({response.status_code}): {error_msg}")
@@ -409,6 +409,9 @@ class VoiceManager:
                     except Exception as e:
                         logger.warning(f"Error parsing alignment chunk: {e}")
                         continue
+        except Exception as e:
+            logger.error(f"Network error during synthesis: {e}")
+            raise
 
         # Get full audio bytes
         full_audio = audio_buffer.getvalue()
