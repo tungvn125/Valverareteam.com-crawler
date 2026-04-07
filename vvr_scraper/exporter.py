@@ -15,6 +15,7 @@ from .bgm_manager import BGMManager
 from .mixing_engine import MixingEngine
 from .freesound_manager import FreesoundManager
 from .image_gen import ImageGenerator
+from .video_renderer import VideoRenderer
 # Heavy AI libraries (numpy, ElevenLabs) are lazy-loaded inside tao_file_mp3 
 # to ensure a fast cold start for the CLI and Web UI.
 from ebooklib import epub
@@ -689,4 +690,61 @@ async def tao_file_audiodrama(
         logger.error(f"Lỗi khi tạo Audio Drama v2.5: {e}")
         import traceback
         logger.error(traceback.format_exc())
+
+async def tao_file_mp4(
+    content_list: List[ContentItem], 
+    filename: str, 
+    story_id: str, 
+    db_manager: Any, 
+    title: str,
+    fps: int = 30,
+    render_format: str = 'landscape'
+):
+    """
+    Exports the cinematic novel to an MP4 video by first generating 
+    an Audio Drama MP3/Manifest and then rendering it.
+    """
+    # 1. Generate Audio Drama MP3 and manifest.json first
+    # We'll use a temporary MP3 path for the audio
+    temp_mp3 = filename.replace(".mp4", ".mp3")
+    await tao_file_audiodrama(
+        content_list=content_list,
+        filename=temp_mp3,
+        story_id=story_id,
+        db_manager=db_manager,
+        title=title
+    )
+    
+    # Check if manifest.json was created
+    manifest_path = os.path.join(os.path.dirname(filename), "manifest.json")
+    if not os.path.exists(manifest_path):
+        logger.error(f"Manifest file not found at {manifest_path}. MP4 render aborted.")
+        return
+
+    # 2. Render the video (no sound)
+    temp_video_nosound = filename.replace(".mp4", "_nosound.mp4")
+    renderer = VideoRenderer(
+        manifest_path=manifest_path,
+        output_path=temp_video_nosound,
+        fps=fps,
+        render_format=render_format
+    )
+    
+    await renderer.render()
+    
+    # 3. Mux audio and video
+    if os.path.exists(temp_video_nosound) and os.path.exists(temp_mp3):
+        await renderer.mux_audio(temp_video_nosound, temp_mp3, filename)
+        
+        # Cleanup temporary files
+        try:
+            os.remove(temp_video_nosound)
+            # We might want to keep the MP3 depending on user choice, 
+            # but for this flow, we follow the MP4 request.
+            # os.remove(temp_mp3) 
+        except:
+            pass
+    else:
+        logger.error("Failed to generate MP4: Missing temporary video or audio file.")
+
 

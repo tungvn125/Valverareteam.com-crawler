@@ -47,3 +47,9 @@ include = ["vvr_scraper*"]
 
 [tool.setuptools.package-data]
 "vvr_scraper" = ["static/*", "prompts/*.md"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
+]

@@ -385,6 +385,29 @@ body, html {
     display: none !important;
 }
 
+/* Rendering Mode */
+body.rendering-mode #player-controls {
+    display: none !important;
+}
+
+body.rendering-mode .bg-layer {
+    transition: none !important;
+}
+
+body.rendering-mode #vfx-overlay {
+    transition: none !important;
+}
+
+body.rendering-mode .word {
+    transition: none !important;
+}
+
+/* Ensure animations don't auto-play in rendering mode, 
+   they will be driven by JS seekTo or manual progress */
+body.rendering-mode * {
+    animation-play-state: paused !important;
+}
+
 /* Mobile Responsiveness */
 @media (max-width: 768px) {
     #dialogue-container {

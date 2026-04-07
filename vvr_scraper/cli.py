@@ -25,7 +25,7 @@ from . import tao_so_do_cay
 from .scraper_core import lay_thong_tin_truyen, scrape_chapters
 from .exporter import (
     tao_file_epub, tao_file_pdf, tao_file_html, tao_file_md, tao_file_txt, tao_file_mp3,
-    tao_file_audiodrama, ContentList, ChaptersData
+    tao_file_audiodrama, tao_file_mp4, ContentList, ChaptersData
 )
 from .db import DatabaseManager
 from .utils import (
@@ -168,7 +168,7 @@ class ValvrareScraperCLI:
         parser.add_argument('ten_truyen', nargs='*', help="Tên truyện cần tải (slug). Hoặc dùng 'web' để mở giao diện.")
         parser.add_argument('-o', '--output', dest='output_folder', help="Thư mục đầu ra.")
         parser.add_argument('-f', '--format', nargs='+', default=['EPUB'], 
-                           choices=['PDF', 'EPUB', 'HTML', 'MD', 'TXT', 'MP3', 'AD-MP3'], help="Định dạng file.")
+                           choices=['PDF', 'EPUB', 'HTML', 'MD', 'TXT', 'MP3', 'AD-MP3', 'MP4'], help="Định dạng file.")
         parser.add_argument('-g', '--gop', default='rieng', choices=['rieng', 'volume', 'tatca'], 
                            help="Cách gộp file (rieng/volume/tatca).")
         parser.add_argument('--khong-minh-hoa', action='store_true', help="Bỏ qua minh họa.")
@@ -600,6 +600,20 @@ class ValvrareScraperCLI:
                     story_id=info.slug,
                     db_manager=self.db_manager,
                     title=title
+                )
+            elif fmt == "MP4":
+                # Check for API Key as video needs Audio Drama
+                if not os.getenv("VVR_API_KEY") or not os.getenv("VVR_BASE_URL"):
+                    logger.warning("VVR_API_KEY or VVR_BASE_URL not found. Video render might fail.")
+                
+                await tao_file_mp4(
+                    content_list=content,
+                    filename=fpath,
+                    story_id=info.slug,
+                    db_manager=self.db_manager,
+                    title=title,
+                    fps=config.get('fps', 30),
+                    render_format=config.get('render_format', 'landscape')
                 )
 
     def _cleanup(self):
