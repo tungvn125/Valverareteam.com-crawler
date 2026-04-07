@@ -155,6 +155,16 @@ class DatabaseManager:
             row = await cursor.fetchone()
             return dict(row) if row else None
 
+    async def get_recent_jobs(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """Returns the most recent jobs from the database."""
+        db = await self.get_db()
+        async with db.execute(
+            "SELECT * FROM jobs ORDER BY created_at DESC LIMIT ?", 
+            (limit,)
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
     async def update_library_metadata(self, slug: str, metadata: Dict[str, Any]):
         """Updates one or more metadata fields for a novel identified by its slug."""
         if not metadata:

@@ -34,6 +34,8 @@ from .session_manager import load_session, save_session
 from .tao_so_do_cay import get_chapter_tree_list, get_chapter_range_urls
 from playwright.async_api import async_playwright
 from .db import DatabaseManager
+from .job_worker import JobWorker
+from .job_models import JobManifest
 from . import opds
 
 class DownloadManager:
@@ -94,10 +96,16 @@ async def lifespan(app: FastAPI):
     if not hasattr(app.state, "db") or app.state.db is None:
         app.state.db = DatabaseManager(db_path=get_config_path("vvr_library.db"))
         await app.state.db.init_db()
+    
+    # Universal Task Runner: Start JobWorker
+    app.state.worker = JobWorker(app.state.db)
+    await app.state.worker.start()
+    
     await download_queue.start_workers()
     logger.warning("OPDS Server active. Tránh di chuyển thư mục truyện thủ công để không làm hỏng liên kết thư viện.")
     yield
     # Shutdown
+    await app.state.worker.stop()
     await download_queue.stop_workers()
     if hasattr(app.state, "db") and app.state.db:
         await app.state.db.close()
@@ -481,6 +489,41 @@ async def run_scrape_task(req: DownloadRequest, task_id: str):
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}
+
+# --- JOB MANAGEMENT API ---
+
+@app.get("/api/jobs")
+async def list_jobs():
+    """Returns the 50 most recent jobs from the database."""
+    try:
+        jobs = await app.state.db.get_recent_jobs(limit=50)
+        return jobs
+    except Exception as e:
+        logger.error(f"Error listing jobs: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/jobs/{job_id}")
+async def get_job_detail(job_id: str):
+    """Returns detailed information for a specific job."""
+    job = await app.state.db.get_job_status(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    return job
+
+@app.post("/api/jobs")
+async def submit_job(job: JobManifest):
+    """Submits a new job to the task runner queue."""
+    try:
+        # 1. Save to DB
+        job_id = await app.state.db.create_job(job.task, job.model_dump_json())
+        
+        # 2. Enqueue to Worker
+        await app.state.worker.enqueue_job(job_id, job)
+        
+        return {"status": "queued", "job_id": job_id}
+    except Exception as e:
+        logger.error(f"Error submitting job: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/tasks/{task_id}/logs")
 async def get_task_logs(task_id: str):
