@@ -102,6 +102,28 @@ class DatabaseManager:
         await db.commit()
         logger.info(f"Database initialized at {self.db_path}")
 
+    async def update_job_status(self, job_id: int, status: str, progress: float = None, error_summary: str = None, error_log_path: str = None):
+        """Updates the status and metadata of a job."""
+        db = await self.get_db()
+        updates = ["status = ?", "finished_at = ?"]
+        params = [status, datetime.now().isoformat() if status in ("completed", "failed") else None]
+        
+        if progress is not None:
+            updates.append("progress = ?")
+            params.append(progress)
+        if error_summary is not None:
+            updates.append("error_summary = ?")
+            params.append(error_summary)
+        if error_log_path is not None:
+            updates.append("error_log_path = ?")
+            params.append(error_log_path)
+            
+        params.append(job_id)
+        query = f"UPDATE jobs SET {', '.join(updates)} WHERE id = ?"
+        
+        await db.execute(query, params)
+        await db.commit()
+
     async def update_library_metadata(self, slug: str, metadata: Dict[str, Any]):
         """Updates one or more metadata fields for a novel identified by its slug."""
         if not metadata:
