@@ -175,6 +175,9 @@ class ValvrareScraperCLI:
         parser.add_argument('--font', default='DejaVuSans', choices=['NotoSerif', 'DejaVuSans'], 
                            help="Font cho PDF.")
         parser.add_argument('-t', '--tasks', type=int, default=5, help="Số lượng tác vụ song song.")
+        parser.add_argument('--fps', type=int, default=30, choices=[30, 60], help="Số khung hình trên giây cho video (30/60).")
+        parser.add_argument('--render-format', default='landscape', choices=['landscape', 'portrait'], 
+                           help="Định dạng render video (landscape/portrait).")
         parser.add_argument('--login', action='store_true', help="Đăng nhập thủ công.")
         parser.add_argument('--refresh-session', action='store_true', help="Xóa session cũ.")
         parser.add_argument('--verbose', action='store_true', help="Hiển thị log chi tiết.")
@@ -468,7 +471,9 @@ class ValvrareScraperCLI:
                 'mode_idx': gop_map[self.args.gop],
                 'formats': [f.upper() for f in self.args.format],
                 'font': self.args.font,
-                'tasks': self.args.tasks
+                'tasks': self.args.tasks,
+                'fps': self.args.fps,
+                'render_format': self.args.render_format
             }
         
         mode_idx = InteractiveUI.show_menu(
@@ -477,14 +482,18 @@ class ValvrareScraperCLI:
         )
         if mode_idx is None: mode_idx = 0
 
-        format_items = ["PDF", "EPUB", "HTML", "Markdown (.md)", "Text (.txt)", "MP3 (Audiobook)", "MP3 (Audio Drama - AI Script)"]
+        format_items = [
+            "PDF", "EPUB", "HTML", "Markdown (.md)", "Text (.txt)", 
+            "MP3 (Audiobook)", "MP3 (Audio Drama - AI Script)", "MP4 (Cinematic Video)"
+        ]
         f_idxs = InteractiveUI.show_menu(format_items, "Chọn định dạng file", multi_select=True)
         if not f_idxs: return {}
         
         mapping = {
             "PDF": "PDF", "EPUB": "EPUB", "HTML": "HTML", 
             "Markdown (.md)": "MD", "Text (.txt)": "TXT", 
-            "MP3 (Audiobook)": "MP3", "MP3 (Audio Drama - AI Script)": "AD-MP3"
+            "MP3 (Audiobook)": "MP3", "MP3 (Audio Drama - AI Script)": "AD-MP3",
+            "MP4 (Cinematic Video)": "MP4"
         }
         formats = [mapping[format_items[i]] for i in f_idxs]
         
@@ -496,7 +505,32 @@ class ValvrareScraperCLI:
         tasks_in = input("Số lượng tác vụ song song (mặc định 5): ")
         tasks = int(tasks_in) if tasks_in.isdigit() and int(tasks_in) > 0 else 5
         
-        return {'mode_idx': mode_idx, 'formats': formats, 'font': font, 'tasks': tasks}
+        fps = self.args.fps
+        render_format = self.args.render_format
+
+        if "MP4" in formats:
+            # Chọn tỷ lệ khung hình
+            ratio_idx = InteractiveUI.show_menu(
+                ["16:9 (Landscape)", "9:16 (Portrait)"],
+                "Chọn tỷ lệ khung hình video"
+            )
+            render_format = "landscape" if ratio_idx == 0 else "portrait"
+
+            # Chọn FPS
+            fps_idx = InteractiveUI.show_menu(
+                ["30 FPS", "60 FPS"],
+                "Chọn số khung hình trên giây (FPS)"
+            )
+            fps = 30 if fps_idx == 0 else 60
+        
+        return {
+            'mode_idx': mode_idx, 
+            'formats': formats, 
+            'font': font, 
+            'tasks': tasks,
+            'fps': fps,
+            'render_format': render_format
+        }
 
     async def _generate_files(self, chapter_data, selected_chaps, scraped, story_info, config):
         # Map URL to metadata
