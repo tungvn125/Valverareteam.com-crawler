@@ -14,7 +14,7 @@ class JobWorker:
         self.db = db_manager
         self._loop_task = None
 
-    async def enqueue_job(self, job_id: int, job: JobManifest):
+    async def enqueue_job(self, job_id: str, job: JobManifest):
         await self.queue.put((job_id, job))
         logger.info(f"Enqueued job {job_id}: {job.task}")
 
