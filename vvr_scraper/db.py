@@ -1,5 +1,6 @@
 import aiosqlite
 import os
+import uuid
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 from loguru import logger
@@ -23,8 +24,10 @@ class DatabaseManager:
             self._db = None
 
     async def init_db(self):
-        """Initializes the database and creates the novels table if it doesn't exist."""
+        """Initializes the database and creates necessary tables if they don't exist."""
         db = await self.get_db()
+        
+        # Performance: Enable WAL mode for production concurrency
         await db.execute("PRAGMA journal_mode=WAL")
         
         # Migration: Rename library to novels if it exists
@@ -86,107 +89,94 @@ class DatabaseManager:
             )
         """)
 
+        # Job Management Table
         await db.execute("""
             CREATE TABLE IF NOT EXISTS jobs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id TEXT PRIMARY KEY,
                 task_type TEXT,
                 status TEXT,
-                progress REAL,
+                progress REAL DEFAULT 0.0,
                 payload TEXT,
                 error_summary TEXT,
                 error_log_path TEXT,
-                created_at DATETIME,
-                finished_at DATETIME
+                created_at TEXT,
+                finished_at TEXT
             )
         """)
         await db.commit()
-        logger.info(f"Database initialized at {self.db_path}")
+        logger.info(f"Database initialized at {self.db_path} (WAL mode enabled)")
 
-    async def update_job_status(self, job_id: int, status: str, progress: float = None, error_summary: str = None, error_log_path: str = None):
+    async def create_job(self, task_type: str, payload: str) -> str:
+        """Creates a new job entry and returns its ID (UUID)."""
+        job_id = str(uuid.uuid4())
+        created_at = datetime.now().isoformat()
+        db = await self.get_db()
+        await db.execute(
+            "INSERT INTO jobs (id, task_type, status, payload, created_at) VALUES (?, ?, ?, ?, ?)",
+            (job_id, task_type, "pending", payload, created_at)
+        )
+        await db.commit()
+        return job_id
+
+    async def update_job_status(self, job_id: str, status: str, progress: float = None, 
+                               error_summary: str = None, error_log_path: str = None):
         """Updates the status and metadata of a job."""
         db = await self.get_db()
-        updates = ["status = ?", "finished_at = ?"]
-        params = [status, datetime.now().isoformat() if status in ("completed", "failed") else None]
+        finished_at = None
+        if status in ("success", "failed"):
+            finished_at = datetime.now().isoformat()
+            
+        sql = "UPDATE jobs SET status = ?"
+        params = [status]
         
         if progress is not None:
-            updates.append("progress = ?")
+            sql += ", progress = ?"
             params.append(progress)
         if error_summary is not None:
-            updates.append("error_summary = ?")
+            sql += ", error_summary = ?"
             params.append(error_summary)
         if error_log_path is not None:
-            updates.append("error_log_path = ?")
+            sql += ", error_log_path = ?"
             params.append(error_log_path)
+        if finished_at:
+            sql += ", finished_at = ?"
+            params.append(finished_at)
             
+        sql += " WHERE id = ?"
         params.append(job_id)
-        query = f"UPDATE jobs SET {', '.join(updates)} WHERE id = ?"
         
-        await db.execute(query, params)
+        await db.execute(sql, tuple(params))
         await db.commit()
+
+    async def get_job_status(self, job_id: str) -> Optional[Dict[str, Any]]:
+        """Returns the current status of a job."""
+        db = await self.get_db()
+        async with db.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
 
     async def update_library_metadata(self, slug: str, metadata: Dict[str, Any]):
         """Updates one or more metadata fields for a novel identified by its slug."""
         if not metadata:
             return
 
+        db = await self.get_db()
         keys = list(metadata.keys())
         values = list(metadata.values())
         
         set_clause = ", ".join([f"{key} = ?" for key in keys])
         query = f"UPDATE novels SET {set_clause} WHERE slug = ?"
         params = values + [slug]
-
-        db = await self.get_db()
-        async with db.execute(query, params) as cursor:
-            if cursor.rowcount == 0:
-                logger.warning(f"No novel found with slug: {slug} to update metadata.")
+        await db.execute(query, tuple(params))
         await db.commit()
-
-    async def get_novel_by_slug(self, slug: str) -> Optional[Dict[str, Any]]:
-        """Retrieves a novel entry by its slug."""
-        db = await self.get_db()
-        async with db.execute("SELECT * FROM novels WHERE slug = ?", (slug,)) as cursor:
-            row = await cursor.fetchone()
-            return dict(row) if row else None
-
-    async def save_character_voice(self, story_id: str, character_name: str, voice_name: str):
-        """Saves or updates a voice mapping for a character in a story."""
-        db = await self.get_db()
-        await db.execute("""
-            INSERT INTO character_voices (story_id, character_name, voice_name)
-            VALUES (?, ?, ?)
-            ON CONFLICT(story_id, character_name) DO UPDATE SET voice_name=excluded.voice_name
-        """, (story_id, character_name, voice_name))
-        await db.commit()
-
-    async def get_character_voice(self, story_id: str, character_name: str) -> Optional[str]:
-        """Retrieves the voice name for a character in a story."""
-        db = await self.get_db()
-        async with db.execute(
-            "SELECT voice_name FROM character_voices WHERE story_id = ? AND character_name = ?",
-            (story_id, character_name)
-        ) as cursor:
-            row = await cursor.fetchone()
-            return row[0] if row else None
-
-    async def get_all_story_voices(self, story_id: str) -> Dict[str, str]:
-        """Retrieves all character to voice mappings for a story."""
-        db = await self.get_db()
-        async with db.execute(
-            "SELECT character_name, voice_name FROM character_voices WHERE story_id = ?",
-            (story_id,)
-        ) as cursor:
-            rows = await cursor.fetchall()
-            return {row[0]: row[1] for row in rows}
 
     async def upsert_novel(self, novel_data: Dict[str, Any]):
-        """Inserts or updates a novel entry based on the slug."""
+        """Inserts or updates a novel entry."""
         db = await self.get_db()
         await db.execute("""
             INSERT INTO novels (
-                title, slug, author, last_chapter_count, 
-                last_downloaded_at, output_folder, formats, status, cover_url,
-                genres, description
+                title, slug, author, last_chapter_count, last_downloaded_at,
+                output_folder, formats, status, cover_url, genres, description
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(slug) DO UPDATE SET
                 title=excluded.title,
@@ -218,19 +208,9 @@ class DatabaseManager:
         """Returns entries in the library with optional pagination."""
         db = await self.get_db()
         if page is not None:
-            # We might want to fetch size+1 to check for next page without changing offset
-            # But the standard way is to keep size fixed for offset calculation
-            offset = (page - 1) * (size - 1 if "LIMIT ? OFFSET ?" in "Check if we are over-fetching" else size)
-            # Re-evaluating: The issue is web.py calls it with size+1.
-            # Let's make the offset calculation use a fixed size if we are just checking for next page.
-            # Better: Pass an explicit limit and offset to the DB methods.
-            
-            # Simple fix for now: the caller in web.py passes size+1 as the 'size' parameter here.
-            # We need the 'size' for LIMIT, but (size-1) for OFFSET if we want 
-            # standard pagination while over-fetching by 1.
-            # Actually, let's just use an optional limit parameter.
+            offset = (page - 1) * size
             query = "SELECT * FROM novels ORDER BY id LIMIT ? OFFSET ?"
-            params = (size, (page - 1) * (size - 1))
+            params = (size, offset)
         else:
             query = "SELECT * FROM novels ORDER BY id"
             params = ()
@@ -271,9 +251,7 @@ class DatabaseManager:
     async def get_newest_novels(self, limit: int = 20, page: int = 1) -> List[Dict[str, Any]]:
         """Returns the newest novels based on last_downloaded_at with pagination."""
         db = await self.get_db()
-        # Same fix as get_all_novels: limit is (size+1), but offset should be (page-1)*size
-        # Actually, in web.py, newest uses limit=size+1
-        size = limit - 1
+        size = limit # Fixed size for pagination
         offset = (page - 1) * size
         async with db.execute(
             "SELECT * FROM novels ORDER BY last_downloaded_at DESC LIMIT ? OFFSET ?",
@@ -302,3 +280,23 @@ class DatabaseManager:
         ) as cursor:
             rows = await cursor.fetchall()
             return [row[0] for row in rows]
+
+    async def get_all_story_voices(self, story_id: str) -> Dict[str, str]:
+        """Returns a mapping of character names to voice IDs for a story."""
+        db = await self.get_db()
+        async with db.execute(
+            "SELECT character_name, voice_name FROM character_voices WHERE story_id = ?",
+            (story_id,)
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return {row[0]: row[1] for row in rows}
+
+    async def save_character_voice(self, story_id: str, character_name: str, voice_name: str):
+        """Saves or updates a character's voice assignment."""
+        db = await self.get_db()
+        await db.execute(
+            "INSERT INTO character_voices (story_id, character_name, voice_name) VALUES (?, ?, ?) "
+            "ON CONFLICT(story_id, character_name) DO UPDATE SET voice_name=excluded.voice_name",
+            (story_id, character_name, voice_name)
+        )
+        await db.commit()
