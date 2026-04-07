@@ -84,13 +84,15 @@ class DownloadManager:
         await manager.broadcast({"type": "status", "task_id": task_id, "status": "In Queue..."})
         await self.queue.put((req, task_id))
 
+# Global instances for task runners
 download_queue = DownloadManager(num_workers=1)
+worker: Optional[JobWorker] = None
 
 _event_loop = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _event_loop
+    global _event_loop, worker
     # Startup
     _event_loop = asyncio.get_running_loop()
     if not hasattr(app.state, "db") or app.state.db is None:
@@ -98,14 +100,15 @@ async def lifespan(app: FastAPI):
         await app.state.db.init_db()
     
     # Universal Task Runner: Start JobWorker
-    app.state.worker = JobWorker(app.state.db)
-    await app.state.worker.start()
+    worker = JobWorker(app.state.db)
+    await worker.start()
     
     await download_queue.start_workers()
     logger.warning("OPDS Server active. Tránh di chuyển thư mục truyện thủ công để không làm hỏng liên kết thư viện.")
     yield
     # Shutdown
-    await app.state.worker.stop()
+    if worker:
+        await worker.stop()
     await download_queue.stop_workers()
     if hasattr(app.state, "db") and app.state.db:
         await app.state.db.close()
@@ -513,12 +516,15 @@ async def get_job_detail(job_id: str):
 @app.post("/api/jobs")
 async def submit_job(job: JobManifest):
     """Submits a new job to the task runner queue."""
+    if worker is None:
+        raise HTTPException(status_code=503, detail="JobWorker not initialized")
+        
     try:
         # 1. Save to DB
         job_id = await app.state.db.create_job(job.task, job.model_dump_json())
         
         # 2. Enqueue to Worker
-        await app.state.worker.enqueue_job(job_id, job)
+        await worker.enqueue_job(job_id, job)
         
         return {"status": "queued", "job_id": job_id}
     except Exception as e:
