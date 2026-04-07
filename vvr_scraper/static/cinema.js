@@ -34,9 +34,103 @@ class CinemaPlayer {
         this.isSyncing = false;
         this.syncId = null;
         this.novelPath = '';
+        this.isRendering = false;
 
         this.initPlayer();
         this.setupVisibilityHandler();
+    }
+
+    /**
+     * Prepares the player for video rendering mode.
+     * Hides UI and disables real-time syncing.
+     */
+    prepareForRendering() {
+        this.isRendering = true;
+        document.body.classList.add('rendering-mode');
+        this.stopSyncLoop();
+        this.audio.pause();
+        this.audio.muted = true;
+        this.resetState();
+    }
+
+    resetState() {
+        this.nextEventIndex = 0;
+        this.currentDialogue = null;
+        this.activeVFX.clear();
+        this.vfxOverlay.className = '';
+        this.bgCurrent.style.backgroundImage = '';
+        this.bgNext.style.backgroundImage = '';
+        this.bgNext.classList.add('hidden');
+        this.charName.textContent = '';
+        this.textDisplay.innerHTML = '';
+        this.currentWordSpans = [];
+    }
+
+    /**
+     * Manually sets the playback time (used by VideoRenderer).
+     * @param {number} timeMs 
+     */
+    seekTo(timeMs) {
+        if (!this.isRendering) {
+            this.audio.currentTime = timeMs / 1000;
+        }
+        
+        // In rendering mode, we always rebuild the state for the current frame
+        // to ensure perfect synchronization.
+        this.resetState();
+        this.processEvents(timeMs);
+        this.updateKenBurns(timeMs);
+        this.updateUI();
+    }
+
+    /**
+     * Manual Ken Burns animation for rendering mode.
+     */
+    updateKenBurns(timeMs) {
+        if (!this.isRendering) return;
+        
+        // Find the active background event
+        let activeBg = null;
+        for (const event of this.events) {
+            if (event.type === 'background' && event.start <= timeMs) {
+                activeBg = event;
+            } else if (event.start > timeMs) {
+                break;
+            }
+        }
+
+        if (!activeBg) return;
+        
+        // Default duration 10s for backgrounds without an end time
+        const duration = (activeBg.end || (activeBg.start + 10000)) - activeBg.start;
+        const progress = Math.min(1, (timeMs - activeBg.start) / duration);
+        const effect = this.bgCurrent.dataset.effect || 'ken-burns-in';
+        
+        const transform = this.calculateKBTransform(effect, progress);
+        this.bgCurrent.style.transform = transform;
+    }
+
+    calculateKBTransform(effect, p) {
+        let scale = 1, x = 0, y = 0;
+        switch(effect) {
+            case 'ken-burns-in':
+                scale = 1 + (0.1 * p);
+                x = -1 * p; y = -1 * p;
+                break;
+            case 'ken-burns-out':
+                scale = 1.2 - (0.2 * p);
+                x = 1 - p; y = 1 - p;
+                break;
+            case 'ken-burns-left':
+                scale = 1.1;
+                x = 1 - (2 * p);
+                break;
+            case 'ken-burns-right':
+                scale = 1.1;
+                x = -1 + (2 * p);
+                break;
+        }
+        return `scale(${scale}) translate(${x}%, ${y}%)`;
     }
 
     /**
@@ -229,6 +323,7 @@ class CinemaPlayer {
      * Main synchronization loop using requestAnimationFrame.
      */
     startSyncLoop() {
+        if (this.isRendering) return;
         if (this.isSyncing && this.syncId) return;
         this.isSyncing = true;
 
@@ -245,6 +340,56 @@ class CinemaPlayer {
         };
         
         this.syncId = requestAnimationFrame(loop);
+    }
+
+    /**
+     * Renders a specific frame at timeMs.
+     * Used by VideoRenderer for frame-by-frame capture.
+     * @param {number} timeMs 
+     */
+    renderFrame(timeMs) {
+        // 1. Process events for this point in time
+        this.processEvents(timeMs);
+        
+        // 2. Update manual Ken Burns transforms
+        if (this.bgCurrent.style.backgroundImage && this.bgCurrent.dataset.effect) {
+            this.bgCurrent.style.transform = this.calculateKenBurns(
+                this.bgCurrent.dataset.effect, 
+                timeMs
+            );
+        }
+        
+        // 3. Update UI
+        this.lastTimeMs = timeMs;
+    }
+
+    /**
+     * Calculates CSS transform for Ken Burns effect based on absolute time.
+     */
+    calculateKenBurns(effect, timeMs) {
+        const duration = 20000; // 20s cycle
+        const p = (timeMs % duration) / duration;
+        let scale = 1, x = 0, y = 0;
+        
+        switch(effect) {
+            case 'ken-burns-in':
+                scale = 1 + (0.1 * p);
+                x = -1 * p; y = -1 * p;
+                break;
+            case 'ken-burns-out':
+                scale = 1.2 - (0.2 * p);
+                x = 1 - p; y = 1 - p;
+                break;
+            case 'ken-burns-left':
+                scale = 1.1;
+                x = 1 - (2 * p);
+                break;
+            case 'ken-burns-right':
+                scale = 1.1;
+                x = -1 + (2 * p);
+                break;
+        }
+        return `scale(${scale}) translate(${x}%, ${y}%)`;
     }
 
     stopSyncLoop() {
@@ -323,9 +468,10 @@ class CinemaPlayer {
         const kbEffects = ['ken-burns-in', 'ken-burns-out', 'ken-burns-left', 'ken-burns-right'];
         const randomKB = kbEffects[Math.floor(Math.random() * kbEffects.length)];
 
-        if (immediate) {
+        if (immediate || this.isRendering) {
             this.bgCurrent.style.backgroundImage = imageUrl;
             this.bgCurrent.className = 'bg-layer ' + randomKB;
+            this.bgCurrent.dataset.effect = randomKB; // Save for VideoRenderer
             this.bgNext.classList.add('hidden');
             this.bgNext.style.backgroundImage = '';
             return;
@@ -334,6 +480,7 @@ class CinemaPlayer {
         // Use bgNext to load and fade in
         this.bgNext.style.backgroundImage = imageUrl;
         this.bgNext.className = 'bg-layer ' + randomKB;
+        this.bgNext.dataset.effect = randomKB; // Save for VideoRenderer
         this.bgNext.classList.remove('hidden');
 
         // After transition (defined in CSS as 1.5s), swap them
@@ -408,7 +555,7 @@ class CinemaPlayer {
             this.vfxOverlay.classList.add(effectClass);
             
             // Some effects are transient (flash, shake)
-            if (event.duration) {
+            if (event.duration && !this.isRendering) {
                 if (this.activeVFX.has(event.effect)) {
                     clearTimeout(this.activeVFX.get(event.effect));
                 }
