@@ -18,13 +18,17 @@ class VideoRenderer:
         output_path: str, 
         fps: int = 30, 
         render_format: str = 'landscape',
-        vfx_scale: int = 100
+        vfx_scale: int = 100,
+        job_id: Optional[str] = None,
+        db: Optional[Any] = None
     ):
         self.manifest_path = manifest_path
         self.output_path = output_path
         self.fps = fps
         self.render_format = render_format
         self.vfx_scale = vfx_scale
+        self.job_id = job_id
+        self.db = db
         
         # Resolutions
         if render_format == 'portrait':
@@ -32,7 +36,7 @@ class VideoRenderer:
         else: # landscape
             self.width, self.height = 1920, 1080
 
-    async def render(self):
+    async def render(self, job_id: Optional[str] = None, db: Optional[Any] = None):
         """Renders the cinematic novel to an MP4 video (without audio)."""
         logger.info(f"Bắt đầu render video ({self.width}x{self.height}, {self.fps} FPS)...")
         
@@ -50,6 +54,8 @@ class VideoRenderer:
         # Add a small buffer at the end
         total_duration_ms += 1000
         total_frames = int((total_duration_ms / 1000) * self.fps)
+        if total_frames <= 0:
+            total_frames = 1
         
         logger.info(f"Tổng thời gian: {total_duration_ms/1000:.2f}s, Tổng số frame: {total_frames}")
 
@@ -67,7 +73,7 @@ class VideoRenderer:
             self.output_path
         ]
         
-        process = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE)
+        process = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
 
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
@@ -92,7 +98,9 @@ class VideoRenderer:
 
             app = FastAPI()
             # Serve the novel content (images, audio)
-            app.mount("/novels", StaticFiles(directory=os.path.dirname(root_dir)), name="novels")
+            # Find the library root (novels/)
+            novels_root = os.path.abspath(os.path.join(root_dir, ".."))
+            app.mount("/novels", StaticFiles(directory=novels_root), name="novels")
             # Serve the cinema player (js, css, html)
             app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
@@ -114,7 +122,7 @@ class VideoRenderer:
                 # Wait for server to be ready
                 time.sleep(1)
 
-                # Get the slug from manifest path
+                # Get the slug from manifest path (folder name)
                 novel_slug = os.path.basename(root_dir)
                 file_url = f"http://127.0.0.1:{port}/static/cinema.html?vfx={self.vfx_scale}&path={novel_slug}"
                 
@@ -139,6 +147,11 @@ class VideoRenderer:
                     task = progress.add_task("[cyan]Rendering frames...", total=total_frames)
                     
                     for frame_idx in range(total_frames):
+                        # Check if FFmpeg is still alive
+                        if process.poll() is not None:
+                            stdout, stderr = process.communicate()
+                            raise RuntimeError(f"FFmpeg exited unexpectedly with code {process.returncode}. Error: {stderr.decode()}")
+
                         current_time_ms = (frame_idx / self.fps) * 1000
                         
                         # Seek player to the exact time
@@ -148,24 +161,36 @@ class VideoRenderer:
                         screenshot = await page.screenshot(type='png', full_page=False)
                         
                         # Write to FFmpeg pipe
-                        process.stdin.write(screenshot)
+                        try:
+                            process.stdin.write(screenshot)
+                        except BrokenPipeError:
+                            stdout, stderr = process.communicate()
+                            raise RuntimeError(f"FFmpeg pipe broken. Error: {stderr.decode()}")
                         
                         progress.update(task, advance=1)
+                        
+                        # Update DB progress every 30 frames
+                        if self.db and self.job_id and frame_idx % 30 == 0:
+                            db_progress = 10.0 + (frame_idx / total_frames) * 80.0
+                            await self.db.update_job_status(self.job_id, "running", progress=db_progress)
+
             finally:
                 # Always ensure cleanup
                 if process.stdin:
                     try: process.stdin.close()
                     except: pass
+                
+                # Wait for FFmpeg to finish writing file
                 process.wait()
                 
                 # Stop server
                 server.should_exit = True
                 if thread.is_alive():
                     thread.join(timeout=2)
+                
+                await browser.close()
                 logger.debug("Render resources cleaned up.")
 
-        process.stdin.close()
-        process.wait()
         logger.success(f"Đã render xong video (không âm thanh): {self.output_path}")
 
     @staticmethod
