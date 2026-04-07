@@ -25,6 +25,7 @@ class DatabaseManager:
     async def init_db(self):
         """Initializes the database and creates the novels table if it doesn't exist."""
         db = await self.get_db()
+        await db.execute("PRAGMA journal_mode=WAL")
         
         # Migration: Rename library to novels if it exists
         async with db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='library'") as cursor:
@@ -82,6 +83,20 @@ class DatabaseManager:
                 character_name TEXT,
                 voice_name TEXT,
                 PRIMARY KEY (story_id, character_name)
+            )
+        """)
+
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS jobs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_type TEXT,
+                status TEXT,
+                progress REAL,
+                payload TEXT,
+                error_summary TEXT,
+                error_log_path TEXT,
+                created_at DATETIME,
+                finished_at DATETIME
             )
         """)
         await db.commit()
