@@ -1,0 +1,54 @@
+# ============================================================
+# VVR-Scraper Docker Compose
+# Chạy: docker compose up -d
+# ============================================================
+
+services:
+  # --- Web UI + OPDS Server ---
+  vvr-web:
+    build: .
+    container_name: vvr-scraper
+    restart: unless-stopped
+    ports:
+      - "${VVR_PORT:-8000}:8000"
+
+    # API Keys & Config
+    environment:
+      # --- BẮT BUỘC cho Audio Drama ---
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY:-}
+      # --- Tùy chọn ---
+      - FREESOUND_CLIENT_ID=${FREESOUND_CLIENT_ID:-}
+      - FREESOUND_CLIENT_SECRET=${FREESOUND_CLIENT_SECRET:-}
+      - VVR_SSR_URL=${VVR_SSR_URL:-val-ssr-2kzit.ondigitalocean.app}
+      # --- OPDS Auth ---
+      - VVR_OPDS_USER=${VVR_OPDS_USER:-admin}
+      - VVR_OPDS_PASS=${VVR_OPDS_PASS:-}
+      # --- AI config ---
+      - VVR_API_KEY=${VVR_API_KEY:-}
+      - VVR_BASE_URL=${VVR_BASE_URL:-}
+      - VVR_MODEL=${VVR_MODEL:-}
+      - VVR_NARRATOR_VOICE_ID=${VVR_NARRATOR_VOICE_ID:-}
+      # --- Auto Sync ---
+      - VVR_AUTO_SYNC=${VVR_AUTO_SYNC:-0}
+
+    volumes:
+      # Thư mục truyện (persistent)
+      - novels_data:/home/vvr/app/novels
+      # Config + session + database (persistent)
+      - vvr_config:/home/vvr/.config/vvr-scraper
+      # BGM library (optional, mount host folder)
+      # - ./bgm:/home/vvr/app/bgm:ro
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  novels_data:
+    driver: local
+  vvr_config:
+    driver: local

@@ -1,41 +1,95 @@
-# Valvrare Team Web Novel Scraper - Technical Documentation
+# Valvrare Team Web Novel Scraper (VVR-Scraper)
 
-## Kiến trúc hệ thống
-Dự án được xây dựng trên mô hình **Asynchronous Event-Driven**, chia thành các module chức năng chuyên biệt:
+Hệ thống tự động hóa khai thác và chuyển đổi nội dung từ Valvrare Team sang các định dạng đa phương tiện nâng cao (Ebook, Audiobook, Cinematic Video).
 
-- **`vvr_scraper/scraper_core.py`**: Trái tim của hệ thống scraping. 
-    - Sử dụng mô hình Hybrid: HTTPX qua SSR Proxy (Fast) và Playwright (Reliable).
-- **`vvr_scraper/exporter.py`**: Module xuất bản tập trung.
-    - Tích hợp **Pipeline VVR-Cinema**: Orchestrator kết nối LLM Director, TTS Sync và Visual Generator.
-    - Xử lý tính toán **Global Timestamps**: Chuyển đổi mốc thời gian TTS tương đối sang tuyệt đối (ms) để đồng bộ toàn cục.
-- **`vvr_scraper/audio_drama.py`**: 
-    - `OpenAIParser`: Trích xuất kịch bản kèm `visual_prompt` (English), `vfx_triggers` và `transitions`.
-    - `VoiceManager`: Sử dụng ElevenLabs `stream-with-timestamps` để lấy dữ liệu đồng bộ cấp độ từ (word-level alignment).
-- **`vvr_scraper/image_gen.py` (New)**: Module sinh ảnh bối cảnh AI.
-    - Tích hợp DALL-E 3 (OpenAI) với cơ chế **SHA-256 Deduplication** để tránh sinh trùng ảnh.
-    - Tối ưu hóa **WebP Conversion** (Pillow) để tăng tốc độ tải và tiết kiệm dung lượng.
-- **`vvr_scraper/web.py`**: FastAPI server.
-    - Cung cấp API phục vụ tài nguyên tĩnh (`/novels`) và Manifest API cho trình phát Cinema.
-    - **Personal OPDS Server (New):** Tích hợp chuẩn OPDS 1.1 và OpenSearch cho phép các ứng dụng đọc sách kết nối trực tiếp.
-- **`vvr_scraper/opds.py` (New)**: Module sinh Atom XML Feed.
-    - Xử lý logic phân trang (Pagination), tìm kiếm (Search) và ánh xạ dữ liệu novel sang chuẩn OPDS metadata.
-    - Hỗ trợ đa định dạng (EPUB/PDF) và proxy ảnh bìa thông minh.
-- **Giao diện Cinema Player (Frontend)**:
-    - Xây dựng bằng Vanilla JS & CSS3 Animations.
-    - Sử dụng `requestAnimationFrame` để đồng bộ hóa hình ảnh/VFX với âm thanh ở độ chính xác mili giây.
-    - Hiệu ứng **Ken Burns** đa biến thể giúp ảnh tĩnh trở nên sống động.
+## 🚀 Project Overview
 
-## Quyết định thiết kế then chốt
-1. **Cinematic Bundle:** Mọi tài nguyên (audio, backgrounds, manifest) được tạo sẵn và lưu trữ local. Điều này đảm bảo trải nghiệm xem mượt mà 60fps và không phụ thuộc internet/API khi thưởng thức.
-2. **Absolute Timing:** Mốc thời gian Karaoke được tính toán ngay tại Backend (bao gồm cả padding, gap và crossfade). Frontend chỉ việc "diễn" theo script, giảm tải logic tính toán cho trình duyệt.
-3. **Hardware Acceleration:** Toàn bộ VFX (Shake, Rain, Fog) và Ken Burns sử dụng thuộc tính CSS `transform` và `opacity` để tận dụng GPU.
+VVR-Scraper là một công cụ mạnh mẽ được thiết kế để tải truyện từ `valvrareteam.net` và chuyển đổi chúng thành nhiều định dạng khác nhau. Dự án không chỉ dừng lại ở việc tạo Ebook mà còn tích hợp AI để tạo ra các sản phẩm truyền thông đa phương tiện như Audio Drama và Video Cinematic.
 
-## Quy trình Phát triển (Conventions)
-- **Async First:** Sử dụng `httpx.AsyncClient` dùng chung (shared client) và giới hạn luồng qua `asyncio.Semaphore`.
-- **Manifest-Driven:** File `manifest.json` là "Source of Truth" duy nhất cho mỗi chương truyện Cinematic.
+### Core Features
+- **Hybrid Scraping**: Sử dụng `httpx` (Fast mode qua SSR Proxy) và `Playwright` (Reliable mode) để trích xuất nội dung chính xác.
+- **Multi-format Export**: Hỗ trợ EPUB, PDF, HTML, Markdown, TXT và MP3 (Audiobook).
+- **AI Audio Drama (v2.5)**: 
+    - Phân tích kịch bản bằng OpenAI.
+    - Gán giọng nhân vật và tổng hợp giọng nói qua ElevenLabs.
+    - Chèn nhạc nền (BGM) và hiệu ứng (SFX) từ Freesound.
+- **Cinematic Video (MP4)**: Kết xuất video với hiệu ứng chuyển cảnh, VFX và đồng bộ phụ đề Karaoke.
+- **Web UI & OPDS Server**: Cung cấp giao diện quản lý trên trình duyệt và feed OPDS 1.1 cho các ứng dụng đọc sách (Moon+ Reader, KyBook).
+- **Job Orchestrator (v2.5)**: 
+    - Hệ thống `JobWorker` và `JobRunner` xử lý các tác vụ nặng (crawl, render video) bất đồng bộ.
+    - Hỗ trợ chạy các tác vụ hàng loạt thông qua file manifest JSON (`vvrt run manifest.json`).
+    - Lưu trữ lịch sử job và log lỗi chi tiết trong SQLite.
+- **Library Management**: Quản lý thư viện truyện bằng SQLite (async), tự động kiểm tra và cập nhật chương mới.
 
-## Các vấn đề cần cải thiện (Backlog)
-- [ ] **Character Sprites:** Hỗ trợ hiển thị Portrait nhân vật kèm hiệu ứng chuyển động môi (lip-sync) cơ bản.
-- [ ] **Interactive Choices:** Cho phép người dùng chọn nhánh rẽ câu chuyện qua LLM sinh nội dung thời gian thực.
-- [x] **TTS Segment Caching:** Đã tích hợp qua cơ chế Script Result.
-- [x] **Memory Optimization:** Sử dụng WebP và shared HTTP client.
+## 🛠 Tech Stack
+
+- **Ngôn ngữ**: Python 3.10+
+- **Scraping**: `httpx`, `Playwright`, `BeautifulSoup4`, `lxml`.
+- **Media**: `pydub`, `FFmpeg` (yêu cầu cài đặt hệ thống), `Pillow`, `ReportLab`.
+- **AI Services**: `OpenAI API`, `ElevenLabs API`, `Freesound API`.
+- **Web Framework**: `FastAPI`, `Uvicorn`, `WebSockets`.
+- **Database**: `aiosqlite` (SQLite async).
+- **CLI/UI**: `rich`, `prompt-toolkit`, `simple-term-menu`, `alive-progress`.
+
+## 🏗 Project Structure
+
+- `vvr_scraper/`: Thư mục mã nguồn chính.
+    - `cli.py`: Điểm đầu vào CLI (`vvrt`).
+    - `scraper_core.py`: Logic trích xuất dữ liệu (Hybrid Scraper).
+    - `exporter.py`: Xử lý tạo file cho tất cả các định dạng (EPUB, PDF, MP3, ...).
+    - `audio_drama.py`: Logic AI Director, phân tích kịch bản và quản lý âm thanh.
+    - `video_renderer.py`: Kết xuất video MP4 bằng Playwright và FFmpeg.
+    - `db.py`: Quản lý cơ sở dữ liệu SQLite và Job Queue.
+    - `web.py`: API Server và giao diện quản lý Web.
+    - `opds.py`: Generator feed OPDS.
+    - `bgm_manager.py` & `freesound_manager.py`: Quản lý nhạc nền và hiệu ứng.
+- `tests/`: Hệ thống kiểm thử toàn diện với `pytest`.
+- `static/`: Tài liệu tĩnh cho Web UI (CSS, JS).
+- `prompts/`: Chứa các system prompt cho AI Director.
+
+## 📖 Building and Running
+
+### Setup
+1. **Cài đặt dependencies**:
+   ```bash
+   uv pip install -e .
+   # Hoặc
+   pip install -e .
+   ```
+2. **Cài đặt Playwright Browsers**:
+   ```bash
+   playwright install chromium
+   ```
+3. **Cấu hình biến môi trường** (`.env`):
+   ```env
+   OPENAI_API_KEY=...
+   ELEVENLABS_API_KEY=...
+   FREESOUND_CLIENT_ID=...
+   FREESOUND_CLIENT_SECRET=...
+   VVR_SSR_URL=...
+   ```
+
+### Key Commands
+- **CLI Usage**:
+  ```bash
+  vvrt <slug_truyen> -f EPUB PDF       # Tải và xuất file
+  vvrt tree <url_truyen>              # Xem sơ đồ chương
+  vvrt run manifest.json              # Chạy tác vụ hàng loạt
+  ```
+- **Web UI & OPDS**:
+  ```bash
+  vvrt web --port 8000                # Khởi chạy server
+  ```
+- **Testing**:
+  ```bash
+  pytest                              # Chạy toàn bộ test suite
+  ```
+
+## 📝 Development Conventions
+
+- **Async First**: Hầu hết các tác vụ I/O (Scraping, DB, API) đều sử dụng `asyncio`.
+- **Logging**: Sử dụng `loguru` để quản lý log. Logs cũng được truyền qua WebSocket lên Web UI.
+- **Database Migrations**: `db.py` chứa logic tự động cập nhật schema (Robust upgrade logic).
+- **Testing Style**: Sử dụng `pytest` và `pytest-asyncio`. Các test case được chia nhỏ theo module (ví dụ: `test_scraper.py`, `test_db_audio.py`).
+- **Lazy Loading**: Các thư viện nặng (như ElevenLabs, numpy) được load bên trong các hàm cụ thể để tăng tốc độ khởi động CLI/Web UI.
+- **Hybrid Scraper**: Luôn ưu tiên Fast Mode (HTTPX) trước khi fallback sang Reliable Mode (Playwright) để tối ưu hiệu suất.

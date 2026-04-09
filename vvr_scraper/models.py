@@ -1,20 +1,22 @@
 """
 Data models for the web novel scraper.
 """
+
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Union, Literal, TypedDict, Any
+from typing import Any, Literal
 
 
 @dataclass
 class StoryInfo:
     """Information about a story."""
+
     title: str
     author: str
     description: str
-    slug: Optional[str] = None
-    genres: List[str] = field(default_factory=list)
-    cover_path: Optional[str] = None
-    cover_url: Optional[str] = None
+    slug: str | None = None
+    genres: list[str] = field(default_factory=list)
+    cover_path: str | None = None
+    cover_url: str | None = None
     total_chapters: str = "Unknown"
     word_count: str = "Unknown"
     views: str = "-"
@@ -23,6 +25,7 @@ class StoryInfo:
 @dataclass
 class ContentItem:
     """A single content item (text or image)."""
+
     type: Literal["text", "image"]
     data: str
 
@@ -30,22 +33,24 @@ class ContentItem:
 @dataclass
 class Chapter:
     """A chapter with title and content."""
+
     title: str
-    content: List[ContentItem]
-    url: Optional[str] = None
+    content: list[ContentItem]
+    url: str | None = None
 
 
 @dataclass
 class Volume:
     """A volume containing chapters."""
+
     title: str
-    chapters: List[Chapter]
+    chapters: list[Chapter]
 
 
 # Type aliases for backward compatibility
-ChapterData = Dict[str, Union[str, List[Dict[str, str]]]]
-VolumeData = Dict[str, Union[str, List[ChapterData]]]
-StoryInfoDict = Dict[str, Any]
+ChapterData = dict[str, str | list[dict[str, str]]]
+VolumeData = dict[str, str | list[ChapterData]]
+StoryInfoDict = dict[str, Any]
 
 
 def story_info_to_dict(info: StoryInfo) -> StoryInfoDict:
@@ -60,7 +65,7 @@ def story_info_to_dict(info: StoryInfo) -> StoryInfoDict:
         "cover_url": info.cover_url,
         "total_chapters": info.total_chapters,
         "word_count": info.word_count,
-        "views": info.views
+        "views": info.views,
     }
 
 
@@ -76,5 +81,5 @@ def dict_to_story_info(data: StoryInfoDict) -> StoryInfo:
         cover_url=data.get("cover_url"),
         total_chapters=data.get("total_chapters") or "Unknown",
         word_count=data.get("word_count") or "Unknown",
-        views=data.get("views") or "-"
+        views=data.get("views") or "-",
     )

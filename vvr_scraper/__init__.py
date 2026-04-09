@@ -7,6 +7,7 @@ if sys.version_info >= (3, 13):
     except ImportError:
         try:
             import audioop_lts
+
             sys.modules["audioop"] = audioop_lts
         except ImportError:
             # audioop-lts not installed, will fail when needed

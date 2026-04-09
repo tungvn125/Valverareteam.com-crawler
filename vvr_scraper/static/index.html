@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Valvrare Team Scraper Web UI</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
     <header>
@@ -140,7 +140,7 @@
                 <div id="previewDescContent" class="desc-content"></div>
             </div>
             <div class="modal-actions">
-                <button type="button" class="btn-secondary" onclick="closePreviewModal()">Hủy</button>
+                <button type="button" class="btn-secondary">Hủy</button>
                 <button type="button" id="selectChaptersBtn" class="btn-primary">Chọn chương →</button>
             </div>
         </div>
@@ -161,7 +161,7 @@
                     Đã chọn: <span id="selectedChaptersCount">0</span> / <span id="totalChaptersCount">0</span> chương
                 </div>
                 <div class="modal-actions">
-                    <button type="button" class="btn-secondary" onclick="closeSelectionModal()">Quay lại</button>
+                    <button type="button" class="btn-secondary">Quay lại</button>
                     <button type="button" id="confirmSelectionBtn" class="btn-primary">Tùy chọn tải →</button>
                 </div>
             </div>
@@ -201,7 +201,7 @@
                     <label><input type="checkbox" id="skipIllus"> Bỏ qua minh họa</label>
                 </div>
                 <div class="modal-actions">
-                    <button type="button" class="btn-secondary" onclick="closeModal()">Hủy</button>
+                    <button type="button" class="btn-secondary">Hủy</button>
                     <button type="submit" class="btn-primary">Bắt đầu tải</button>
                 </div>
             </form>
@@ -240,7 +240,7 @@
                 </div>
 
                 <div class="modal-actions">
-                    <button type="button" class="btn-secondary" onclick="closeSettingsModal()">Hủy</button>
+                    <button type="button" class="btn-secondary">Hủy</button>
                     <button type="submit" class="btn-primary">Lưu cài đặt</button>
                 </div>
             </form>
@@ -257,12 +257,12 @@
 ..."></textarea>
             </div>
             <div class="modal-actions">
-                <button type="button" class="btn-secondary" onclick="closeBatchImportModal()">Hủy</button>
+                <button type="button" class="btn-secondary">Hủy</button>
                 <button type="button" id="startBatchDownloadBtn" class="btn-primary">Bắt đầu tải</button>
             </div>
         </div>
     </div>
 
-    <script src="app.js"></script>
+    <script type="module" src="/static/js/main.js"></script>
 </body>
 </html>

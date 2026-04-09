@@ -1,0 +1,48 @@
+# === Docker Ignore ===
+# Giữ image size nhỏ, chỉ copy source code cần thiết
+
+# Python
+.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+
+# Git
+.git/
+.gitignore
+
+# Dev tools
+.pytest_cache/
+.ruff_cache/
+.claude/
+.superpowers/
+.github/
+
+# Data (sẽ mount qua volumes)
+novels/
+*.db
+*.db-shm
+*.db-wal
+error-logs/
+
+# Secrets
+.env
+.vvr_session.json
+
+# Artifacts
+*.png
+*.mp3
+*.mp4
+*.wav
+*.epub
+*.pdf
+
+# Docs
+docs/
+demo/
+*.md
+!README.md
+!vvr_scraper/prompts/*.md

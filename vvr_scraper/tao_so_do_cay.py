@@ -1,17 +1,16 @@
-import asyncio
-import httpx
-from playwright.async_api import async_playwright, Browser
-from bs4 import BeautifulSoup
 import json
-from typing import Optional, Dict, Any, List
+from typing import Any
 from uuid import uuid4
 
+import httpx
+from bs4 import BeautifulSoup
 from loguru import logger
+from playwright.async_api import Browser, async_playwright
 
 from .utils import HEADERS
 
 
-async def get_chapter_tree(url: str, output_file: str, cookies: Optional[Dict[str, str]] = None):
+async def get_chapter_tree(url: str, output_file: str, cookies: dict[str, str] | None = None):
     """
     Sử dụng httpx để truy cập URL, sau đó dùng BeautifulSoup để
     phân tích và trích xuất sơ đồ các tập và chương truyện, rồi lưu vào file txt.
@@ -27,10 +26,10 @@ async def get_chapter_tree(url: str, output_file: str, cookies: Optional[Dict[st
             response.raise_for_status()
             html_content = response.text
 
-        soup = BeautifulSoup(html_content, 'html.parser')
+        soup = BeautifulSoup(html_content, "html.parser")
 
         chapter_tree_string = ""
-        volumes = soup.find_all('div', class_='module-container')
+        volumes = soup.find_all("div", class_="module-container")
 
         if not volumes:
             logger.warning("Không tìm thấy container nào cho các tập truyện.")
@@ -39,17 +38,17 @@ async def get_chapter_tree(url: str, output_file: str, cookies: Optional[Dict[st
         logger.info(f"Tìm thấy {len(volumes)} tập/phần truyện. Bắt đầu trích xuất...")
 
         for volume in volumes:
-            volume_title_element = volume.find('h3', class_='module-title')
+            volume_title_element = volume.find("h3", class_="module-title")
             if volume_title_element:
                 volume_title = volume_title_element.get_text(strip=True)
                 chapter_tree_string += f"■ {volume_title}\n"
             else:
                 chapter_tree_string += "■ [Không có tiêu đề tập]\n"
 
-            chapters = volume.find_all('div', class_='module-chapter-item')
+            chapters = volume.find_all("div", class_="module-chapter-item")
             if chapters:
                 for chapter in chapters:
-                    chapter_link = chapter.find('a', class_='chapter-title-link')
+                    chapter_link = chapter.find("a", class_="chapter-title-link")
                     if chapter_link:
                         chapter_title = chapter_link.get_text(strip=True)
                         chapter_tree_string += f"  - {chapter_title}\n"
@@ -67,7 +66,7 @@ async def get_chapter_tree(url: str, output_file: str, cookies: Optional[Dict[st
         logger.error(f"Đã xảy ra lỗi: {e}")
 
 
-async def get_chapter_tree_folder(url: str, output_file: str, cookies: Optional[Dict[str, str]] = None):
+async def get_chapter_tree_folder(url: str, output_file: str, cookies: dict[str, str] | None = None):
     """
     Sử dụng httpx để truy cập URL, sau đó dùng BeautifulSoup để
     phân tích và trích xuất sơ đồ các tập truyện, rồi lưu vào file txt.
@@ -83,10 +82,10 @@ async def get_chapter_tree_folder(url: str, output_file: str, cookies: Optional[
             response.raise_for_status()
             html_content = response.text
 
-        soup = BeautifulSoup(html_content, 'html.parser')
+        soup = BeautifulSoup(html_content, "html.parser")
 
         chapter_tree_string = ""
-        volumes = soup.find_all('div', class_='module-container')
+        volumes = soup.find_all("div", class_="module-container")
 
         if not volumes:
             logger.warning("Không tìm thấy container nào cho các tập truyện.")
@@ -95,10 +94,20 @@ async def get_chapter_tree_folder(url: str, output_file: str, cookies: Optional[
         logger.info(f"Tìm thấy {len(volumes)} tập/phần truyện. Bắt đầu trích xuất...")
 
         for volume in volumes:
-            volume_title_element = volume.find('h3', class_='module-title')
+            volume_title_element = volume.find("h3", class_="module-title")
             if volume_title_element:
                 volume_title = volume_title_element.get_text(strip=True)
-                volume_title_string = volume_title.replace(":", " -").replace("/", " -").replace("\\", " -").replace("*", " -").replace("?", " -").replace("\"", " -").replace("<", " -").replace(">", " -").replace("|", " -")
+                volume_title_string = (
+                    volume_title.replace(":", " -")
+                    .replace("/", " -")
+                    .replace("\\", " -")
+                    .replace("*", " -")
+                    .replace("?", " -")
+                    .replace('"', " -")
+                    .replace("<", " -")
+                    .replace(">", " -")
+                    .replace("|", " -")
+                )
                 chapter_tree_string += f" {volume_title_string}\n"
             else:
                 chapter_tree_string += "[no name]\n"
@@ -111,7 +120,7 @@ async def get_chapter_tree_folder(url: str, output_file: str, cookies: Optional[
         logger.error(f"Đã xảy ra lỗi: {e}")
 
 
-async def _fetch_chapter_page(browser: Browser, url: str, session_state: Optional[Dict[str, Any]] = None) -> str:
+async def _fetch_chapter_page(browser: Browser, url: str, session_state: dict[str, Any] | None = None) -> str:
     """Fetches chapter page HTML content using a Playwright browser instance."""
     user_agent = HEADERS.get("User-Agent")
     context = (
@@ -120,9 +129,9 @@ async def _fetch_chapter_page(browser: Browser, url: str, session_state: Optiona
         else await browser.new_context(user_agent=user_agent)
     )
     page = await context.new_page()
-    await page.goto(url, wait_until='domcontentloaded', timeout=60000)
+    await page.goto(url, wait_until="domcontentloaded", timeout=60000)
     await page.wait_for_timeout(2000)
-    await page.wait_for_selector('.module-chapter-item', timeout=30000)
+    await page.wait_for_selector(".module-chapter-item", timeout=30000)
     html_content = await page.content()
     await context.close()
     return html_content
@@ -131,9 +140,9 @@ async def _fetch_chapter_page(browser: Browser, url: str, session_state: Optiona
 async def get_chapter_tree_list(
     url: str,
     output_file: str = "chapter_list.json",
-    session_state: Optional[Dict[str, Any]] = None,
-    browser: Optional[Browser] = None,
-) -> List[Dict]:
+    session_state: dict[str, Any] | None = None,
+    browser: Browser | None = None,
+) -> list[dict]:
     """
     Extracts the chapter tree as a structured JSON list using Playwright.
 
@@ -158,8 +167,8 @@ async def get_chapter_tree_list(
         else:
             html_content = await _fetch_chapter_page(browser, url, session_state)
 
-        soup = BeautifulSoup(html_content, 'html.parser')
-        volumes = soup.find_all('div', class_='module-container')
+        soup = BeautifulSoup(html_content, "html.parser")
+        volumes = soup.find_all("div", class_="module-container")
 
         if not volumes:
             logger.warning("Không tìm thấy container nào cho các tập truyện.")
@@ -170,50 +179,39 @@ async def get_chapter_tree_list(
         data = []
 
         for volume in volumes:
-            volume_title_element = volume.find('h3', class_='module-title')
+            volume_title_element = volume.find("h3", class_="module-title")
             if volume_title_element:
                 volume_title = volume_title_element.get_text(strip=True)
             else:
                 volume_title = "[Không có tiêu đề tập]"
 
             chapters_list = []
-            chapters = volume.find_all('div', class_='module-chapter-item')
+            chapters = volume.find_all("div", class_="module-chapter-item")
             if chapters:
                 for chapter in chapters:
                     try:
                         # Find link — try both specific class and any anchor tag
-                        link_element = chapter.find('a', class_='chapter-title-link') or chapter.find('a')
+                        link_element = chapter.find("a", class_="chapter-title-link") or chapter.find("a")
 
                         # Check for locked status
-                        classes = chapter.get('class', [])
-                        is_locked = 'locked-chapter' in classes or 'chapter-mode-protected' in classes
+                        classes = chapter.get("class", [])
+                        is_locked = "locked-chapter" in classes or "chapter-mode-protected" in classes
 
-                        if link_element and 'href' in link_element.attrs:
-                            chapter_link = link_element['href']
+                        if link_element and "href" in link_element.attrs:
+                            chapter_link = link_element["href"]
                             chapter_title = link_element.get_text(strip=True)
 
-                            chapters_list.append({
-                                "title": chapter_title,
-                                "url": chapter_link,
-                                "locked": is_locked
-                            })
+                            chapters_list.append({"title": chapter_title, "url": chapter_link, "locked": is_locked})
                         else:
                             # If we still can't find it, but it's locked, we still want to show it
                             if is_locked:
-                                chapters_list.append({
-                                    "title": chapter.get_text(strip=True),
-                                    "url": "",
-                                    "locked": True
-                                })
+                                chapters_list.append({"title": chapter.get_text(strip=True), "url": "", "locked": True})
                             else:
                                 logger.debug(f"Can't find link for chapter: {chapter}")
                     except Exception:
                         pass  # Silently skip malformed chapters
 
-            data.append({
-                "volume": volume_title,
-                "chapters": chapters_list
-            })
+            data.append({"volume": volume_title, "chapters": chapters_list})
 
         # Lưu ra file JSON
         with open(output_file, "w", encoding="utf-8") as f:
@@ -228,7 +226,7 @@ async def get_chapter_tree_list(
 
 def get_chapters_by_volume_index(file_path: str, index: int):
     try:
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, encoding="utf-8") as f:
             data = json.load(f)
 
         if index < 0 or index >= len(data):
@@ -247,9 +245,9 @@ async def get_chapter_range_urls(
     slug_or_url: str,
     start_index: int,
     end_index: int,
-    session_state: Optional[Dict[str, Any]] = None,
-    browser: Optional[Browser] = None
-) -> List[str]:
+    session_state: dict[str, Any] | None = None,
+    browser: Browser | None = None,
+) -> list[str]:
     """
     Fetches the full chapter tree and returns a slice of chapter URLs.
 
@@ -264,19 +262,18 @@ async def get_chapter_range_urls(
         List of chapter relative URLs.
     """
     from .utils import BASE_URL
+
     url = slug_or_url if slug_or_url.startswith("http") else f"{BASE_URL}/{slug_or_url}"
 
     short_hash = uuid4().hex[:8]
     temp_filename = f"temp_sync_{short_hash}.json"
     chapter_tree = await get_chapter_tree_list(
-        url,
-        output_file=temp_filename,
-        session_state=session_state,
-        browser=browser
+        url, output_file=temp_filename, session_state=session_state, browser=browser
     )
 
     # Clean up temp file
     import os
+
     if os.path.exists(temp_filename):
         try:
             os.remove(temp_filename)
@@ -286,10 +283,10 @@ async def get_chapter_range_urls(
     # Flatten all chapters from all volumes
     all_chapters = []
     for volume in chapter_tree:
-        all_chapters.extend(volume['chapters'])
+        all_chapters.extend(volume["chapters"])
 
     # Slice the list
     selected_chapters = all_chapters[start_index:end_index]
 
     # Return only URLs
-    return [chap['url'] for chap in selected_chapters]
+    return [chap["url"] for chap in selected_chapters]
