@@ -52,4 +52,32 @@ include = ["vvr_scraper*"]
 dev = [
     "pytest>=9.0.2",
     "pytest-asyncio>=1.3.0",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.8.0",
 ]
+
+# === Ruff Linter Config ===
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort (import ordering)
+    "B",    # flake8-bugbear (common bugs)
+    "UP",   # pyupgrade (modern Python syntax)
+    "S",    # flake8-bandit (security)
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "S101",   # assert usage (OK in tests)
+    "S603",   # subprocess without shell=True (intentional)
+    "S607",   # partial path for subprocess (intentional)
+    "B008",   # function call in default arg (FastAPI Depends pattern)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S", "B"]  # Relax security + bugbear rules in tests

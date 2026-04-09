@@ -1,12 +1,14 @@
 """
 Tests for tao_so_do_cay.py - Chapter tree extraction utilities
 """
-import pytest
+
+import json
 import os
 import sys
-import json
 import tempfile
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -15,14 +17,13 @@ from vvr_scraper.tao_so_do_cay import (
     get_chapter_tree_folder,
     get_chapter_tree_list,
     get_chapters_by_volume_index,
-    _fetch_chapter_page
 )
 from vvr_scraper.utils import HEADERS
-
 
 # =============================================================================
 # TESTS FOR get_chapter_tree
 # =============================================================================
+
 
 class TestGetChapterTree:
     """Tests for the get_chapter_tree function"""
@@ -46,7 +47,7 @@ class TestGetChapterTree:
 
         output_file = str(tmp_path / "tree.txt")
 
-        with patch('httpx.AsyncClient') as MockClient:
+        with patch("httpx.AsyncClient") as MockClient:
             mock_response = MagicMock()
             mock_response.text = mock_html
             mock_response.raise_for_status = MagicMock()
@@ -59,19 +60,19 @@ class TestGetChapterTree:
             await get_chapter_tree("https://example.com/story", output_file)
 
             assert os.path.exists(output_file)
-            with open(output_file, 'r', encoding='utf-8') as f:
+            with open(output_file, encoding="utf-8") as f:
                 content = f.read()
 
-            assert 'Volume 1' in content
-            assert 'Chương 1' in content
-            assert 'Chương 2' in content
+            assert "Volume 1" in content
+            assert "Chương 1" in content
+            assert "Chương 2" in content
 
     @pytest.mark.asyncio
     async def test_no_volumes_found(self):
         """Test handling when no volumes are found"""
         mock_html = "<html><body>No content</body></html>"
 
-        with patch('httpx.AsyncClient') as MockClient:
+        with patch("httpx.AsyncClient") as MockClient:
             mock_response = MagicMock()
             mock_response.text = mock_html
             mock_response.raise_for_status = MagicMock()
@@ -99,7 +100,7 @@ class TestGetChapterTree:
 
         output_file = str(tmp_path / "tree.txt")
 
-        with patch('httpx.AsyncClient') as MockClient:
+        with patch("httpx.AsyncClient") as MockClient:
             mock_response = MagicMock()
             mock_response.text = mock_html
             mock_response.raise_for_status = MagicMock()
@@ -111,10 +112,10 @@ class TestGetChapterTree:
 
             await get_chapter_tree("https://example.com/story", output_file)
 
-            with open(output_file, 'r', encoding='utf-8') as f:
+            with open(output_file, encoding="utf-8") as f:
                 content = f.read()
 
-            assert '[Không có tiêu đề tập]' in content
+            assert "[Không có tiêu đề tập]" in content
 
     @pytest.mark.asyncio
     async def test_empty_volume(self, tmp_path):
@@ -129,7 +130,7 @@ class TestGetChapterTree:
 
         output_file = str(tmp_path / "tree.txt")
 
-        with patch('httpx.AsyncClient') as MockClient:
+        with patch("httpx.AsyncClient") as MockClient:
             mock_response = MagicMock()
             mock_response.text = mock_html
             mock_response.raise_for_status = MagicMock()
@@ -141,15 +142,16 @@ class TestGetChapterTree:
 
             await get_chapter_tree("https://example.com/story", output_file)
 
-            with open(output_file, 'r', encoding='utf-8') as f:
+            with open(output_file, encoding="utf-8") as f:
                 content = f.read()
 
-            assert '[Không có chương nào trong tập này]' in content
+            assert "[Không có chương nào trong tập này]" in content
 
 
 # =============================================================================
 # TESTS FOR get_chapter_tree_folder
 # =============================================================================
+
 
 class TestGetChapterTreeFolder:
     """Tests for the get_chapter_tree_folder function"""
@@ -167,7 +169,7 @@ class TestGetChapterTreeFolder:
 
         output_file = str(tmp_path / "tree.txt")
 
-        with patch('httpx.AsyncClient') as MockClient:
+        with patch("httpx.AsyncClient") as MockClient:
             mock_response = MagicMock()
             mock_response.text = mock_html
             mock_response.raise_for_status = MagicMock()
@@ -179,13 +181,13 @@ class TestGetChapterTreeFolder:
 
             await get_chapter_tree_folder("https://example.com/story", output_file)
 
-            with open(output_file, 'r', encoding='utf-8') as f:
+            with open(output_file, encoding="utf-8") as f:
                 content = f.read()
 
             # Special characters should be replaced with " -"
-            assert '*' not in content
-            assert '?' not in content
-            assert ':' not in content
+            assert "*" not in content
+            assert "?" not in content
+            assert ":" not in content
 
     @pytest.mark.asyncio
     async def test_multiple_volumes(self, tmp_path):
@@ -206,7 +208,7 @@ class TestGetChapterTreeFolder:
 
         output_file = str(tmp_path / "tree.txt")
 
-        with patch('httpx.AsyncClient') as MockClient:
+        with patch("httpx.AsyncClient") as MockClient:
             mock_response = MagicMock()
             mock_response.text = mock_html
             mock_response.raise_for_status = MagicMock()
@@ -218,17 +220,18 @@ class TestGetChapterTreeFolder:
 
             await get_chapter_tree_folder("https://example.com/story", output_file)
 
-            with open(output_file, 'r', encoding='utf-8') as f:
+            with open(output_file, encoding="utf-8") as f:
                 content = f.read()
 
-            assert 'Volume 1' in content
-            assert 'Volume 2' in content
-            assert 'Volume 3' in content
+            assert "Volume 1" in content
+            assert "Volume 2" in content
+            assert "Volume 3" in content
 
 
 # =============================================================================
 # TESTS FOR get_chapter_tree_list
 # =============================================================================
+
 
 class TestGetChapterTreeList:
     """Tests for the get_chapter_tree_list function (uses Playwright)"""
@@ -270,19 +273,19 @@ class TestGetChapterTreeList:
 
         output_file = str(tmp_path / "chapters.json")
 
-        with patch('vvr_scraper.tao_so_do_cay.async_playwright') as mock_playwright:
+        with patch("vvr_scraper.tao_so_do_cay.async_playwright") as mock_playwright:
             self._setup_mock_playwright(mock_playwright, mock_html)
             result = await get_chapter_tree_list("https://example.com/story", output_file)
 
             assert os.path.exists(output_file)
-            with open(output_file, 'r', encoding='utf-8') as f:
+            with open(output_file, encoding="utf-8") as f:
                 data = json.load(f)
 
             assert len(data) == 1
-            assert data[0]['volume'] == 'Volume 1'
-            assert len(data[0]['chapters']) == 2
-            assert data[0]['chapters'][0]['title'] == 'Chương 1'
-            assert data[0]['chapters'][0]['url'] == '/chap-1'
+            assert data[0]["volume"] == "Volume 1"
+            assert len(data[0]["chapters"]) == 2
+            assert data[0]["chapters"][0]["title"] == "Chương 1"
+            assert data[0]["chapters"][0]["url"] == "/chap-1"
 
     @pytest.mark.asyncio
     async def test_crawls_both_published_and_protected_chapters(self, tmp_path):
@@ -303,26 +306,30 @@ class TestGetChapterTreeList:
 
         output_file = str(tmp_path / "chapters_mixed.json")
 
-        with patch('vvr_scraper.tao_so_do_cay.async_playwright') as mock_playwright:
+        with patch("vvr_scraper.tao_so_do_cay.async_playwright") as mock_playwright:
             self._setup_mock_playwright(mock_playwright, mock_html)
             result = await get_chapter_tree_list("https://example.com/story", output_file)
 
-            assert len(result[0]['chapters']) == 2
-            urls = [c['url'] for c in result[0]['chapters']]
-            assert '/chap-published' in urls
-            assert '/chap-protected' in urls
+            assert len(result[0]["chapters"]) == 2
+            urls = [c["url"] for c in result[0]["chapters"]]
+            assert "/chap-published" in urls
+            assert "/chap-protected" in urls
 
     @pytest.mark.asyncio
     async def test_uses_session_state(self, tmp_path):
         """Test that session_state is passed to Playwright context"""
-        mock_html = "<html><div class='module-chapter-item'><a class='chapter-title-link' href='/c1'>C1</a></div></html>"
+        mock_html = (
+            "<html><div class='module-chapter-item'><a class='chapter-title-link' href='/c1'>C1</a></div></html>"
+        )
         output_file = str(tmp_path / "session_test.json")
         session_state = {"cookies": [{"name": "test", "value": "val"}]}
 
-        with patch('vvr_scraper.tao_so_do_cay.async_playwright') as mock_playwright:
+        with patch("vvr_scraper.tao_so_do_cay.async_playwright") as mock_playwright:
             mock_browser, _, _ = self._setup_mock_playwright(mock_playwright, mock_html)
             await get_chapter_tree_list("https://example.com/story", output_file, session_state=session_state)
-            mock_browser.new_context.assert_called_with(storage_state=session_state, user_agent=HEADERS.get("User-Agent"))
+            mock_browser.new_context.assert_called_with(
+                storage_state=session_state, user_agent=HEADERS.get("User-Agent")
+            )
 
     @pytest.mark.asyncio
     async def test_includes_minh_hoa_chapters(self, tmp_path):
@@ -346,13 +353,13 @@ class TestGetChapterTreeList:
 
         output_file = str(tmp_path / "chapters_filter.json")
 
-        with patch('vvr_scraper.tao_so_do_cay.async_playwright') as mock_playwright:
+        with patch("vvr_scraper.tao_so_do_cay.async_playwright") as mock_playwright:
             self._setup_mock_playwright(mock_playwright, mock_html)
             result = await get_chapter_tree_list("https://example.com/story", output_file)
 
-            assert len(result[0]['chapters']) == 3
-            urls = [c['url'] for c in result[0]['chapters']]
-            assert '/chap-2-minh-hoa' in urls
+            assert len(result[0]["chapters"]) == 3
+            urls = [c["url"] for c in result[0]["chapters"]]
+            assert "/chap-2-minh-hoa" in urls
 
     @pytest.mark.asyncio
     async def test_detects_locked_chapters(self, tmp_path):
@@ -376,14 +383,14 @@ class TestGetChapterTreeList:
 
         output_file = str(tmp_path / "chapters_locked.json")
 
-        with patch('vvr_scraper.tao_so_do_cay.async_playwright') as mock_playwright:
+        with patch("vvr_scraper.tao_so_do_cay.async_playwright") as mock_playwright:
             self._setup_mock_playwright(mock_playwright, mock_html)
             result = await get_chapter_tree_list("https://example.com/story", output_file)
 
-            chapters = result[0]['chapters']
-            assert chapters[0]['locked'] == False
-            assert chapters[1]['locked'] == True
-            assert chapters[2]['locked'] == True
+            chapters = result[0]["chapters"]
+            assert chapters[0]["locked"] == False
+            assert chapters[1]["locked"] == True
+            assert chapters[2]["locked"] == True
 
     @pytest.mark.asyncio
     async def test_handles_missing_href(self, tmp_path):
@@ -404,17 +411,18 @@ class TestGetChapterTreeList:
 
         output_file = str(tmp_path / "chapters_href.json")
 
-        with patch('vvr_scraper.tao_so_do_cay.async_playwright') as mock_playwright:
+        with patch("vvr_scraper.tao_so_do_cay.async_playwright") as mock_playwright:
             self._setup_mock_playwright(mock_playwright, mock_html)
             result = await get_chapter_tree_list("https://example.com/story", output_file)
 
-            assert len(result[0]['chapters']) == 1
-            assert result[0]['chapters'][0]['url'] == '/valid-chap'
+            assert len(result[0]["chapters"]) == 1
+            assert result[0]["chapters"][0]["url"] == "/valid-chap"
 
 
 # =============================================================================
 # TESTS FOR get_chapters_by_volume_index
 # =============================================================================
+
 
 class TestGetChaptersByVolumeIndex:
     """Tests for the get_chapters_by_volume_index function"""
@@ -427,7 +435,7 @@ class TestGetChaptersByVolumeIndex:
         ]
 
         json_file = str(tmp_path / "test.json")
-        with open(json_file, 'w', encoding='utf-8') as f:
+        with open(json_file, "w", encoding="utf-8") as f:
             json.dump(test_data, f, ensure_ascii=False)
 
         result = get_chapters_by_volume_index(json_file, 0)
@@ -441,7 +449,7 @@ class TestGetChaptersByVolumeIndex:
         ]
 
         json_file = str(tmp_path / "test.json")
-        with open(json_file, 'w', encoding='utf-8') as f:
+        with open(json_file, "w", encoding="utf-8") as f:
             json.dump(test_data, f, ensure_ascii=False)
 
         result = get_chapters_by_volume_index(json_file, 1)
@@ -451,7 +459,7 @@ class TestGetChaptersByVolumeIndex:
         """Test handling of negative index"""
         test_data = [{"volume": "Volume 1", "chapters": ["/chap-1"]}]
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(test_data, f)
             json_file = f.name
 
@@ -465,7 +473,7 @@ class TestGetChaptersByVolumeIndex:
         """Test handling of index out of range"""
         test_data = [{"volume": "Volume 1", "chapters": ["/chap-1"]}]
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(test_data, f)
             json_file = f.name
 
@@ -485,17 +493,18 @@ class TestGetChaptersByVolumeIndex:
 # TESTS FOR HEADERS CONFIGURATION
 # =============================================================================
 
+
 class TestTaoSoDoCayHeaders:
     """Tests for HEADERS configuration in tao_so_do_cay"""
 
     def test_headers_contains_required_fields(self):
         """Test that HEADERS contains all required fields"""
-        assert 'User-Agent' in HEADERS
-        assert 'Accept' in HEADERS
-        assert 'Accept-Language' in HEADERS
+        assert "User-Agent" in HEADERS
+        assert "Accept" in HEADERS
+        assert "Accept-Language" in HEADERS
 
     def test_user_agent_is_browser_like(self):
         """Test that User-Agent looks like a real browser"""
-        ua = HEADERS['User-Agent']
-        assert 'Mozilla' in ua
-        assert 'Chrome' in ua
+        ua = HEADERS["User-Agent"]
+        assert "Mozilla" in ua
+        assert "Chrome" in ua

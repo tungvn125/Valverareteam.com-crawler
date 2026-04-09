@@ -1,57 +1,58 @@
 """
 File export functions for the web novel scraper.
 """
-import os
-import json
+
 import asyncio
+import json
+import os
 import urllib.parse
 import uuid
 from io import BytesIO
-from typing import List, Dict, Any, Union, cast, Optional
+from typing import Any, Union, cast
 
 import httpx
-from .audio_drama import OpenAIParser, VoiceManager, ScriptResult
-from .bgm_manager import BGMManager
-from .mixing_engine import MixingEngine
-from .freesound_manager import FreesoundManager
-from .image_gen import ImageGenerator
-from .video_renderer import VideoRenderer
-# Heavy AI libraries (numpy, ElevenLabs) are lazy-loaded inside tao_file_mp3 
+
+# Heavy AI libraries (numpy, ElevenLabs) are lazy-loaded inside tao_file_mp3
 # to ensure a fast cold start for the CLI and Web UI.
 from ebooklib import epub
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from loguru import logger
+from PIL import Image as PILImage
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-from PIL import Image as PILImage
-from loguru import logger
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer
+from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn
 
+from .audio_drama import OpenAIParser, ScriptResult, VoiceManager
+from .bgm_manager import BGMManager
+from .freesound_manager import FreesoundManager
+from .image_gen import ImageGenerator
+from .mixing_engine import MixingEngine
+from .models import ContentItem
 from .utils import HEADERS
-from .models import StoryInfo, ContentItem, Chapter, Volume
+from .video_renderer import VideoRenderer
 
-
-ContentItemLike = Union[ContentItem, Dict[str, str]]
-ContentList = List[ContentItemLike]
-ChapterData = Dict[str, Any]  # {'title': str, 'content': ContentList}
-VolumeData = Dict[str, Any]   # {'volume': str, 'chapters': List[ChapterData]}
-ChaptersData = List[Union[ChapterData, VolumeData]]
+ContentItemLike = Union[ContentItem, dict[str, str]]
+ContentList = list[ContentItemLike]
+ChapterData = dict[str, Any]  # {'title': str, 'content': ContentList}
+VolumeData = dict[str, Any]  # {'volume': str, 'chapters': List[ChapterData]}
+ChaptersData = list[ChapterData | VolumeData]
 
 
 def _normalize_content_item(item: ContentItemLike) -> ContentItem:
     """Convert dict to ContentItem if needed."""
     if isinstance(item, ContentItem):
         return item
-    return ContentItem(type=cast(str, item['type']), data=cast(str, item['data']))
+    return ContentItem(type=cast(str, item["type"]), data=cast(str, item["data"]))
 
 
-def _normalize_content_list(items: ContentList) -> List[ContentItem]:
+def _normalize_content_list(items: ContentList) -> list[ContentItem]:
     """Convert list of dicts to list of ContentItems."""
     return [_normalize_content_item(item) for item in items]
 
 
-async def _download_images_bulk(urls: List[str], max_concurrent: int = 10) -> Dict[str, bytes]:
+async def _download_images_bulk(urls: list[str], max_concurrent: int = 10) -> dict[str, bytes]:
     """Downloads multiple images concurrently with a limit on parallelism and a progress bar."""
     if not urls:
         return {}
@@ -66,10 +67,10 @@ async def _download_images_bulk(urls: List[str], max_concurrent: int = 10) -> Di
             TextColumn("[progress.description]{task.description}"),
             BarColumn(),
             TaskProgressColumn(),
-            transient=True
+            transient=True,
         ) as progress:
             task = progress.add_task("[cyan]Đang tải ảnh minh họa...", total=len(unique_urls))
-            
+
             async def download(url: str):
                 async with semaphore:
                     try:
@@ -92,25 +93,29 @@ async def _download_images_bulk(urls: List[str], max_concurrent: int = 10) -> Di
 
 # Correct MIME types for image formats (image/jpg is NOT valid per RFC 2045)
 MIME_TYPE_MAP = {
-    'jpg': 'image/jpeg',
-    'jpeg': 'image/jpeg',
-    'png': 'image/png',
-    'gif': 'image/gif',
-    'svg': 'image/svg+xml',
+    "jpg": "image/jpeg",
+    "jpeg": "image/jpeg",
+    "png": "image/png",
+    "gif": "image/gif",
+    "svg": "image/svg+xml",
 }
 
 
-def _get_image_extension(url: str, content_type: Optional[str] = None) -> str:
+def _get_image_extension(url: str, content_type: str | None = None) -> str:
     """Detects image extension from URL or Content-Type header."""
     if content_type:
-        if 'jpeg' in content_type: return 'jpg'
-        if 'png' in content_type: return 'png'
-        if 'gif' in content_type: return 'gif'
-        if 'svg' in content_type: return 'svg'
-    
+        if "jpeg" in content_type:
+            return "jpg"
+        if "png" in content_type:
+            return "png"
+        if "gif" in content_type:
+            return "gif"
+        if "svg" in content_type:
+            return "svg"
+
     parsed_url = urllib.parse.urlparse(url)
-    ext = parsed_url.path.split('.')[-1].lower()
-    return ext if ext in ['jpg', 'jpeg', 'png', 'gif', 'svg'] else 'jpg'
+    ext = parsed_url.path.split(".")[-1].lower()
+    return ext if ext in ["jpg", "jpeg", "png", "gif", "svg"] else "jpg"
 
 
 async def tao_file_epub(
@@ -119,69 +124,71 @@ async def tao_file_epub(
     author: str,
     chapters_data: ChaptersData,
     description: str = "",
-    cover_path: Union[str, None] = None,
-    genres: List[str] = None
+    cover_path: str | None = None,
+    genres: list[str] = None,
 ) -> None:
     """Creates an EPUB file with pre-fetched images for high performance."""
     logger.info(f"Đang tạo file EPUB: {filename}")
-    
+
     # 1. Extract all image URLs
     all_image_urls = []
     for item in chapters_data:
-        chaps = item.get('chapters', []) if 'chapters' in item else [item]
+        chaps = item.get("chapters", []) if "chapters" in item else [item]
         for chap in chaps:
-            for ci in chap.get('content', []):
+            for ci in chap.get("content", []):
                 norm = _normalize_content_item(ci)
-                if norm.type == 'image': all_image_urls.append(norm.data)
-    
+                if norm.type == "image":
+                    all_image_urls.append(norm.data)
+
     # 2. Pre-download all images concurrently
     image_cache = await _download_images_bulk(all_image_urls)
 
     # 3. Build EPUB
     book = epub.EpubBook()
-    book.set_identifier(f'urn:uuid:{os.path.basename(filename)}')
+    book.set_identifier(f"urn:uuid:{os.path.basename(filename)}")
     book.set_title(book_title)
-    book.set_language('vi')
+    book.set_language("vi")
     book.add_author(author)
-    book.add_metadata('DC', 'description', description)
+    book.add_metadata("DC", "description", description)
     if genres:
-        for g in genres: book.add_metadata('DC', 'subject', g)
+        for g in genres:
+            book.add_metadata("DC", "subject", g)
 
     if cover_path and os.path.exists(cover_path):
         try:
-            with open(cover_path, 'rb') as cf:
+            with open(cover_path, "rb") as cf:
                 book.set_cover("cover.jpg", cf.read())
         except Exception:
             pass
 
     toc = []
-    spine = ['nav']
+    spine = ["nav"]
     url_to_internal_path = {}
     image_counter = 1
 
     # Map pre-downloaded images to EPUB items
     for url, content in image_cache.items():
         ext = _get_image_extension(url)
-        img_name = f'image_{image_counter}.{ext}'
+        img_name = f"image_{image_counter}.{ext}"
         img_item = epub.EpubImage(
-            uid=f'img_{image_counter}',
-            file_name=f'images/{img_name}',
-            media_type=MIME_TYPE_MAP.get(ext, 'image/jpeg'),
-            content=content
+            uid=f"img_{image_counter}",
+            file_name=f"images/{img_name}",
+            media_type=MIME_TYPE_MAP.get(ext, "image/jpeg"),
+            content=content,
         )
         book.add_item(img_item)
-        url_to_internal_path[url] = f'images/{img_name}'
+        url_to_internal_path[url] = f"images/{img_name}"
         image_counter += 1
 
     def process_chapter(chap_data: ChapterData, chap_idx: int) -> epub.EpubHtml:
-        title = chap_data.get('title', f"Chương {chap_idx}")
-        chapter_obj = epub.EpubHtml(title=title, file_name=f'chap_{chap_idx}.xhtml', lang='vi')
-        html = f'<h1>{title}</h1>'
-        for item in chap_data.get('content', []):
+        title = chap_data.get("title", f"Chương {chap_idx}")
+        chapter_obj = epub.EpubHtml(title=title, file_name=f"chap_{chap_idx}.xhtml", lang="vi")
+        html = f"<h1>{title}</h1>"
+        for item in chap_data.get("content", []):
             norm = _normalize_content_item(item)
-            if norm.type == 'text':
-                html += f'<p>{norm.data}</p>'
-            elif norm.type == 'image' and norm.data in url_to_internal_path:
+            if norm.type == "text":
+                html += f"<p>{norm.data}</p>"
+            elif norm.type == "image" and norm.data in url_to_internal_path:
                 html += f'<img src="{url_to_internal_path[norm.data]}" alt="Minh họa"/>'
         chapter_obj.content = html
         return chapter_obj
@@ -189,21 +196,21 @@ async def tao_file_epub(
     # Assemble structure
     chapter_index = 1
     for item in chapters_data:
-        if 'volume' in item:
-            vol_title = item['volume']
+        if "volume" in item:
+            vol_title = item["volume"]
             vol_chaps = []
-            for c_data in item.get('chapters', []):
+            for c_data in item.get("chapters", []):
                 chap_obj = process_chapter(c_data, chapter_index)
                 book.add_item(chap_obj)
                 spine.append(chap_obj)
-                vol_chaps.append(epub.Link(chap_obj.file_name, chap_obj.title, f'ch_{chapter_index}'))
+                vol_chaps.append(epub.Link(chap_obj.file_name, chap_obj.title, f"ch_{chapter_index}"))
                 chapter_index += 1
             toc.append((epub.Section(vol_title), tuple(vol_chaps)))
         else:
             chap_obj = process_chapter(item, chapter_index)
             book.add_item(chap_obj)
             spine.append(chap_obj)
-            toc.append(epub.Link(chap_obj.file_name, chap_obj.title, f'ch_{chapter_index}'))
+            toc.append(epub.Link(chap_obj.file_name, chap_obj.title, f"ch_{chapter_index}"))
             chapter_index += 1
 
     book.toc = tuple(toc)
@@ -215,57 +222,58 @@ async def tao_file_epub(
 
 
 async def tao_file_pdf(
-    content_list: ContentList,
-    filename: str,
-    title: str = "Chương truyện",
-    font_name: str = 'DejaVuSans'
+    content_list: ContentList, filename: str, title: str = "Chương truyện", font_name: str = "DejaVuSans"
 ) -> None:
     """Creates a PDF with optimized image fetching."""
     logger.info(f"Đang tạo file PDF: {filename}")
-    
+
     # 1. Prepare Font
     font_path = f"{font_name}.ttf"
     if not os.path.exists(font_path):
         font_urls = {
-            'DejaVuSans': 'https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans.ttf',
-            'NotoSerif': 'https://raw.githubusercontent.com/google/fonts/main/ofl/notoserif/NotoSerif-Regular.ttf'
+            "DejaVuSans": "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans.ttf",
+            "NotoSerif": "https://raw.githubusercontent.com/google/fonts/main/ofl/notoserif/NotoSerif-Regular.ttf",
         }
         if font_name in font_urls:
             async with httpx.AsyncClient() as client:
                 resp = await client.get(font_urls[font_name])
-                with open(font_path, 'wb') as f: f.write(resp.content)
+                with open(font_path, "wb") as f:
+                    f.write(resp.content)
 
     # 2. Pre-download images
     normalized_items = _normalize_content_list(content_list)
-    img_urls = [i.data for i in normalized_items if i.type == 'image']
+    img_urls = [i.data for i in normalized_items if i.type == "image"]
     image_cache = await _download_images_bulk(img_urls)
 
     # 3. Build PDF
     try:
         pdfmetrics.registerFont(TTFont(font_name, font_path))
-        style = ParagraphStyle(name='Normal_vi', fontName=font_name, fontSize=12, leading=14)
-        title_style = ParagraphStyle(name='Title_vi', fontName=font_name, fontSize=18, leading=22, spaceAfter=0.2 * inch)
+        style = ParagraphStyle(name="Normal_vi", fontName=font_name, fontSize=12, leading=14)
+        title_style = ParagraphStyle(
+            name="Title_vi", fontName=font_name, fontSize=18, leading=22, spaceAfter=0.2 * inch
+        )
     except:
         styles = getSampleStyleSheet()
-        style, title_style = styles['Normal'], styles['h1']
+        style, title_style = styles["Normal"], styles["h1"]
 
     doc = SimpleDocTemplate(filename)
     story = [Paragraph(title, title_style), Spacer(1, 0.2 * inch)]
     max_w, max_h = doc.width, doc.height
 
     for item in normalized_items:
-        if item.type == 'text':
+        if item.type == "text":
             story.append(Paragraph(item.data, style))
             story.append(Spacer(1, 0.1 * inch))
-        elif item.type == 'image' and item.data in image_cache:
+        elif item.type == "image" and item.data in image_cache:
             try:
                 img_data = BytesIO(image_cache[item.data])
                 pil_img = PILImage.open(img_data)
                 w, h = pil_img.size
-                ratio = min(max_w/w, max_h/h, 1)
-                story.append(Image(img_data, width=w*ratio, height=h*ratio))
+                ratio = min(max_w / w, max_h / h, 1)
+                story.append(Image(img_data, width=w * ratio, height=h * ratio))
                 story.append(Spacer(1, 0.1 * inch))
-            except: pass
+            except:
+                pass
 
     doc.build(story)
     logger.info(f"Tạo file PDF thành công: {filename}")
@@ -276,101 +284,116 @@ async def tao_file_html(content_list: ContentList, filename: str, title: str = "
     logger.info(f"Đang tạo file HTML: {filename}")
     html = f"<!DOCTYPE html><html lang='vi'><head><meta charset='UTF-8'><title>{title}</title></head><body><h1>{title}</h1>"
     for item in _normalize_content_list(content_list):
-        if item.type == 'text': html += f"<p>{item.data}</p>"
-        elif item.type == 'image': html += f"<img src='{item.data}' style='max-width:100%'/>"
+        if item.type == "text":
+            html += f"<p>{item.data}</p>"
+        elif item.type == "image":
+            html += f"<img src='{item.data}' style='max-width:100%'/>"
     html += "</body></html>"
-    with open(filename, 'w', encoding='utf-8') as f: f.write(html)
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write(html)
     logger.info(f"Tạo file HTML thành công: {filename}")
+
 
 async def tao_file_md(content_list: ContentList, filename: str, title: str = "Chương truyện") -> None:
     """Markdown export (Async for API consistency)."""
     logger.info(f"Đang tạo file Markdown: {filename}")
     md = f"# {title}\n\n"
     for item in _normalize_content_list(content_list):
-        if item.type == 'text': md += f"{item.data}\n\n"
-        elif item.type == 'image': md += f"![Minh họa]({item.data})\n\n"
-    with open(filename, 'w', encoding='utf-8') as f: f.write(md)
+        if item.type == "text":
+            md += f"{item.data}\n\n"
+        elif item.type == "image":
+            md += f"![Minh họa]({item.data})\n\n"
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write(md)
     logger.info(f"Tạo file Markdown thành công: {filename}")
+
 
 async def tao_file_txt(content_list: ContentList, filename: str, title: str = "Chương truyện") -> None:
     """Text export (Async for API consistency)."""
     logger.info(f"Đang tạo file Text: {filename}")
     txt = f"{title}\n\n"
     for item in _normalize_content_list(content_list):
-        if item.type == 'text': txt += f"{item.data}\n\n"
-        elif item.type == 'image': txt += f"[Ảnh: {item.data}]\n\n"
-    with open(filename, 'w', encoding='utf-8') as f: f.write(txt)
+        if item.type == "text":
+            txt += f"{item.data}\n\n"
+        elif item.type == "image":
+            txt += f"[Ảnh: {item.data}]\n\n"
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write(txt)
     logger.info(f"Tạo file Text thành công: {filename}")
 
 
 async def tao_file_mp3(content_list: ContentList, filename: str, title: str = "Chương truyện") -> None:
     """AI-Powered Audiobook generation using ElevenLabs with chunked processing."""
     import os
+
     api_key = os.getenv("ELEVENLABS_API_KEY")
     if not api_key:
         logger.error("ELEVENLABS_API_KEY not found. Cannot generate MP3.")
         return
 
     try:
-        from elevenlabs.client import ElevenLabs
-        import pydub
         import io
+
+        import pydub
+        from elevenlabs.client import ElevenLabs
     except ImportError:
         logger.error("elevenlabs or pydub not found. Please run 'uv pip install vvr-scraper[audio]'.")
         return
 
     logger.info(f"Đang tạo file Audiobook: {filename} (Sử dụng ElevenLabs AI)")
-    
+
     # 3. Prepare text chunks
     chunks = [title]
     for item in _normalize_content_list(content_list):
-        if item.type == 'text':
+        if item.type == "text":
             text = item.data.strip()
             if text:
                 if len(text) > 2000:
-                    subchunks = [text[i:i+2000] for i in range(0, len(text), 2000)]
+                    subchunks = [text[i : i + 2000] for i in range(0, len(text), 2000)]
                     chunks.extend(subchunks)
                 else:
                     chunks.append(text)
 
     # 4. Synthesize each chunk
     try:
+
         def run_tts_chunked():
-            from elevenlabs.client import ElevenLabs
             from elevenlabs import VoiceSettings
-            
+            from elevenlabs.client import ElevenLabs
+
             client = ElevenLabs(api_key=api_key)
             audio_segments = []
-            
+
             total_chunks = len(chunks)
             for i, chunk in enumerate(chunks):
                 if not chunk.strip():
                     continue
-                logger.debug(f"Synthesizing chunk {i+1}/{total_chunks}...")
+                logger.debug(f"Synthesizing chunk {i + 1}/{total_chunks}...")
                 # Generate speech using ElevenLabs API v3
+                voice_id = os.getenv("ELEVENLABS_VOICE_ID", "EXAVITQu4vr4xnSDxMaL")
                 audio_stream = client.text_to_speech.convert(
-                    voice_id="EXAVITQu4vr4xnSDxMaL", # Default voice ID (Rachel)
-                    text=chunk, 
+                    voice_id=voice_id,
+                    text=chunk,
                     model_id="eleven_v3",
                     voice_settings=VoiceSettings(
-                        stability=0.75, # High stability for audiobook narration
+                        stability=0.75,  # High stability for audiobook narration
                         similarity_boost=0.75,
                         style=0.0,
-                        use_speaker_boost=True
-                    )
+                        use_speaker_boost=True,
+                    ),
                 )
                 # Consume generator into bytes
                 audio_bytes = b"".join(list(audio_stream))
                 segment = pydub.AudioSegment.from_file(io.BytesIO(audio_bytes), format="mp3")
                 audio_segments.append(segment)
-            
+
             if audio_segments:
                 logger.debug("Merging audio segments...")
                 merged_audio = audio_segments[0]
                 for seg in audio_segments[1:]:
                     merged_audio += seg
                 merged_audio.export(filename, format="mp3")
-            
+
         await asyncio.to_thread(run_tts_chunked)
         logger.info(f"Tạo file Audiobook thành công: {filename}")
     except Exception as e:
@@ -379,11 +402,7 @@ async def tao_file_mp3(content_list: ContentList, filename: str, title: str = "C
 
 
 async def tao_file_audiodrama(
-    content_list: ContentList,
-    filename: str,
-    story_id: str,
-    db_manager: Any,
-    title: str = "Chương truyện"
+    content_list: ContentList, filename: str, story_id: str, db_manager: Any, title: str = "Chương truyện"
 ) -> None:
     """
     AI-Powered Audio Drama generation.
@@ -396,14 +415,14 @@ async def tao_file_audiodrama(
     # 0. Extract text from content_list (List[ContentItem])
     normalized_content = _normalize_content_list(content_list)
     full_text = "\n".join([item.data for item in normalized_content if item.type == "text"])
-    
+
     script_file = f"{filename}.script.json"
     script = []
 
     # 1. Load cached script if exists
     if os.path.exists(script_file):
         try:
-            with open(script_file, 'r', encoding='utf-8') as f:
+            with open(script_file, encoding="utf-8") as f:
                 raw_script = json.load(f)
                 script = ScriptResult(raw_script)
             logger.info(f"Loaded cached script from {script_file}")
@@ -419,43 +438,38 @@ async def tao_file_audiodrama(
             logger.error("OpenAI failed to generate script. Aborting Audio Drama generation.")
             return
         try:
-            with open(script_file, 'w', encoding='utf-8') as f:
+            with open(script_file, "w", encoding="utf-8") as f:
                 json.dump(script, f, ensure_ascii=False, indent=2)
             logger.info(f"Saved script checkpoint to {script_file}")
         except Exception as e:
             logger.warning(f"Failed to save script checkpoint: {e}")
 
-
     # 3. Prepare voice assignments and handle mood shifts
     voice_manager = VoiceManager(db_manager, story_id)
     enriched_script = ScriptResult()
     for item in script:
-        if item.get('type') == 'mood_shift':
+        if item.get("type") == "mood_shift":
             enriched_script.append(item)
         else:
-            char_name = item.get('role', 'narrator')
-            text = item.get('text', '').strip()
-            gender = (item.get('gender') or 'unknown').lower()
+            char_name = item.get("role", "narrator")
+            text = item.get("text", "").strip()
+            gender = (item.get("gender") or "unknown").lower()
             if not text:
                 continue
             voice_name = await voice_manager.get_voice(char_name, gender)
-            enriched_script.append({
-                'type': 'segment',
-                'role': char_name,
-                'voice': voice_name,
-                'text': text
-            })
+            enriched_script.append({"type": "segment", "role": char_name, "voice": voice_name, "text": text})
 
     # 4. Synthesis and Mixing pipeline
     try:
-        from pydub import AudioSegment
         import io
+
+        from pydub import AudioSegment
     except ImportError as e:
         logger.error(f"Required libraries for Audio Drama v2.5 not found: {e}")
         return
 
     logger.info(f"Synthesizing audio drama v2.5 (Parallel & Block-based): {filename}...")
-    
+
     api_key = os.getenv("ELEVENLABS_API_KEY")
     if not api_key:
         logger.error("ELEVENLABS_API_KEY environment variable is required")
@@ -465,13 +479,13 @@ async def tao_file_audiodrama(
     bgm_manager.refresh()
     freesound_manager = FreesoundManager()
     mixing_engine = MixingEngine()
-    
+
     # Initialize ImageGenerator
     output_dir = os.path.dirname(filename)
     backgrounds_dir = os.path.join(output_dir, "backgrounds")
     os.makedirs(backgrounds_dir, exist_ok=True)
     image_gen = ImageGenerator(cache_dir=backgrounds_dir)
-    
+
     semaphore = asyncio.Semaphore(5)
 
     # Audio timing constants
@@ -484,19 +498,17 @@ async def tao_file_audiodrama(
 
     async def synthesize_segment(item):
         async with semaphore:
-            voice_id = item['voice']
-            text = item['text']
-            role = item.get('role', 'narrator')
-            
+            voice_id = item["voice"]
+            text = item["text"]
+            role = item.get("role", "narrator")
+
             # Stability: Narrator needs to be stable (0.75), Characters need to be expressive (0.35)
-            stability = 0.75 if role.lower() == 'narrator' else 0.35
-            
+            stability = 0.75 if role.lower() == "narrator" else 0.35
+
             try:
                 # Use VoiceManager's synthesis to get word-level timestamps
                 audio_bytes, word_alignments = await voice_manager.synthesize(
-                    voice_id=voice_id,
-                    text=text,
-                    stability=stability
+                    voice_id=voice_id, text=text, stability=stability
                 )
                 segment = AudioSegment.from_file(io.BytesIO(audio_bytes), format="mp3")
                 return segment, word_alignments
@@ -508,16 +520,16 @@ async def tao_file_audiodrama(
         final_audio = None
         current_block_start_ms = 0
         all_events = []
-        
+
         for i, block in enumerate(blocks):
-            mood_info = block['mood_info']
-            segments = block['segments']
-            tags = mood_info.get('tags', [mood_info.get('mood', 'peaceful')])
-            
-            logger.info(f"Processing Block {i+1}/{len(blocks)} (Tags: {tags})...")
-            
+            mood_info = block["mood_info"]
+            segments = block["segments"]
+            tags = mood_info.get("tags", [mood_info.get("mood", "peaceful")])
+
+            logger.info(f"Processing Block {i + 1}/{len(blocks)} (Tags: {tags})...")
+
             # 1. Background Generation
-            visual_prompt = mood_info.get('visual_prompt')
+            visual_prompt = mood_info.get("visual_prompt")
             bg_rel_path = None
             if visual_prompt:
                 try:
@@ -529,40 +541,44 @@ async def tao_file_audiodrama(
 
             # Record background event in manifest
             if bg_rel_path:
-                all_events.append({
-                    "type": "background",
-                    "start": current_block_start_ms,
-                    "src": bg_rel_path,
-                    "transition": mood_info.get('transition', 'fade')
-                })
-            
+                all_events.append(
+                    {
+                        "type": "background",
+                        "start": current_block_start_ms,
+                        "src": bg_rel_path,
+                        "transition": mood_info.get("transition", "fade"),
+                    }
+                )
+
             # Record VFX event in manifest
-            vfx_list = mood_info.get('vfx', [])
+            vfx_list = mood_info.get("vfx", [])
             if vfx_list:
-                all_events.append({
-                    "type": "vfx",
-                    "start": current_block_start_ms,
-                    "end": current_block_start_ms + mood_info.get('duration', 1000),
-                    "effect": vfx_list[0] if isinstance(vfx_list, list) and vfx_list else str(vfx_list),
-                    "intensity": mood_info.get('intensity', 0.5),
-                    "duration": mood_info.get('duration', 1000)
-                })
+                all_events.append(
+                    {
+                        "type": "vfx",
+                        "start": current_block_start_ms,
+                        "end": current_block_start_ms + mood_info.get("duration", 1000),
+                        "effect": vfx_list[0] if isinstance(vfx_list, list) and vfx_list else str(vfx_list),
+                        "intensity": mood_info.get("intensity", 0.5),
+                        "duration": mood_info.get("duration", 1000),
+                    }
+                )
 
             # 2. Parallel Synthesis for the block
             synthesis_results = await asyncio.gather(*[synthesize_segment(s) for s in segments])
             voice_segments = [res[0] for res in synthesis_results]
             raw_block_alignments = [res[1] for res in synthesis_results]
-            
+
             # Adjust word alignments and create dialogue events
             segment_offset_in_block_ms = VOICE_OVERLAY_OFFSET_MS
             for j, segment_alignments in enumerate(raw_block_alignments):
-                role = segments[j].get('role', 'narrator')
-                text = segments[j].get('text', '')
-                
+                role = segments[j].get("role", "narrator")
+                text = segments[j].get("text", "")
+
                 seg_start_ms = current_block_start_ms + segment_offset_in_block_ms
                 seg_duration_ms = len(voice_segments[j])
                 seg_end_ms = seg_start_ms + seg_duration_ms
-                
+
                 # Create dialogue event with word-level alignment
                 dialogue_event = {
                     "type": "dialogue",
@@ -570,18 +586,18 @@ async def tao_file_audiodrama(
                     "end": seg_end_ms,
                     "character": role,
                     "text": text,
-                    "alignment": []
+                    "alignment": [],
                 }
-                
+
                 for word_data in segment_alignments:
                     # Create a copy to avoid modifying original and adjust to global timeline
                     w = {
                         "word": word_data["word"],
                         "start": word_data["start"] + seg_start_ms,
-                        "end": word_data["end"] + seg_start_ms
+                        "end": word_data["end"] + seg_start_ms,
                     }
                     dialogue_event["alignment"].append(w)
-                
+
                 all_events.append(dialogue_event)
                 # Update offset for next segment in block
                 segment_offset_in_block_ms += seg_duration_ms + GAP_BETWEEN_SEGMENTS_MS
@@ -635,9 +651,7 @@ async def tao_file_audiodrama(
 
                 # Overlay voice
                 block_audio = mixing_engine.overlay_voice_on_background(
-                    background, 
-                    combined_voice.fade_in(500).fade_out(500),
-                    position=VOICE_OVERLAY_OFFSET_MS
+                    background, combined_voice.fade_in(500).fade_out(500), position=VOICE_OVERLAY_OFFSET_MS
                 )
 
                 block_audio_duration = len(block_audio)
@@ -651,73 +665,83 @@ async def tao_file_audiodrama(
 
                 # Cleanup downloaded BGM if it was a temp file
                 if current_bgm_path and "temp_bgm_" in str(current_bgm_path) and os.path.exists(current_bgm_path):
-                    try: os.remove(current_bgm_path)
-                    except: pass
+                    try:
+                        os.remove(current_bgm_path)
+                    except:
+                        pass
 
                 return new_final, block_audio_duration
 
-            final_audio, block_duration = await asyncio.to_thread(process_block, voice_segments, bgm_track_path, final_audio)
+            final_audio, block_duration = await asyncio.to_thread(
+                process_block, voice_segments, bgm_track_path, final_audio
+            )
             # Update current_block_start_ms for next block, account for crossfade overlap
-            current_block_start_ms += (block_duration - CROSSFADE_MS)
-        
+            current_block_start_ms += block_duration - CROSSFADE_MS
+
         # Save cinematic manifest as manifest.json in the same folder as the MP3
         manifest_file = os.path.join(os.path.dirname(filename), "manifest.json")
-        with open(manifest_file, 'w', encoding='utf-8') as f:
-            json.dump({
-                "title": title,
-                "audio": os.path.basename(filename),
-                "base_path": "",
-                "events": sorted(all_events, key=lambda x: x["start"])
-            }, f, ensure_ascii=False, indent=2)
+        with open(manifest_file, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "title": title,
+                    "audio": os.path.basename(filename),
+                    "base_path": "",
+                    "events": sorted(all_events, key=lambda x: x["start"]),
+                },
+                f,
+                ensure_ascii=False,
+                indent=2,
+            )
         logger.info(f"Saved cinematic manifest to {manifest_file}")
 
         if final_audio:
             logger.info(f"Exporting final Audio Drama to {filename}...")
-            
+
             def export_final():
                 final_audio.export(filename, format="mp3")
+
             await asyncio.to_thread(export_final)
-            
+
             # Cleanup script checkpoint if successful
             script_file = f"{filename}.script.json"
             if os.path.exists(script_file):
-                try: os.remove(script_file)
-                except: pass
+                try:
+                    os.remove(script_file)
+                except:
+                    pass
         else:
             logger.error("Audio Drama generation failed: No audio produced.")
 
     except Exception as e:
         logger.error(f"Lỗi khi tạo Audio Drama v2.5: {e}")
         import traceback
+
         logger.error(traceback.format_exc())
     finally:
-        if 'voice_manager' in locals():
+        if "voice_manager" in locals():
             await voice_manager.close()
 
+
 async def tao_file_mp4(
-    content_list: List[ContentItem], 
-    filename: str, 
-    story_id: str, 
-    db_manager: Any, 
+    content_list: list[ContentItem],
+    filename: str,
+    story_id: str,
+    db_manager: Any,
     title: str,
     fps: int = 30,
-    render_format: str = 'landscape'
+    render_format: str = "landscape",
 ):
     """
-    Exports the cinematic novel to an MP4 video by first generating 
+    Exports the cinematic novel to an MP4 video by first generating
     an Audio Drama MP3/Manifest and then rendering it.
     """
     # 1. Generate Audio Drama MP3 and manifest.json first
     # We'll use a temporary MP3 path for the audio
     temp_mp3 = filename.replace(".mp4", ".mp3")
     await tao_file_audiodrama(
-        content_list=content_list,
-        filename=temp_mp3,
-        story_id=story_id,
-        db_manager=db_manager,
-        title=title
+        content_list=content_list, filename=temp_mp3, story_id=story_id, db_manager=db_manager, title=title
     )
-    
+
     # Check if manifest.json was created
     manifest_path = os.path.join(os.path.dirname(filename), "manifest.json")
     if not os.path.exists(manifest_path):
@@ -727,27 +751,22 @@ async def tao_file_mp4(
     # 2. Render the video (no sound)
     temp_video_nosound = filename.replace(".mp4", "_nosound.mp4")
     renderer = VideoRenderer(
-        manifest_path=manifest_path,
-        output_path=temp_video_nosound,
-        fps=fps,
-        render_format=render_format
+        manifest_path=manifest_path, output_path=temp_video_nosound, fps=fps, render_format=render_format
     )
-    
+
     await renderer.render()
-    
+
     # 3. Mux audio and video
     if os.path.exists(temp_video_nosound) and os.path.exists(temp_mp3):
         await renderer.mux_audio(temp_video_nosound, temp_mp3, filename)
-        
+
         # Cleanup temporary files
         try:
             os.remove(temp_video_nosound)
-            # We might want to keep the MP3 depending on user choice, 
+            # We might want to keep the MP3 depending on user choice,
             # but for this flow, we follow the MP4 request.
-            # os.remove(temp_mp3) 
+            # os.remove(temp_mp3)
         except:
             pass
     else:
         logger.error("Failed to generate MP4: Missing temporary video or audio file.")
-
-

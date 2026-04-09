@@ -1,21 +1,20 @@
 """
 Core scraping functions for the web novel scraper.
 """
+
 import asyncio
 import os
 import re
 import tempfile
-from typing import Dict, List, Optional, Any
+from typing import Any
 
 import httpx
-from playwright.async_api import Browser, async_playwright
 from bs4 import BeautifulSoup
-
 from loguru import logger
+from playwright.async_api import Browser
 
-from .utils import HEADERS, BASE_URL
-from .models import StoryInfo, ContentItem
-
+from .models import ContentItem, StoryInfo
+from .utils import BASE_URL, HEADERS
 
 MAX_RETRIES = 2
 
@@ -26,14 +25,14 @@ async def lay_thong_tin_truyen(client: httpx.AsyncClient, ten_truyen: str, verbo
     """
     url = f"https://valvrareteam.net/{ten_truyen}"
     logger.debug(f"Fetching story info from: {url}")
-    
+
     response = await client.get(url, follow_redirects=True)
     response.raise_for_status()
-    soup = BeautifulSoup(response.text, 'html.parser')
+    soup = BeautifulSoup(response.text, "html.parser")
 
     title_element = soup.select_one("h1.rd-novel-title")
     title = title_element.get_text(strip=True) if title_element else "Unknown Title"
-    
+
     # Clean up status suffixes from title
     for status in ["+Đang tiến hành", "+Hoàn thành", "+Tạm ngưng"]:
         if status in title:
@@ -53,7 +52,7 @@ async def lay_thong_tin_truyen(client: httpx.AsyncClient, ten_truyen: str, verbo
     total_chapters = "Unknown"
     word_count = "Unknown"
     views = "-"
-    
+
     # Try .rd-stat-item first (modern Next.js structure)
     stat_items = soup.select(".rd-stat-item")
     for item in stat_items:
@@ -75,15 +74,15 @@ async def lay_thong_tin_truyen(client: httpx.AsyncClient, ten_truyen: str, verbo
         for item in legacy_stats:
             text = item.get_text(" ", strip=True)
             if "Chương" in text:
-                match = re.search(r'(\d+[\d.,]*)', text)
+                match = re.search(r"(\d+[\d.,]*)", text)
                 if match:
                     total_chapters = match.group(1)
             elif "Số chữ" in text or "Từ" in text:
-                match = re.search(r'(\d+[\d.,]*)', text)
+                match = re.search(r"(\d+[\d.,]*)", text)
                 if match:
                     word_count = match.group(1)
             elif "Lượt xem" in text:
-                match = re.search(r'(\d+[\d.,]*)', text)
+                match = re.search(r"(\d+[\d.,]*)", text)
                 if match:
                     views = match.group(1)
 
@@ -112,30 +111,30 @@ async def lay_thong_tin_truyen(client: httpx.AsyncClient, ten_truyen: str, verbo
     cover_url = None
     image_url_element = soup.select_one("img.rd-cover-image")
     if image_url_element:
-        if 'src' in image_url_element.attrs:
-            cover_url = image_url_element['src']
-        elif 'srcset' in image_url_element.attrs:
+        if "src" in image_url_element.attrs:
+            cover_url = image_url_element["src"]
+        elif "srcset" in image_url_element.attrs:
             # Fallback for dynamic images
-            cover_url = image_url_element['srcset'].split(',')[0].split(' ')[0]
+            cover_url = image_url_element["srcset"].split(",")[0].split(" ")[0]
 
     if cover_url:
-        fd = None
         try:
             # Prepend base URL if relative (though usually absolute with B-CDN)
-            if cover_url.startswith('/'):
+            if cover_url.startswith("/"):
                 cover_url = f"{BASE_URL}{cover_url}"
-                
+
             response = await client.get(cover_url, timeout=30.0)
             response.raise_for_status()
-            
+
             def save_cover():
                 # Use a unique temp file to avoid race conditions in multi-download
-                _fd, _cover_path = tempfile.mkstemp(suffix='.jpg', prefix='vvr_cover_')
-                with os.fdopen(_fd, 'wb') as f:
+                _fd, _cover_path = tempfile.mkstemp(suffix=".jpg", prefix="vvr_cover_")
+                os.close(_fd)  # Close the fd immediately; fdopen will reopen it
+                with open(_cover_path, "wb") as f:
                     f.write(response.content)
-                return _fd, _cover_path
-                
-            fd, cover_path = await asyncio.to_thread(save_cover)
+                return _cover_path
+
+            cover_path = await asyncio.to_thread(save_cover)
             logger.info(f"Đã tải ảnh bìa: {cover_path}")
         except Exception as e:
             logger.warning(f"Không thể tải ảnh bìa: {e}")
@@ -156,51 +155,61 @@ async def lay_thong_tin_truyen(client: httpx.AsyncClient, ten_truyen: str, verbo
         cover_url=cover_url,
         total_chapters=total_chapters,
         word_count=word_count,
-        views=views
+        views=views,
     )
 
 
-async def lay_chuong_httpx(client: httpx.AsyncClient, url: str, verbose: bool = False, token: Optional[str] = None) -> Optional[List[ContentItem]]:
+async def lay_chuong_httpx(
+    client: httpx.AsyncClient, url: str, verbose: bool = False, token: str | None = None
+) -> list[ContentItem] | None:
     """
     Scrapes a single chapter page using httpx and BeautifulSoup (Fast Mode).
     Uses the DigitalOcean SSR fallback for better reliability and speed.
     """
-    fallback_url = url.replace("valvrareteam.net", "val-ssr-2kzit.ondigitalocean.app")
+    ssr_url = os.getenv("VVR_SSR_URL", "val-ssr-2kzit.ondigitalocean.app")
+    fallback_url = url.replace("valvrareteam.net", ssr_url)
     logger.debug(f"Fast-scraping from: {fallback_url}")
-    
+
     try:
         headers = client.headers.copy()
         if token:
             headers["Authorization"] = f"Bearer {token}"
-            
+
         response = await client.get(fallback_url, follow_redirects=True, timeout=30.0, headers=headers)
         response.raise_for_status()
-        soup = BeautifulSoup(response.text, 'html.parser')
-        
+        soup = BeautifulSoup(response.text, "html.parser")
+
         content_container = soup.select_one(".chapter-content")
         if not content_container:
             return None
-            
-        extracted_content: List[ContentItem] = []
+
+        extracted_content: list[ContentItem] = []
         elements = content_container.select("p, img")
-        
+
         for el in elements:
-            if el.name == 'img':
-                image_url = el.get('src')
+            if el.name == "img":
+                image_url = el.get("src")
                 if image_url:
-                    extracted_content.append(ContentItem(type='image', data=image_url))
-            elif el.name == 'p':
+                    extracted_content.append(ContentItem(type="image", data=image_url))
+            elif el.name == "p":
                 text = el.get_text(strip=True)
                 if text:
-                    extracted_content.append(ContentItem(type='text', data=text))
-        
+                    extracted_content.append(ContentItem(type="text", data=text))
+
         return extracted_content if extracted_content else None
     except Exception as e:
-        logger.debug(f"Fast-scrape failed for {fallback_url}: {e}")
+        import traceback
+
+        if verbose:
+            logger.debug(f"Fast-scrape failed for {fallback_url}: {e}\n{traceback.format_exc()}")
+        else:
+            logger.debug(f"Fast-scrape failed for {fallback_url}: {e}")
         return None
 
 
-async def lay_chuong_voi_hinh_anh(browser: Browser, url: str, session_state: Optional[Dict[str, Any]] = None, verbose: bool = False) -> Optional[List[ContentItem]]:
+async def lay_chuong_voi_hinh_anh(
+    browser: Browser, url: str, session_state: dict[str, Any] | None = None, verbose: bool = False
+) -> list[ContentItem] | None:
     """
     Scrapes a single chapter page for text and images using Playwright (Reliable Mode).
     """
@@ -209,22 +218,22 @@ async def lay_chuong_voi_hinh_anh(browser: Browser, url: str, session_state: Opt
     page = await browser.new_page(storage_state=session_state) if session_state else await browser.new_page()
     for attempt in range(MAX_RETRIES):
         try:
-            await page.goto(url, wait_until='domcontentloaded', timeout=60000)
+            await page.goto(url, wait_until="domcontentloaded", timeout=60000)
             content_selector = ".chapter-content p, .chapter-content img, .chapter-card p, .chapter-card img"
             await page.wait_for_selector(content_selector, timeout=30000)
             elements = page.locator(content_selector)
-            extracted_content: List[ContentItem] = []
+            extracted_content: list[ContentItem] = []
             for i in range(await elements.count()):
                 element = elements.nth(i)
-                tag_name = await element.evaluate('el => el.tagName')
-                if tag_name == 'IMG':
-                    image_url = await element.get_attribute('src')
+                tag_name = await element.evaluate("el => el.tagName")
+                if tag_name == "IMG":
+                    image_url = await element.get_attribute("src")
                     if image_url:
-                        extracted_content.append(ContentItem(type='image', data=image_url))
-                elif tag_name == 'P':
+                        extracted_content.append(ContentItem(type="image", data=image_url))
+                elif tag_name == "P":
                     text = await element.inner_text()
                     if text.strip():
-                        extracted_content.append(ContentItem(type='text', data=text.strip()))
+                        extracted_content.append(ContentItem(type="text", data=text.strip()))
             await page.close()
             return extracted_content
         except Exception as e:
@@ -242,15 +251,15 @@ async def lay_chuong_voi_hinh_anh(browser: Browser, url: str, session_state: Opt
 
 async def scrape_chapters(
     browser: Browser,
-    urls: List[str],
+    urls: list[str],
     concurrent_tasks: int = 5,
-    skipped_urls: Optional[List[str]] = None,
-    session_state: Optional[Dict[str, Any]] = None,
+    skipped_urls: list[str] | None = None,
+    session_state: dict[str, Any] | None = None,
     verbose: bool = False,
-    token: Optional[str] = None,
-    pre_scraped: Optional[Dict[str, List[ContentItem]]] = None,
-    on_chapter_done: Optional[Any] = None,
-) -> Dict[str, List[ContentItem]]:
+    token: str | None = None,
+    pre_scraped: dict[str, list[ContentItem]] | None = None,
+    on_chapter_done: Any | None = None,
+) -> dict[str, list[ContentItem]]:
     """
     Scrape multiple chapters concurrently.
     Uses a hybrid approach:
@@ -270,7 +279,7 @@ async def scrape_chapters(
                          called after each chapter is processed (success or skip).
     """
     semaphore = asyncio.Semaphore(concurrent_tasks)
-    scraped_content: Dict[str, List[ContentItem]] = {}
+    scraped_content: dict[str, list[ContentItem]] = {}
     if skipped_urls is None:
         skipped_urls = []
 
@@ -282,14 +291,15 @@ async def scrape_chapters(
 
     # Convert session_state to httpx cookies
     cookies = {}
-    if session_state and 'cookies' in session_state:
-        for c in session_state['cookies']:
-            cookies[c['name']] = c['value']
+    if session_state and "cookies" in session_state:
+        for c in session_state["cookies"]:
+            cookies[c["name"]] = c["value"]
 
     total = len(urls)
 
     # Create a single shared HTTP client for connection pooling across all chapters
     async with httpx.AsyncClient(headers=HEADERS, cookies=cookies, follow_redirects=True) as client:
+
         async def process_url(url: str, idx: int) -> None:
             # Skip if already scraped (from checkpoint)
             if url in scraped_content:
@@ -301,12 +311,12 @@ async def scrape_chapters(
                 content = None
                 # 1. Try Fast Mode (HTTPX) — reuses shared client
                 content = await lay_chuong_httpx(client, url, verbose=verbose, token=token)
-                
+
                 # 2. Try Reliable Mode (Playwright) if Fast Mode failed
                 if not content:
                     logger.debug(f"Fast-scrape failed for {url}. Falling back to Playwright...")
                     content = await lay_chuong_voi_hinh_anh(browser, url, session_state=session_state, verbose=verbose)
-                
+
                 if content:
                     scraped_content[url] = content
                 else:

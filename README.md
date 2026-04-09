@@ -1,73 +1,125 @@
-# Valvrare Team Web Novel Scraper (v1.8.0)
+# Valvrare Team Web Novel Scraper (VVR-Scraper)
 
-[![PyPI version](https://badge.fury.io/py/vvr-scraper.svg)](https://badge.fury.io/py/vvr-scraper)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+Hệ thống tự động hóa khai thác và chuyển đổi nội dung từ Valvrare Team sang các định dạng đa phương tiện (Ebook, Audiobook, Cinematic Video).
 
-## Mô tả dự án
-**Valvrare Team Web Novel Scraper** là một công cụ hiệu suất cao, đa nền tảng (CLI & Web) dùng để tải và chuyển đổi web novel từ [Valvrare Team](https://valvrareteam.net) thành các định dạng sách điện tử và trải nghiệm điện ảnh sống động.
+## 🚀 Tính năng chính
 
-## Tính năng nổi bật
-- **Giao diện Kép:** Web Dashboard hiện đại và CLI tương tác chuyên nghiệp.
-- **VVR-Cinema:** Biến truyện chữ thành trải nghiệm "Visual Novel" tự động:
-    - **Karaoke Highlighting:** Chữ chạy theo nhịp đọc của AI (Word-level sync).
-    - **AI Backgrounds:** Tự động sinh hình nền bối cảnh bằng DALL-E 3 phù hợp với nội dung.
-    - **Dynamic VFX:** Hiệu ứng rung màn hình, mưa rơi, sương mù, chớp sáng theo tâm trạng nhân vật.
-    - **Immersive Player:** Trình phát toàn màn hình với hiệu ứng Ken Burns chuyên nghiệp.
-- **AudioBook (AI Powered):**
-    - **AD-MP3 (Audio Drama v3.0):** Phân vai nhân vật, lồng nhạc nền (Freesound), và trích xuất kịch bản thông minh.
-- **Thư viện thông minh:** Tự động kiểm tra chương mới và quản lý tập trung.
-- **Xuất đa định dạng:** EPUB, PDF, HTML, Markdown, TXT, MP3.
+- **Hybrid Scraping**: Kết hợp HTTPX (Fast mode via SSR Proxy) và Playwright (Reliable mode) để vượt rào cản kỹ thuật và trích xuất nội dung chính xác.
+- **Đa định dạng xuất bản**:
+    - **Ebooks**: EPUB (với cấu trúc Volume/Chapter), PDF, HTML, Markdown, TXT.
+    - **Audiobook**: Chuyển đổi văn bản thành giọng nói (TTS) chất lượng cao sử dụng ElevenLabs.
+    - **Audio Drama (v2.5)**: Tự động phân tích kịch bản bằng OpenAI, gán giọng nhân vật, chèn nhạc nền (BGM) và hiệu ứng âm thanh (SFX) từ Freesound.
+    - **Cinematic Video (MP4)**: Kết xuất video với hiệu ứng chuyển cảnh, Ken Burns, VFX và đồng bộ phụ đề Karaoke chính xác từng mili giây.
+- **Cinema Player**: Trình phát web tích hợp cho phép trải nghiệm nội dung Cinematic ngay trên trình duyệt.
+- **Personal OPDS Server**: Cung cấp feed sách chuẩn OPDS 1.1 để kết nối trực tiếp với các ứng dụng đọc sách (Moon+ Reader, KyBook, v.v.).
+- **Job Orchestrator**: Hệ thống hàng đợi (Queue) và Task Runner mạnh mẽ, hỗ trợ tự động hóa việc theo dõi và tải chương mới.
 
-## Cài đặt
+## 🛠 Yêu cầu hệ thống
+
+- **Python**: 3.10+
+- **Công cụ bổ trợ**: 
+    - [FFmpeg](https://ffmpeg.org/): Bắt buộc để xử lý âm thanh và kết xuất video.
+    - [Playwright](https://playwright.dev/): Cần thiết cho chế độ Reliable Scraping và Video Rendering.
+- **API Keys**:
+    - `OPENAI_API_KEY`: Dùng cho AI Director (phân tích kịch bản và sinh ảnh).
+    - `ELEVENLABS_API_KEY`: Dùng cho giọng đọc AI chất lượng cao.
+    - `FREESOUND_API_KEY`: Dùng để tìm kiếm nhạc nền và hiệu ứng.
+
+## 📦 Cài đặt
+
+Cách đơn giản nhất là cài đặt trực tiếp từ PyPI:
 
 ```bash
+# Sử dụng uv (Khuyến nghị)
+uv pip install vvr-scraper
+
+# Hoặc sử dụng pip truyền thống
 pip install vvr-scraper
-# Cài đặt trình duyệt cho Playwright:
-playwright install chromium-headless-shell
+
+# Cài đặt Playwright browsers (Bắt buộc cho chế độ Reliable mode và Video Render)
+playwright install chromium
 ```
 
-**Yêu cầu:** Python 3.10 trở lên.
+### Cài đặt từ mã nguồn (Dành cho nhà phát triển)
 
-## Cách sử dụng
-
-### 1. Chế độ Web (Khuyến nghị)
-```bash
-vvrt web
-```
-Giao diện sẽ tự động mở tại `http://127.0.0.1:8000`. Sau khi tải xong bản **AD-MP3**, nhấn nút **"Xem Cinema 🎬"** để thưởng thức.
-
-### 2. Kết nối OPDS (Cho ứng dụng đọc sách di động) (auto start with webui)
-Bạn có thể kết nối các ứng dụng như **Moon+ Reader** hoặc **KyBook** vào thư viện cá nhân của mình:
-- **Địa chỉ:** `http://<your-ip>:8000/opds/v1/root`
-- **Đăng nhập:** Mặc định là `admin` / `password`.
-- **Cấu hình bảo mật:** Đặt `VVR_OPDS_USER` và `VVR_OPDS_PASS` trong biến môi trường để thay đổi thông tin đăng nhập.
-
-## Cấu hình VVR-Cinema (Quan trọng)
-
-Để sử dụng đầy đủ tính năng Cinema, bạn cần thiết lập:
+Nếu bạn muốn đóng góp hoặc sử dụng phiên bản mới nhất từ Git:
 
 ```bash
-# ElevenLabs (Giọng nói & Đồng bộ)
-export ELEVENLABS_API_KEY="your-key"
-
-# OpenAI (Soạn kịch bản & Sinh ảnh bối cảnh)
-export OPENAI_API_KEY="your-key" # Dùng cho DALL-E 3
-export VVR_API_KEY="your-key"    # Dùng cho LLM (có thể trùng OPENAI_API_KEY)
+git clone https://github.com/your-repo/valvrareteam-net-crawler.git
+cd valvrareteam-net-crawler
+uv pip install -e .
+playwright install chromium
 ```
 
-### Tùy chỉnh trải nghiệm
-Trong phần **Settings** trên Web Dashboard, bạn có thể:
-- Bật/Tắt **AI Backgrounds** (Để tiết kiệm chi phí API).
-- Điều chỉnh **VFX Intensity** (Độ mạnh của hiệu ứng rung và thời tiết).
+## ⚙️ Cấu hình
 
-### Thư viện Nhạc nền (Local BGM)
-Tạo thư mục `bgm/` với các thư mục con: `action`, `peaceful`, `mysterious`, `romantic`, `sad`, `suspense`. Hệ thống sẽ ưu tiên lấy nhạc từ đây trước khi tìm trên Freesound.
+Tạo file `.env` hoặc thiết lập biến môi trường:
 
-## Lưu ý kỹ thuật
-- **Checkpoint:** Tiến trình được lưu tại `.vvr_checkpoint.json` trong thư mục đầu ra. Nếu lỗi, bạn có thể tải lại để tiếp tục mà không mất dữ liệu cũ.
-- **Script Caching:** Audio Drama lưu kịch bản tại `.script.json`. Bạn có thể chỉnh sửa kịch bản này trước khi hệ thống bắt đầu tổng hợp âm thanh.
-- **Giới hạn:** Tự động hủy xuất file nếu tỷ lệ tải chương thất bại > 30%.
-- **Folder Picker:** Trên Linux, tính năng "Browse" thư mục yêu cầu `zenity`, `kdialog` hoặc `python3-tk`.
+```env
+# API Keys
+OPENAI_API_KEY=your_openai_key
+ELEVENLABS_API_KEY=your_elevenlabs_key
+FREESOUND_CLIENT_ID=your_id
+FREESOUND_CLIENT_SECRET=your_secret
 
-## Giấy phép
-Dự án phát hành dưới [Giấy phép MIT](LICENSE).
+# Tùy chọn (Optional)
+VVR_SSR_URL=val-ssr-2kzit.ondigitalocean.app
+VVR_OPDS_USER=admin
+VVR_OPDS_PASS=password
+```
+
+## 📖 Hướng dẫn sử dụng
+
+### CLI (Command Line Interface)
+
+Sử dụng lệnh `vvrt` để thực hiện các tác vụ:
+
+```bash
+# Lấy sơ đồ cây của một truyện
+vvrt tree https://valvrareteam.net/truyen/ten-truyen
+
+# Tải và xuất định dạng EPUB
+vvrt crawl https://valvrareteam.net/truyen/ten-truyen -f EPUB
+
+# Tạo Audio Drama cho một chương
+vvrt crawl <url_chuong> -f AD-MP3
+
+# Render video Cinematic
+vvrt crawl <url_chuong> -f MP4
+```
+
+### Web UI & OPDS
+
+Khởi chạy máy chủ web:
+
+```bash
+vvrt serve --port 8000
+```
+
+- **Giao diện quản lý**: `http://localhost:8000`
+- **OPDS Feed**: `http://localhost:8000/opds/v1/root`
+- **Cinema Player**: Truy cập qua API hoặc giao diện web.
+
+### Job Runner
+
+Chạy các tác vụ hàng loạt qua manifest JSON:
+
+```bash
+vvrt run manifest.json
+```
+
+## 🏗 Kiến trúc dự án
+
+- `vvr_scraper/scraper_core.py`: Lõi xử lý trích xuất dữ liệu.
+- `vvr_scraper/exporter.py`: Chuyển đổi dữ liệu sang các định dạng đích.
+- `vvr_scraper/audio_drama.py`: Logic AI Director và quản lý âm thanh.
+- `vvr_scraper/video_renderer.py`: Kết xuất MP4 sử dụng Playwright và FFmpeg.
+- `vvr_scraper/db.py`: Quản lý SQLite với cơ chế an toàn async.
+- `vvr_scraper/web.py`: API Server (FastAPI) và OPDS.
+
+## 🛡 Bảo mật và Quy định
+
+Dự án này được tạo ra cho mục đích học tập và lưu trữ cá nhân. Vui lòng tôn trọng bản quyền của dịch giả và tác giả. Không sử dụng công cụ này để thực hiện các hành vi gây hại đến máy chủ của Valvrare Team.
+
+---
+© 2024 VVR-Scraper Team.

@@ -1,0 +1,15 @@
+[
+    {
+        "alias_id": "test_crawl_job",
+        "task": "crawl",
+        "payload": {
+            "slug": "amamori-junna-vo-cung-am-uot-b901d672",
+            "formats": [
+                "EPUB"
+            ],
+            "grouping": 1,
+            "skip_illustrations": true,
+            "output_folder": "/home/tung/Documents/light-novel/"
+        }
+    }
+]

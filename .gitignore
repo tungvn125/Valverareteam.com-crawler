@@ -18,6 +18,8 @@ memory/
 *.md
 *.txt
 *.db
+*.db-shm
+*.db-wal
 *.mp3
 *.json
 !README.md
@@ -35,3 +37,5 @@ verify/
 .worktrees/
 *.wav
 *.png
+!task_runner.md
+!run.example.json

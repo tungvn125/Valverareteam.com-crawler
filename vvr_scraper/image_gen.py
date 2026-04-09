@@ -1,26 +1,27 @@
-import os
-import hashlib
 import asyncio
+import hashlib
 import io
-from typing import Optional
+import os
+
 import httpx
 import openai
+from loguru import logger
 from openai import AsyncOpenAI
 from PIL import Image
-from loguru import logger
+
 
 class ImageGenerator:
-    def __init__(self, cache_dir: str = "backgrounds", api_key: Optional[str] = None):
+    def __init__(self, cache_dir: str = "backgrounds", api_key: str | None = None):
         self.cache_dir = cache_dir
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         if not self.api_key:
             logger.warning("OPENAI_API_KEY not found in environment. Image generation will fail.")
-        
+
         self.client = AsyncOpenAI(api_key=self.api_key) if self.api_key else None
         # Add shared httpx client and semaphore
         self.httpx_client = httpx.AsyncClient(timeout=60.0)
         self._semaphore = asyncio.Semaphore(2)
-        
+
         # Ensure cache directory exists
         os.makedirs(self.cache_dir, exist_ok=True)
 
@@ -32,7 +33,7 @@ class ImageGenerator:
         """Returns the SHA-256 hash of the prompt."""
         return hashlib.sha256(prompt.encode("utf-8")).hexdigest()
 
-    async def generate(self, prompt: str, output_path: Optional[str] = None) -> str:
+    async def generate(self, prompt: str, output_path: str | None = None) -> str:
         """
         Generates an image from a prompt using DALL-E 3.
         Uses deduplication based on prompt hash.
@@ -40,7 +41,7 @@ class ImageGenerator:
         """
         prompt_hash = self._get_hash(prompt)
         filename = f"{prompt_hash}.webp"
-        
+
         # Determine final_path
         if not output_path:
             final_path = os.path.join(self.cache_dir, filename)
@@ -66,19 +67,19 @@ class ImageGenerator:
         """Actually calls DALL-E and saves the image with concurrency limit and robust error handling."""
         async with self._semaphore:
             logger.info(f"Generating new image for prompt: {prompt[:50]}...")
-            
+
             try:
                 response = await self.client.images.generate(
                     model="dall-e-3",
                     prompt=prompt,
-                    size="1024x1024", # or "1792x1024" for wide
+                    size="1024x1024",  # or "1792x1024" for wide
                     quality="standard",
                     n=1,
                 )
-                
+
                 if not response.data:
                     raise Exception("No image data in OpenAI response")
-                    
+
                 image_url = response.data[0].url
                 if not image_url:
                     raise Exception("No image URL returned from OpenAI")
@@ -98,7 +99,7 @@ class ImageGenerator:
                 except Exception as e:
                     logger.error(f"Image processing error: {e}")
                     raise
-                
+
                 logger.info(f"Image saved to {final_path}")
                 return final_path
 
