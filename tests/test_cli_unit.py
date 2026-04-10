@@ -12,6 +12,7 @@ import pytest
 # Argument Parsing
 # =============================================================================
 
+
 class TestArgumentParsing:
     """Test CLI argument parsing without running the full CLI."""
 
@@ -22,6 +23,7 @@ class TestArgumentParsing:
                 with patch("vvr_scraper.cli.get_config_path", return_value="/tmp/fake.db"):
                     with patch("vvr_scraper.cli.DatabaseManager"):
                         from vvr_scraper.cli import ValvrareScraperCLI
+
                         cli = ValvrareScraperCLI()
                         return cli
 
@@ -112,6 +114,7 @@ class TestArgumentParsing:
                 with patch("vvr_scraper.cli.get_config_path", return_value="/tmp/fake.db"):
                     with patch("vvr_scraper.cli.DatabaseManager"):
                         from vvr_scraper.cli import ValvrareScraperCLI
+
                         cli = ValvrareScraperCLI()
                         assert cli.is_cli_mode is True
 
@@ -120,6 +123,7 @@ class TestArgumentParsing:
 # Chapter Filtering
 # =============================================================================
 
+
 class TestFilterChapters:
     def _make_cli(self, khong_minh_hoa=False):
         with patch.object(sys, "argv", ["vvrt", "test"] + (["--khong-minh-hoa"] if khong_minh_hoa else [])):
@@ -127,16 +131,20 @@ class TestFilterChapters:
                 with patch("vvr_scraper.cli.get_config_path", return_value="/tmp/fake.db"):
                     with patch("vvr_scraper.cli.DatabaseManager"):
                         from vvr_scraper.cli import ValvrareScraperCLI
+
                         return ValvrareScraperCLI()
 
     def test_skip_illustrations(self):
         cli = self._make_cli(khong_minh_hoa=True)
         chapter_data = [
-            {"volume": "V1", "chapters": [
-                {"title": "Chương 1", "url": "/c1"},
-                {"title": "Minh họa Vol 1", "url": "/mh1"},
-                {"title": "Chương 2", "url": "/c2"},
-            ]}
+            {
+                "volume": "V1",
+                "chapters": [
+                    {"title": "Chương 1", "url": "/c1"},
+                    {"title": "Minh họa Vol 1", "url": "/mh1"},
+                    {"title": "Chương 2", "url": "/c2"},
+                ],
+            }
         ]
         result = cli.filter_chapters(chapter_data)
         assert len(result) == 1
@@ -147,10 +155,13 @@ class TestFilterChapters:
     def test_keep_all_without_flag(self):
         cli = self._make_cli(khong_minh_hoa=False)
         chapter_data = [
-            {"volume": "V1", "chapters": [
-                {"title": "Chương 1", "url": "/c1"},
-                {"title": "Minh họa", "url": "/mh"},
-            ]}
+            {
+                "volume": "V1",
+                "chapters": [
+                    {"title": "Chương 1", "url": "/c1"},
+                    {"title": "Minh họa", "url": "/mh"},
+                ],
+            }
         ]
         result = cli.filter_chapters(chapter_data)
         assert len(result[0]["chapters"]) == 2
@@ -158,13 +169,19 @@ class TestFilterChapters:
     def test_empty_volume_after_filter(self):
         cli = self._make_cli(khong_minh_hoa=True)
         chapter_data = [
-            {"volume": "Minh họa", "chapters": [
-                {"title": "Minh họa 1", "url": "/mh1"},
-                {"title": "Minh họa 2", "url": "/mh2"},
-            ]},
-            {"volume": "V1", "chapters": [
-                {"title": "Chương 1", "url": "/c1"},
-            ]}
+            {
+                "volume": "Minh họa",
+                "chapters": [
+                    {"title": "Minh họa 1", "url": "/mh1"},
+                    {"title": "Minh họa 2", "url": "/mh2"},
+                ],
+            },
+            {
+                "volume": "V1",
+                "chapters": [
+                    {"title": "Chương 1", "url": "/c1"},
+                ],
+            },
         ]
         result = cli.filter_chapters(chapter_data)
         assert len(result) == 1
@@ -175,6 +192,7 @@ class TestFilterChapters:
 # Chapter Selection (CLI Mode)
 # =============================================================================
 
+
 class TestSelectChapters:
     def _make_cli(self, extra_args=None):
         args = ["vvrt", "test"] + (extra_args or [])
@@ -183,18 +201,25 @@ class TestSelectChapters:
                 with patch("vvr_scraper.cli.get_config_path", return_value="/tmp/fake.db"):
                     with patch("vvr_scraper.cli.DatabaseManager"):
                         from vvr_scraper.cli import ValvrareScraperCLI
+
                         return ValvrareScraperCLI()
 
     def test_select_all_chapters(self):
         cli = self._make_cli()
         data = [
-            {"volume": "V1", "chapters": [
-                {"title": "C1", "url": "/c1"},
-                {"title": "C2", "url": "/c2"},
-            ]},
-            {"volume": "V2", "chapters": [
-                {"title": "C3", "url": "/c3"},
-            ]},
+            {
+                "volume": "V1",
+                "chapters": [
+                    {"title": "C1", "url": "/c1"},
+                    {"title": "C2", "url": "/c2"},
+                ],
+            },
+            {
+                "volume": "V2",
+                "chapters": [
+                    {"title": "C3", "url": "/c3"},
+                ],
+            },
         ]
         selected = cli.select_chapters_to_download(data)
         assert len(selected) == 3
@@ -212,11 +237,14 @@ class TestSelectChapters:
     def test_select_by_chapters(self):
         cli = self._make_cli(["--chapters", "1", "3"])
         data = [
-            {"volume": "V1", "chapters": [
-                {"title": "C1", "url": "/c1"},
-                {"title": "C2", "url": "/c2"},
-                {"title": "C3", "url": "/c3"},
-            ]},
+            {
+                "volume": "V1",
+                "chapters": [
+                    {"title": "C1", "url": "/c1"},
+                    {"title": "C2", "url": "/c2"},
+                    {"title": "C3", "url": "/c3"},
+                ],
+            },
         ]
         selected = cli.select_chapters_to_download(data)
         assert len(selected) == 2
@@ -240,6 +268,7 @@ class TestSelectChapters:
 # Export Config (CLI Mode)
 # =============================================================================
 
+
 class TestExportConfig:
     @pytest.mark.asyncio
     async def test_cli_mode_config(self):
@@ -248,10 +277,11 @@ class TestExportConfig:
                 with patch("vvr_scraper.cli.get_config_path", return_value="/tmp/fake.db"):
                     with patch("vvr_scraper.cli.DatabaseManager"):
                         from vvr_scraper.cli import ValvrareScraperCLI
+
                         cli = ValvrareScraperCLI()
                         config = await cli._get_export_config("https://valvrareteam.net/test")
 
-                        assert config["mode_idx"] == 0       # tatca
+                        assert config["mode_idx"] == 0  # tatca
                         assert "EPUB" in config["formats"]
                         assert "PDF" in config["formats"]
                         assert config["tasks"] == 3
@@ -265,6 +295,7 @@ class TestExportConfig:
                 with patch("vvr_scraper.cli.get_config_path", return_value="/tmp/fake.db"):
                     with patch("vvr_scraper.cli.DatabaseManager"):
                         from vvr_scraper.cli import ValvrareScraperCLI
+
                         cli = ValvrareScraperCLI()
                         config = await cli._get_export_config("https://valvrareteam.net/test")
                         assert config["mode_idx"] == 1  # rieng
@@ -276,6 +307,7 @@ class TestExportConfig:
                 with patch("vvr_scraper.cli.get_config_path", return_value="/tmp/fake.db"):
                     with patch("vvr_scraper.cli.DatabaseManager"):
                         from vvr_scraper.cli import ValvrareScraperCLI
+
                         cli = ValvrareScraperCLI()
                         config = await cli._get_export_config("https://valvrareteam.net/test")
                         assert config["mode_idx"] == 2  # volume
@@ -285,6 +317,7 @@ class TestExportConfig:
 # Cleanup
 # =============================================================================
 
+
 class TestCleanup:
     def test_cleanup_no_skipped(self):
         with patch.object(sys, "argv", ["vvrt", "test"]):
@@ -292,6 +325,7 @@ class TestCleanup:
                 with patch("vvr_scraper.cli.get_config_path", return_value="/tmp/fake.db"):
                     with patch("vvr_scraper.cli.DatabaseManager"):
                         from vvr_scraper.cli import ValvrareScraperCLI
+
                         cli = ValvrareScraperCLI()
                         cli.skipped_urls = []
                         cli.output_folder = "/tmp/test_output"
@@ -303,6 +337,7 @@ class TestCleanup:
                 with patch("vvr_scraper.cli.get_config_path", return_value="/tmp/fake.db"):
                     with patch("vvr_scraper.cli.DatabaseManager"):
                         from vvr_scraper.cli import ValvrareScraperCLI
+
                         cli = ValvrareScraperCLI()
                         cli.skipped_urls = [
                             "https://valvrareteam.net/c1",
@@ -322,6 +357,7 @@ class TestCleanup:
 # Run command dispatch
 # =============================================================================
 
+
 class TestRunCommandDispatch:
     @pytest.mark.asyncio
     async def test_run_command_missing_manifest(self):
@@ -330,6 +366,7 @@ class TestRunCommandDispatch:
                 with patch("vvr_scraper.cli.get_config_path", return_value="/tmp/fake.db"):
                     with patch("vvr_scraper.cli.DatabaseManager"):
                         from vvr_scraper.cli import ValvrareScraperCLI
+
                         cli = ValvrareScraperCLI()
                         await cli.run()  # Should log error but not crash
 
@@ -342,6 +379,7 @@ class TestRunCommandDispatch:
                         # run_web_server is imported lazily inside run(), so patch at source
                         with patch("vvr_scraper.web.run_web_server", new_callable=AsyncMock) as mock_web:
                             from vvr_scraper.cli import ValvrareScraperCLI
+
                             cli = ValvrareScraperCLI()
                             with patch("webbrowser.open"):
                                 await cli.run()

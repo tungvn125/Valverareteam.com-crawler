@@ -19,7 +19,9 @@ async def test_smoke_integration_homepage_reachable():
 
         # 200 means we passed basic WAF checks
         # (A 403 usually means Cloudflare Captcha blocked us)
-        assert response.status_code == 200, f"Expected 200 OK, got {response.status_code}. The crawler might be blocked by WAF."
+        assert response.status_code == 200, (
+            f"Expected 200 OK, got {response.status_code}. The crawler might be blocked by WAF."
+        )
 
         # Verify it's actually the site by checking the DOM
         soup = BeautifulSoup(response.text, "lxml")
@@ -32,6 +34,7 @@ async def test_smoke_integration_homepage_reachable():
         # Look for basic navigation or stories (just searching for chapter or truyen links)
         nav_links = soup.select("a[href*='/truyen']")
         assert len(nav_links) > 0, "Could not find expected DOM elements. Website structure might have changed."
+
 
 @pytest.mark.asyncio
 @pytest.mark.skipif(os.getenv("CI") == "true", reason="Skip real HTTP requests on GitHub CI")

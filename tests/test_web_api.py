@@ -23,6 +23,7 @@ from vvr_scraper.web import (
 # ConnectionManager
 # =============================================================================
 
+
 class TestConnectionManager:
     @pytest.mark.asyncio
     async def test_connect_and_disconnect(self):
@@ -71,6 +72,7 @@ class TestConnectionManager:
 # DownloadManager
 # =============================================================================
 
+
 class TestDownloadManager:
     def test_initialization(self):
         dm = DownloadManager(num_workers=3)
@@ -93,6 +95,7 @@ class TestDownloadManager:
 # =============================================================================
 # Settings
 # =============================================================================
+
 
 class TestSettings:
     def test_default_settings(self):
@@ -145,6 +148,7 @@ class TestSettings:
 # DownloadRequest model
 # =============================================================================
 
+
 class TestDownloadRequest:
     def test_defaults(self):
         req = DownloadRequest(slug="test")
@@ -174,6 +178,7 @@ class TestDownloadRequest:
 # =============================================================================
 # API Endpoints (using TestClient)
 # =============================================================================
+
 
 class TestAPIEndpoints:
     """Tests for FastAPI endpoints using a mock DB."""
@@ -222,26 +227,35 @@ class TestAPIEndpoints:
         assert response.json() == []
 
     def test_get_library_with_novels(self, client):
-        app.state.db.get_all_novels = AsyncMock(return_value=[
-            {"slug": "novel-1", "title": "Novel 1"},
-            {"slug": "novel-2", "title": "Novel 2"},
-        ])
+        app.state.db.get_all_novels = AsyncMock(
+            return_value=[
+                {"slug": "novel-1", "title": "Novel 1"},
+                {"slug": "novel-2", "title": "Novel 2"},
+            ]
+        )
         response = client.get("/api/library")
         assert response.status_code == 200
         assert len(response.json()) == 2
 
     def test_list_jobs(self, client):
-        app.state.db.get_recent_jobs = AsyncMock(return_value=[
-            {"id": "j1", "task_type": "crawl", "status": "success"},
-        ])
+        app.state.db.get_recent_jobs = AsyncMock(
+            return_value=[
+                {"id": "j1", "task_type": "crawl", "status": "success"},
+            ]
+        )
         response = client.get("/api/jobs")
         assert response.status_code == 200
         assert len(response.json()) == 1
 
     def test_get_job_detail_found(self, client):
-        app.state.db.get_job_status = AsyncMock(return_value={
-            "id": "j1", "task_type": "crawl", "status": "running", "progress": 50.0,
-        })
+        app.state.db.get_job_status = AsyncMock(
+            return_value={
+                "id": "j1",
+                "task_type": "crawl",
+                "status": "running",
+                "progress": 50.0,
+            }
+        )
         response = client.get("/api/jobs/j1")
         assert response.status_code == 200
         assert response.json()["progress"] == 50.0

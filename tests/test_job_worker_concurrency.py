@@ -52,11 +52,15 @@ async def test_job_worker_concurrency_stress():
         for i in range(100):
             if i % 4 == 0:
                 # Every 4th job is heavy priority 1
-                payload = JobManifest(root=RenderJob(payload=RenderPayload(manifest_path="m", output_path="o"), priority=1))
+                payload = JobManifest(
+                    root=RenderJob(payload=RenderPayload(manifest_path="m", output_path="o"), priority=1)
+                )
                 await worker.enqueue_job(f"heavy_{i}", payload)
             else:
                 # Others are crawl priority 3
-                payload = JobManifest(root=ScrapeJob(payload=ScrapePayload(slug=f"crawl_{i}", formats=["EPUB"]), priority=3))
+                payload = JobManifest(
+                    root=ScrapeJob(payload=ScrapePayload(slug=f"crawl_{i}", formats=["EPUB"]), priority=3)
+                )
                 await worker.enqueue_job(f"crawl_{i}", payload)
 
         worker_task = asyncio.create_task(worker.worker_loop())
@@ -77,6 +81,7 @@ async def test_job_worker_concurrency_stress():
         # Final semaphore counts should be restored
         assert running_heavy == 0
         assert running_crawl == 0
+
 
 @pytest.mark.asyncio
 async def test_job_worker_race_condition_cancellation():

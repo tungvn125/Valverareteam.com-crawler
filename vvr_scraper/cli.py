@@ -275,8 +275,6 @@ class ValvrareScraperCLI:
             logger.debug(f"Token (JWT): {self.token[:20]}...")
         logger.debug(f"Headers: {HEADERS['User-Agent']}")
 
-
-
     def filter_chapters(self, chapter_data: list[dict]) -> list[dict]:
         """Applies filters like excluding illustrations/empty volumes."""
         if self.is_cli_mode:

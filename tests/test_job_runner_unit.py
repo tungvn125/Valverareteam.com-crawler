@@ -24,6 +24,7 @@ from vvr_scraper.job_runner import (
 # resolve_story_url
 # =============================================================================
 
+
 class TestResolveStoryUrl:
     @pytest.mark.asyncio
     async def test_finds_url_in_sitemap(self):
@@ -109,6 +110,7 @@ class TestResolveStoryUrl:
 # execute_render_job
 # =============================================================================
 
+
 class TestExecuteRenderJob:
     @pytest.mark.asyncio
     async def test_calls_renderer(self):
@@ -151,9 +153,7 @@ class TestExecuteRenderJob:
             with pytest.raises(Exception, match="FFmpeg crashed"):
                 await execute_render_job(payload, "job-fail", mock_db)
 
-            mock_db.update_job_status.assert_any_call(
-                "job-fail", "failed", error_summary="FFmpeg crashed"
-            )
+            mock_db.update_job_status.assert_any_call("job-fail", "failed", error_summary="FFmpeg crashed")
 
     @pytest.mark.asyncio
     async def test_render_without_db(self):
@@ -174,6 +174,7 @@ class TestExecuteRenderJob:
 # =============================================================================
 # start_server_from_job
 # =============================================================================
+
 
 class TestStartServerFromJob:
     @pytest.mark.asyncio
@@ -199,6 +200,7 @@ class TestStartServerFromJob:
 # =============================================================================
 # run_manifest
 # =============================================================================
+
 
 class TestRunManifest:
     @pytest.mark.asyncio

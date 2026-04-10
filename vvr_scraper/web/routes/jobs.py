@@ -2,7 +2,6 @@
 Job management API routes — CRUD for the Universal Task Runner.
 """
 
-
 from fastapi import APIRouter, HTTPException
 from loguru import logger
 

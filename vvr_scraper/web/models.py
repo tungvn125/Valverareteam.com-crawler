@@ -12,6 +12,7 @@ from ..utils import get_config_path
 
 # --- Request/Response Models ---
 
+
 class DownloadRequest(BaseModel):
     slug: str
     formats: list[str] = ["EPUB"]
@@ -31,6 +32,7 @@ class FreesoundCallbackRequest(BaseModel):
 
 
 # --- Settings ---
+
 
 class Settings(BaseModel):
     num_workers: int = 1

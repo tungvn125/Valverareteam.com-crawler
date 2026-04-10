@@ -38,9 +38,6 @@ from vvr_scraper.web import run_web_server
 worker = None
 
 
-
-
-
 async def execute_crawl_job(payload: ScrapePayload, job_id: str, db: DatabaseManager | None):
     """
     Executes a crawl (scrape) job: resolves story, scrapes chapters,

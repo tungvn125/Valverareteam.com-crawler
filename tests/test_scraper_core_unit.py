@@ -3,7 +3,6 @@ Unit tests for scraper_core.py — lay_chuong_httpx, lay_chuong_voi_hinh_anh, sc
 All network calls are mocked.
 """
 
-
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -20,16 +19,17 @@ from vvr_scraper.utils import HEADERS
 # lay_chuong_httpx (Fast Mode)
 # =============================================================================
 
+
 class TestLayChuongHttpx:
     @pytest.mark.asyncio
     async def test_extracts_text_and_images(self):
-        html = '''<html><body>
+        html = """<html><body>
         <div class="chapter-content">
             <p>Đoạn văn 1</p>
             <img src="https://cdn.example.com/img.jpg"/>
             <p>Đoạn văn 2</p>
         </div>
-        </body></html>'''
+        </body></html>"""
 
         mock_response = MagicMock()
         mock_response.text = html
@@ -115,14 +115,14 @@ class TestLayChuongHttpx:
 
     @pytest.mark.asyncio
     async def test_skips_empty_paragraphs(self):
-        html = '''<html><body>
+        html = """<html><body>
         <div class="chapter-content">
             <p>Real text</p>
             <p>   </p>
             <p></p>
             <p>More text</p>
         </div>
-        </body></html>'''
+        </body></html>"""
 
         mock_response = MagicMock()
         mock_response.text = html
@@ -139,7 +139,6 @@ class TestLayChuongHttpx:
         assert result[0].data == "Real text"
         assert result[1].data == "More text"
 
-
     @pytest.mark.asyncio
     async def test_verbose_mode_debug_logging(self):
         """Verbose mode should not crash on errors."""
@@ -154,6 +153,7 @@ class TestLayChuongHttpx:
 # =============================================================================
 # lay_chuong_voi_hinh_anh (Playwright Reliable Mode)
 # =============================================================================
+
 
 class TestLayChuongVoiHinhAnh:
     @pytest.mark.asyncio
@@ -247,6 +247,7 @@ class TestLayChuongVoiHinhAnh:
 # =============================================================================
 # scrape_chapters (Hybrid orchestrator)
 # =============================================================================
+
 
 class TestScrapeChapters:
     @pytest.mark.asyncio

@@ -19,6 +19,7 @@ from vvr_scraper.utils import (
 # normalize_vietnamese_url
 # =============================================================================
 
+
 class TestNormalizeVietnameseUrl:
     def test_basic_vietnamese(self):
         assert normalize_vietnamese_url("Đấu Phá Thương Khung") == "dau-pha-thuong-khung"
@@ -63,6 +64,7 @@ class TestNormalizeVietnameseUrl:
 # get_token_from_state
 # =============================================================================
 
+
 class TestGetTokenFromState:
     def test_none_state(self):
         assert get_token_from_state(None) is None
@@ -75,101 +77,76 @@ class TestGetTokenFromState:
 
     def test_direct_access_token(self):
         state = {
-            "origins": [{
-                "origin": "https://valvrareteam.net",
-                "localStorage": [
-                    {"name": "accessToken", "value": "jwt-123"}
-                ]
-            }]
+            "origins": [
+                {"origin": "https://valvrareteam.net", "localStorage": [{"name": "accessToken", "value": "jwt-123"}]}
+            ]
         }
         assert get_token_from_state(state) == "jwt-123"
 
     def test_direct_token_key(self):
         state = {
-            "origins": [{
-                "origin": "https://valvrareteam.net",
-                "localStorage": [
-                    {"name": "token", "value": "tok-456"}
-                ]
-            }]
+            "origins": [{"origin": "https://valvrareteam.net", "localStorage": [{"name": "token", "value": "tok-456"}]}]
         }
         assert get_token_from_state(state) == "tok-456"
 
     def test_direct_jwt_key(self):
         state = {
-            "origins": [{
-                "origin": "https://valvrareteam.net",
-                "localStorage": [
-                    {"name": "jwt", "value": "jwt-789"}
-                ]
-            }]
+            "origins": [{"origin": "https://valvrareteam.net", "localStorage": [{"name": "jwt", "value": "jwt-789"}]}]
         }
         assert get_token_from_state(state) == "jwt-789"
 
     def test_auth_storage_nested(self):
         state = {
-            "origins": [{
-                "origin": "https://valvrareteam.net",
-                "localStorage": [{
-                    "name": "auth-storage",
-                    "value": json.dumps({
-                        "state": {"token": "nested-token-abc"}
-                    })
-                }]
-            }]
+            "origins": [
+                {
+                    "origin": "https://valvrareteam.net",
+                    "localStorage": [
+                        {"name": "auth-storage", "value": json.dumps({"state": {"token": "nested-token-abc"}})}
+                    ],
+                }
+            ]
         }
         assert get_token_from_state(state) == "nested-token-abc"
 
     def test_auth_storage_with_access_token(self):
         state = {
-            "origins": [{
-                "origin": "https://valvrareteam.net",
-                "localStorage": [{
-                    "name": "auth-storage",
-                    "value": json.dumps({
-                        "state": {"accessToken": "at-xyz"}
-                    })
-                }]
-            }]
+            "origins": [
+                {
+                    "origin": "https://valvrareteam.net",
+                    "localStorage": [
+                        {"name": "auth-storage", "value": json.dumps({"state": {"accessToken": "at-xyz"}})}
+                    ],
+                }
+            ]
         }
         assert get_token_from_state(state) == "at-xyz"
 
     def test_auth_storage_invalid_json(self):
         state = {
-            "origins": [{
-                "origin": "https://valvrareteam.net",
-                "localStorage": [{
-                    "name": "auth-storage",
-                    "value": "not-valid-json{{"
-                }]
-            }]
+            "origins": [
+                {
+                    "origin": "https://valvrareteam.net",
+                    "localStorage": [{"name": "auth-storage", "value": "not-valid-json{{"}],
+                }
+            ]
         }
         assert get_token_from_state(state) is None
 
     def test_no_matching_origin(self):
         state = {
-            "origins": [{
-                "origin": "https://other-site.com",
-                "localStorage": [
-                    {"name": "accessToken", "value": "abc"}
-                ]
-            }]
+            "origins": [{"origin": "https://other-site.com", "localStorage": [{"name": "accessToken", "value": "abc"}]}]
         }
         assert get_token_from_state(state) is None
 
     def test_empty_local_storage(self):
-        state = {
-            "origins": [{
-                "origin": "https://valvrareteam.net",
-                "localStorage": []
-            }]
-        }
+        state = {"origins": [{"origin": "https://valvrareteam.net", "localStorage": []}]}
         assert get_token_from_state(state) is None
 
 
 # =============================================================================
 # get_config_dir / get_config_path
 # =============================================================================
+
 
 class TestConfigPaths:
     def test_get_config_dir_creates_directory(self):
@@ -195,6 +172,7 @@ class TestConfigPaths:
         monkeypatch.setattr("os.getcwd", lambda: str(tmp_path))
 
         from vvr_scraper.utils import get_config_path
+
         result = get_config_path("migrate_test.json")
 
         assert os.path.exists(result)
@@ -204,6 +182,7 @@ class TestConfigPaths:
 # =============================================================================
 # create_folders_from_tree
 # =============================================================================
+
 
 class TestCreateFoldersFromTree:
     def test_creates_folders_from_file(self, tmp_path):
@@ -237,6 +216,7 @@ class TestCreateFoldersFromTree:
 # =============================================================================
 # configure_logger
 # =============================================================================
+
 
 class TestConfigureLogger:
     def test_verbose_mode(self):

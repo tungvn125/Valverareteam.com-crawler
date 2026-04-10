@@ -58,7 +58,9 @@ class JobWorker:
 
         # 2. Re-enqueue 'pending' and 'waiting' jobs
         try:
-            async with db.execute("SELECT * FROM jobs WHERE status IN (?, ?)", (JobStatus.PENDING.value, JobStatus.WAITING.value)) as cursor:
+            async with db.execute(
+                "SELECT * FROM jobs WHERE status IN (?, ?)", (JobStatus.PENDING.value, JobStatus.WAITING.value)
+            ) as cursor:
                 pending_rows = await cursor.fetchall()
                 for row in pending_rows:
                     row_dict = dict(row) if hasattr(row, "keys") else None
@@ -223,7 +225,9 @@ class JobWorker:
             logger.info(f"Detailed error log saved to: {log_path}")
 
             if self.db:
-                await self.db.update_job_status(job_id, JobStatus.FAILED, error_summary=str(exc), error_log_path=log_path)
+                await self.db.update_job_status(
+                    job_id, JobStatus.FAILED, error_summary=str(exc), error_log_path=log_path
+                )
                 # Recursive Cancellation
                 await self.cancel_dependents(job_id)
         except Exception as e:
