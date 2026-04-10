@@ -8,13 +8,13 @@ def test_create_feed():
 
     feed = create_feed(title, url, icon)
 
-    assert feed.tag == "{%s}feed" % ATOM_NS
-    assert feed.find("{%s}title" % ATOM_NS).text == title
-    assert feed.find("{%s}id" % ATOM_NS).text == url
-    assert feed.find("{%s}icon" % ATOM_NS).text == icon
+    assert feed.tag == f"{{{ATOM_NS}}}feed"
+    assert feed.find(f"{{{ATOM_NS}}}title").text == title
+    assert feed.find(f"{{{ATOM_NS}}}id").text == url
+    assert feed.find(f"{{{ATOM_NS}}}icon").text == icon
 
     # Check self link
-    self_link = feed.find("{%s}link[@rel='self']" % ATOM_NS)
+    self_link = feed.find(f"{{{ATOM_NS}}}link[@rel='self']")
     assert self_link is not None
     assert self_link.get("href") == url
     assert "opds-catalog" in self_link.get("type")
@@ -35,29 +35,29 @@ def test_add_entry_basic():
 
     entry = add_entry(feed, novel_data, base_url)
 
-    assert entry.tag == "{%s}entry" % ATOM_NS
-    assert entry.find("{%s}title" % ATOM_NS).text == "Novel Title"
-    assert entry.find("{%s}author/{%s}name" % (ATOM_NS, ATOM_NS)).text == "Author Name"
-    assert entry.find("{%s}summary" % ATOM_NS).text == "Novel summary"
+    assert entry.tag == f"{{{ATOM_NS}}}entry"
+    assert entry.find(f"{{{ATOM_NS}}}title").text == "Novel Title"
+    assert entry.find(f"{{{ATOM_NS}}}author/{{{ATOM_NS}}}name").text == "Author Name"
+    assert entry.find(f"{{{ATOM_NS}}}summary").text == "Novel summary"
 
     # Check categories
-    categories = entry.findall("{%s}category" % ATOM_NS)
+    categories = entry.findall(f"{{{ATOM_NS}}}category")
     assert len(categories) == 2
     assert categories[0].get("term") == "Action"
     assert categories[1].get("term") == "Adventure"
 
     # Check cover link
-    cover_link = entry.find("{%s}link[@rel='http://opds-spec.org/image']" % ATOM_NS)
+    cover_link = entry.find(f"{{{ATOM_NS}}}link[@rel='http://opds-spec.org/image']")
     assert cover_link is not None
     assert cover_link.get("href") == "http://example.com/covers/novel.jpg"
 
     # Check acquisition links
-    epub_link = entry.find("{%s}link[@type='application/epub+zip']" % ATOM_NS)
+    epub_link = entry.find(f"{{{ATOM_NS}}}link[@type='application/epub+zip']")
     assert epub_link is not None
     assert epub_link.get("rel") == "http://opds-spec.org/acquisition"
     assert epub_link.get("href") == "http://example.com/api/opds/download/novel-slug?fmt=epub"
 
-    pdf_link = entry.find("{%s}link[@type='application/pdf']" % ATOM_NS)
+    pdf_link = entry.find(f"{{{ATOM_NS}}}link[@type='application/pdf']")
     assert pdf_link is not None
     assert pdf_link.get("href") == "http://example.com/api/opds/download/novel-slug?fmt=pdf"
 
@@ -80,7 +80,7 @@ def test_add_entry_no_formats():
 
     entry = add_entry(feed, novel_data, base_url)
 
-    acquisition_links = entry.findall("{%s}link[@rel='http://opds-spec.org/acquisition']" % ATOM_NS)
+    acquisition_links = entry.findall(f"{{{ATOM_NS}}}link[@rel='http://opds-spec.org/acquisition']")
     assert len(acquisition_links) == 0
 
 
@@ -91,7 +91,7 @@ def test_add_entry_list_formats():
 
     entry = add_entry(feed, novel_data, base_url)
 
-    epub_link = entry.find("{%s}link[@type='application/epub+zip']" % ATOM_NS)
+    epub_link = entry.find(f"{{{ATOM_NS}}}link[@type='application/epub+zip']")
     assert epub_link is not None
 
 
@@ -103,5 +103,5 @@ def test_add_entry_none_genres():
     # This should not raise TypeError
     entry = add_entry(feed, novel_data, base_url)
 
-    categories = entry.findall("{%s}category" % ATOM_NS)
+    categories = entry.findall(f"{{{ATOM_NS}}}category")
     assert len(categories) == 0

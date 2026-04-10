@@ -11,7 +11,6 @@ import sys
 from typing import Any
 
 import httpx
-from bs4 import BeautifulSoup
 from loguru import logger
 from playwright.async_api import async_playwright
 from prompt_toolkit import PromptSession
@@ -44,6 +43,7 @@ from .utils import (
     get_config_path,
     get_token_from_state,
     normalize_vietnamese_url,
+    resolve_story_url,
     sanitize_filename,
 )
 
@@ -100,7 +100,7 @@ class NovelCompleter(Completer):
                         slug = normalize_vietnamese_url(title) + "-" + _id[-8:]
                         meta = f"{author} | {status} | {total} ch"
                         yield Completion(slug, start_position=-len(document.text), display=title, display_meta=meta)
-        except Exception:
+        except Exception:  # noqa: S110  — autocomplete failure is non-critical
             pass
 
 
@@ -275,23 +275,7 @@ class ValvrareScraperCLI:
             logger.debug(f"Token (JWT): {self.token[:20]}...")
         logger.debug(f"Headers: {HEADERS['User-Agent']}")
 
-    async def resolve_story_url(self, name_raw: str) -> str | None:
-        """Finds the story URL from sitemap."""
-        normalized = normalize_vietnamese_url(name_raw)
-        sitemap_url = f"{BASE_URL}/sitemap.xml"
 
-        async with httpx.AsyncClient(headers=HEADERS, cookies=self.cookies) as client:
-            try:
-                response = await client.get(sitemap_url)
-                response.raise_for_status()
-                soup = BeautifulSoup(response.content, "lxml-xml")
-                for loc in soup.find_all("loc"):
-                    url = loc.text
-                    if normalized in url and "/chuong" not in url:
-                        return url
-            except Exception as e:
-                logger.error(f"Lỗi khi truy cập sitemap: {e}")
-        return None
 
     def filter_chapters(self, chapter_data: list[dict]) -> list[dict]:
         """Applies filters like excluding illustrations/empty volumes."""
@@ -426,7 +410,7 @@ class ValvrareScraperCLI:
         """Process a single novel download."""
         self.skipped_urls = []
         # 2. Resolve URL and Info
-        story_url = await self.resolve_story_url(name_raw)
+        story_url = await resolve_story_url(name_raw, cookies=self.cookies)
         if not story_url:
             logger.error(f"Không tìm thấy truyện '{name_raw}'.")
             return
@@ -712,8 +696,8 @@ def main():
             if os.path.exists(temp_file):
                 try:
                     os.remove(temp_file)
-                except Exception:
-                    pass
+                except OSError:
+                    pass  # noqa: S110  — best-effort cleanup of temp files
 
         # Close DB connection
         try:
@@ -721,7 +705,7 @@ def main():
             # but main() is calling asyncio.run(cli.run())
             # Let's add a close method to the CLI and call it within run() or at the end of run()
             pass
-        except:
+        except Exception:  # noqa: S110  — final cleanup, nothing to do
             pass
         logger.info("Đã dọn dẹp file tạm. Hẹn gặp lại!")
 

@@ -8,7 +8,7 @@ import os
 import urllib.parse
 import uuid
 from io import BytesIO
-from typing import Any, Union, cast
+from typing import Any, cast
 
 import httpx
 
@@ -33,7 +33,7 @@ from .models import ContentItem
 from .utils import HEADERS
 from .video_renderer import VideoRenderer
 
-ContentItemLike = Union[ContentItem, dict[str, str]]
+ContentItemLike = ContentItem | dict[str, str]
 ContentList = list[ContentItemLike]
 ChapterData = dict[str, Any]  # {'title': str, 'content': ContentList}
 VolumeData = dict[str, Any]  # {'volume': str, 'chapters': List[ChapterData]}
@@ -158,8 +158,8 @@ async def tao_file_epub(
         try:
             with open(cover_path, "rb") as cf:
                 book.set_cover("cover.jpg", cf.read())
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Could not set EPUB cover image: {e}")
 
     toc = []
     spine = ["nav"]
@@ -252,7 +252,8 @@ async def tao_file_pdf(
         title_style = ParagraphStyle(
             name="Title_vi", fontName=font_name, fontSize=18, leading=22, spaceAfter=0.2 * inch
         )
-    except:
+    except Exception as e:
+        logger.warning(f"Could not register font '{font_name}', falling back to default: {e}")
         styles = getSampleStyleSheet()
         style, title_style = styles["Normal"], styles["h1"]
 
@@ -272,8 +273,8 @@ async def tao_file_pdf(
                 ratio = min(max_w / w, max_h / h, 1)
                 story.append(Image(img_data, width=w * ratio, height=h * ratio))
                 story.append(Spacer(1, 0.1 * inch))
-            except:
-                pass
+            except Exception as e:
+                logger.debug(f"Could not embed image in PDF: {e}")
 
     doc.build(story)
     logger.info(f"Tạo file PDF thành công: {filename}")
@@ -335,7 +336,6 @@ async def tao_file_mp3(content_list: ContentList, filename: str, title: str = "C
         import io
 
         import pydub
-        from elevenlabs.client import ElevenLabs
     except ImportError:
         logger.error("elevenlabs or pydub not found. Please run 'uv pip install vvr-scraper[audio]'.")
         return
@@ -628,6 +628,9 @@ async def tao_file_audiodrama(
 
             def process_block(v_segments, current_bgm_path, current_final_audio):
                 # 2. Join voice segments with gaps
+                # WHY: ElevenLabs generates voice blocks which might have varying trailing silences.
+                # To maintain natural, conversational pacing between characters without awkward overlaps,
+                # we concatenate them using a fixed, predictable GAP_BETWEEN_SEGMENTS_MS.
                 combined_voice = AudioSegment.silent(duration=0)
                 for j, vs in enumerate(v_segments):
                     combined_voice += vs
@@ -646,6 +649,9 @@ async def tao_file_audiodrama(
                         bgm_audio = AudioSegment.silent(duration=10000)
 
                 # Create looped background matching combined_voice + 2s padding
+                # WHY: A dialogue block's duration is arbitrary and might exceed the BGM track's length.
+                # We dynamically loop the BGM to guarantee it covers the voice, and add 2000ms padding
+                # to allow the voice to fade out naturally before the background track switches.
                 bg_duration = len(combined_voice) + 2000
                 background = mixing_engine.create_looped_background(bgm_audio, bg_duration, gain_db=-20.0)
 
@@ -657,6 +663,9 @@ async def tao_file_audiodrama(
                 block_audio_duration = len(block_audio)
 
                 # 5. Append to final audio with crossfade
+                # WHY: Switching directly from one BGM track to another between blocks causes harsh audio popping.
+                # We use CROSSFADE_MS to seamlessly blend the trailing padding of the previous block
+                # with the leading edge of the new block, ensuring a smooth, cinematic audio transition.
                 new_final = current_final_audio
                 if new_final is None:
                     new_final = block_audio
@@ -667,8 +676,8 @@ async def tao_file_audiodrama(
                 if current_bgm_path and "temp_bgm_" in str(current_bgm_path) and os.path.exists(current_bgm_path):
                     try:
                         os.remove(current_bgm_path)
-                    except:
-                        pass
+                    except OSError as e:
+                        logger.debug(f"Could not remove temp BGM file: {e}")
 
                 return new_final, block_audio_duration
 
@@ -707,8 +716,8 @@ async def tao_file_audiodrama(
             if os.path.exists(script_file):
                 try:
                     os.remove(script_file)
-                except:
-                    pass
+                except OSError as e:
+                    logger.debug(f"Could not remove script checkpoint: {e}")
         else:
             logger.error("Audio Drama generation failed: No audio produced.")
 
@@ -766,7 +775,7 @@ async def tao_file_mp4(
             # We might want to keep the MP3 depending on user choice,
             # but for this flow, we follow the MP4 request.
             # os.remove(temp_mp3)
-        except:
-            pass
+        except OSError as e:
+            logger.debug(f"Could not remove temp video file: {e}")
     else:
         logger.error("Failed to generate MP4: Missing temporary video or audio file.")

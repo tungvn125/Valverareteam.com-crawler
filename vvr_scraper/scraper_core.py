@@ -141,8 +141,8 @@ async def lay_thong_tin_truyen(client: httpx.AsyncClient, ten_truyen: str, verbo
             if cover_path and os.path.exists(cover_path):
                 try:
                     os.remove(cover_path)
-                except Exception:
-                    pass
+                except OSError:
+                    pass  # noqa: S110
             cover_path = None
 
     return StoryInfo(

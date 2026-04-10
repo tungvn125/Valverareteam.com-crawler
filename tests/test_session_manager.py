@@ -6,8 +6,6 @@ capture_session is not tested because it requires a real browser.
 import json
 import os
 
-import pytest
-
 from vvr_scraper.session_manager import load_session, save_session
 
 

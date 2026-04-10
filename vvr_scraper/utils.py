@@ -7,6 +7,8 @@ import re
 import shutil
 import sys
 
+import httpx
+from bs4 import BeautifulSoup
 from loguru import logger
 
 BASE_URL = "https://valvrareteam.net"
@@ -22,7 +24,10 @@ def configure_logger(verbose: bool = False):
     # Show only INFO and above for non-verbose, DEBUG and above for verbose
     level = "DEBUG" if verbose else "INFO"
 
-    logger.add(sys.stderr, level=level, format=log_format, colorize=True)
+    if os.getenv("VVR_LOG_JSON") == "1":
+        logger.add(sys.stderr, level=level, serialize=True)
+    else:
+        logger.add(sys.stderr, level=level, format=log_format, colorize=True)
 
 
 HEADERS = {
@@ -253,6 +258,25 @@ def get_token_from_state(state: dict) -> str | None:
                             state_data = data.get("state", {})
                             if isinstance(state_data, dict):
                                 return state_data.get("token") or state_data.get("accessToken")
-                    except Exception:
-                        pass
+                    except json.JSONDecodeError:
+                        pass  # noqa: S110
+    return None
+
+
+async def resolve_story_url(name_raw: str, cookies: dict | None = None) -> str | None:
+    """Finds the story URL from sitemap."""
+    normalized = normalize_vietnamese_url(name_raw)
+    sitemap_url = f"{BASE_URL}/sitemap.xml"
+
+    async with httpx.AsyncClient(headers=HEADERS, cookies=cookies) as client:
+        try:
+            response = await client.get(sitemap_url)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.content, "lxml-xml")
+            for loc in soup.find_all("loc"):
+                url = loc.text
+                if normalized in url and "/chuong" not in url:
+                    return url
+        except Exception as e:
+            logger.error(f"Lỗi khi truy cập sitemap: {e}")
     return None

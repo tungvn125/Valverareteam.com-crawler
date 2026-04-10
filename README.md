@@ -79,13 +79,13 @@ Sử dụng lệnh `vvrt` để thực hiện các tác vụ:
 vvrt tree https://valvrareteam.net/truyen/ten-truyen
 
 # Tải và xuất định dạng EPUB
-vvrt crawl https://valvrareteam.net/truyen/ten-truyen -f EPUB
+vvrt ten-truyen-slug -f EPUB
 
 # Tạo Audio Drama cho một chương
-vvrt crawl <url_chuong> -f AD-MP3
+vvrt ten-truyen-slug -f AD-MP3
 
 # Render video Cinematic
-vvrt crawl <url_chuong> -f MP4
+vvrt ten-truyen-slug -f MP4
 ```
 
 ### Web UI & OPDS
@@ -93,7 +93,7 @@ vvrt crawl <url_chuong> -f MP4
 Khởi chạy máy chủ web:
 
 ```bash
-vvrt serve --port 8000
+vvrt web --port 8000
 ```
 
 - **Giao diện quản lý**: `http://localhost:8000`

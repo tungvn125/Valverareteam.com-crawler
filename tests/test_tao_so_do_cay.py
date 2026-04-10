@@ -275,7 +275,7 @@ class TestGetChapterTreeList:
 
         with patch("vvr_scraper.tao_so_do_cay.async_playwright") as mock_playwright:
             self._setup_mock_playwright(mock_playwright, mock_html)
-            result = await get_chapter_tree_list("https://example.com/story", output_file)
+            await get_chapter_tree_list("https://example.com/story", output_file)
 
             assert os.path.exists(output_file)
             with open(output_file, encoding="utf-8") as f:
@@ -388,9 +388,9 @@ class TestGetChapterTreeList:
             result = await get_chapter_tree_list("https://example.com/story", output_file)
 
             chapters = result[0]["chapters"]
-            assert chapters[0]["locked"] == False
-            assert chapters[1]["locked"] == True
-            assert chapters[2]["locked"] == True
+            assert not chapters[0]["locked"]
+            assert chapters[1]["locked"]
+            assert chapters[2]["locked"]
 
     @pytest.mark.asyncio
     async def test_handles_missing_href(self, tmp_path):

@@ -5,26 +5,20 @@ execute_render_job, run_manifest, start_server_from_job.
 
 import json
 import os
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch, mock_open
 
 from vvr_scraper.job_models import (
-    JobManifest,
     RenderPayload,
-    ScrapeJob,
-    ScrapePayload,
     ServerPayload,
 )
 from vvr_scraper.job_runner import (
-    _run_job_directly,
     execute_render_job,
     resolve_story_url,
     run_manifest,
     start_server_from_job,
 )
-from vvr_scraper.models import ContentItem, StoryInfo
-
 
 # =============================================================================
 # resolve_story_url

@@ -11,8 +11,12 @@ from vvr_scraper.web import app
 def client():
     @asynccontextmanager
     async def noop_lifespan(a):
+        original_db = getattr(a.state, "db", None)
         a.state.db = AsyncMock()
-        yield
+        try:
+            yield
+        finally:
+            a.state.db = original_db
 
     original = app.router.lifespan_context
     app.router.lifespan_context = noop_lifespan

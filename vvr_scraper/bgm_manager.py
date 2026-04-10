@@ -54,4 +54,4 @@ class BGMManager:
         if mood_lower not in self.moods:
             return None
 
-        return str(random.choice(self.moods[mood_lower]))
+        return str(random.choice(self.moods[mood_lower]))  # noqa: S311  — non-cryptographic

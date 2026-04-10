@@ -49,7 +49,7 @@ async def test_check_library_updates():
             try:
                 datetime.fromisoformat(other)
                 return True
-            except:
+            except ValueError:
                 return False
 
     with patch("vvr_scraper.web.routes.library.lay_thong_tin_truyen", side_effect=mock_lay_thong_tin_truyen):

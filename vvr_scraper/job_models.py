@@ -24,7 +24,7 @@ class RenderPayload(BaseModel):
 
 
 class ServerPayload(BaseModel):
-    host: str = "0.0.0.0"
+    host: str = "0.0.0.0"  # noqa: S104  — intentional bind to all interfaces for server
     port: int = 8000
     opds_password: str | None = None
 

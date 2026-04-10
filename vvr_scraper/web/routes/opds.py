@@ -7,7 +7,6 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse
-from loguru import logger
 
 from ... import opds
 from ...utils import sanitize_filename
@@ -26,7 +25,7 @@ async def opds_root(request: Request, user: str = Depends(get_current_user)):
     # Search link
     etree.SubElement(
         feed,
-        "{%s}link" % opds.ATOM_NS,
+        f"{{{opds.ATOM_NS}}}link",
         rel="search",
         href=f"{base_url}/opds/v1/search?q={{searchTerms}}",
         type="application/atom+xml",

@@ -6,9 +6,9 @@ OPDS routes, and API endpoints.
 
 import json
 import os
+from unittest.mock import AsyncMock, patch
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from vvr_scraper.web import (
     ConnectionManager,
@@ -17,9 +17,7 @@ from vvr_scraper.web import (
     Settings,
     app,
     load_vvr_settings,
-    save_vvr_settings,
 )
-
 
 # =============================================================================
 # ConnectionManager
@@ -196,8 +194,12 @@ class TestAPIEndpoints:
         # No-op lifespan to skip startup tasks (workers, browsers)
         @asynccontextmanager
         async def noop_lifespan(a):
+            original_db = getattr(a.state, "db", None)
             a.state.db = mock_db
-            yield
+            try:
+                yield
+            finally:
+                a.state.db = original_db
 
         original_lifespan = app.router.lifespan_context
         app.router.lifespan_context = noop_lifespan

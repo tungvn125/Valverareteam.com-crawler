@@ -74,7 +74,7 @@ async def test_tao_file_audiodrama_flow(tmp_path):
             patch("vvr_scraper.exporter.VoiceManager") as MockVoiceManager,
             patch("pydub.AudioSegment.from_file") as MockFromFile,
             patch("pydub.AudioSegment.silent") as MockSilent,
-            patch("vvr_scraper.exporter.BGMManager") as MockBGM,
+            patch("vvr_scraper.exporter.BGMManager"),
             patch("vvr_scraper.exporter.MixingEngine") as MockMixing,
             patch("vvr_scraper.exporter.FreesoundManager") as MockFreesound,
             patch("vvr_scraper.exporter.ImageGenerator") as MockImageGenerator,

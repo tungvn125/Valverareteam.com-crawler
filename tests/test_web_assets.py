@@ -1,12 +1,9 @@
 import json
-from contextlib import asynccontextmanager
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
 from vvr_scraper.web import Settings, app
-
-
 
 
 def test_web_assets(tmp_path):
