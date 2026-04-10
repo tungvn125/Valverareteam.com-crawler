@@ -85,6 +85,7 @@ app = FastAPI(
 # Setup Prometheus metrics
 try:
     from prometheus_fastapi_instrumentator import Instrumentator
+
     Instrumentator().instrument(app).expose(app)
 except ImportError:
     pass

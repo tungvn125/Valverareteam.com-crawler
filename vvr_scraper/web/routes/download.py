@@ -250,9 +250,7 @@ async def run_scrape_task(req: DownloadRequest, task_id: str):
             is_latest_included = latest_full_url in selected_set
 
         if is_latest_included:
-            await db.update_library_metadata(
-                req.slug, {"last_synced_count": total_server_chapters, "has_updates": 0}
-            )
+            await db.update_library_metadata(req.slug, {"last_synced_count": total_server_chapters, "has_updates": 0})
         else:
             logger.info(f"Partial download for {story_info.title}. NOT updating last_synced_count.")
 

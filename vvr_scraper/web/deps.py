@@ -32,4 +32,5 @@ def get_db():
     """Returns the database manager from app state.
     Must be called within a request context where app is accessible."""
     from . import app
+
     return app.state.db

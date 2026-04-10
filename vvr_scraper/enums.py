@@ -29,28 +29,32 @@ class NovelStatus(StrEnum):
 # Whitelisted column names for dynamic SQL construction.
 # Only these columns may be used in programmatic UPDATE/INSERT statements
 # to prevent SQL injection via column name manipulation.
-ALLOWED_NOVEL_COLUMNS = frozenset({
-    "title",
-    "slug",
-    "author",
-    "description",
-    "cover_url",
-    "status",
-    "last_chapter_count",
-    "last_downloaded_at",
-    "output_folder",
-    "formats",
-    "genres",
-    "last_synced_count",
-    "server_chapter_count",
-    "has_updates",
-    "last_checked_at",
-})
+ALLOWED_NOVEL_COLUMNS = frozenset(
+    {
+        "title",
+        "slug",
+        "author",
+        "description",
+        "cover_url",
+        "status",
+        "last_chapter_count",
+        "last_downloaded_at",
+        "output_folder",
+        "formats",
+        "genres",
+        "last_synced_count",
+        "server_chapter_count",
+        "has_updates",
+        "last_checked_at",
+    }
+)
 
-ALLOWED_JOB_COLUMNS = frozenset({
-    "status",
-    "updated_at",
-    "progress",
-    "error_summary",
-    "error_log_path",
-})
+ALLOWED_JOB_COLUMNS = frozenset(
+    {
+        "status",
+        "updated_at",
+        "progress",
+        "error_summary",
+        "error_log_path",
+    }
+)

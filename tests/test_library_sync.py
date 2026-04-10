@@ -232,7 +232,9 @@ async def test_run_scrape_task_updates_sync_count():
                             with patch("os.makedirs"):
                                 with patch("vvr_scraper.web.routes.download.load_session", return_value={}):
                                     with patch("vvr_scraper.web.state.manager.broadcast", new_callable=AsyncMock):
-                                        with patch("vvr_scraper.web.routes.download.get_config_path", return_value="/tmp/fake"):
+                                        with patch(
+                                            "vvr_scraper.web.routes.download.get_config_path", return_value="/tmp/fake"
+                                        ):
                                             with patch("os.path.exists", return_value=False):
                                                 await run_scrape_task(req, task_id)
 
@@ -287,7 +289,9 @@ async def test_run_scrape_task_skips_sync_count_on_partial():
                             with patch("os.makedirs"):
                                 with patch("vvr_scraper.web.routes.download.load_session", return_value={}):
                                     with patch("vvr_scraper.web.state.manager.broadcast", new_callable=AsyncMock):
-                                        with patch("vvr_scraper.web.routes.download.get_config_path", return_value="/tmp/fake"):
+                                        with patch(
+                                            "vvr_scraper.web.routes.download.get_config_path", return_value="/tmp/fake"
+                                        ):
                                             with patch("os.path.exists", return_value=False):
                                                 await run_scrape_task(req, task_id)
 

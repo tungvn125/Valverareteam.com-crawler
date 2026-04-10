@@ -5,11 +5,9 @@ from vvr_scraper.utils import normalize_vietnamese_url, sanitize_filename
 
 # Strategy that generates challenging filename strings
 # Includes invalid characters across different platforms, spaces, dots
-problematic_chars = ["\\", "/", "*", "?", ":", "\"", "<", ">", "|"]
-filename_strategy = st.text(
-    alphabet=st.characters(blacklist_categories=("Cc", "Cs")),
-    min_size=1, max_size=255
-)
+problematic_chars = ["\\", "/", "*", "?", ":", '"', "<", ">", "|"]
+filename_strategy = st.text(alphabet=st.characters(blacklist_categories=("Cc", "Cs")), min_size=1, max_size=255)
+
 
 @given(filename_strategy)
 def test_sanitize_filename_properties(name):
@@ -37,7 +35,9 @@ def test_sanitize_filename_properties(name):
     # 4. Same underlying characters (alphanumerics) shouldn't be lost
     # (Though we can't easily assert exactly since multiple spaces map to one)
 
+
 url_strategy = st.text(alphabet=st.characters(whitelist_categories=("Lu", "Ll", "Nd", "Pd", "Po", "Zs")), min_size=1)
+
 
 @given(url_strategy)
 def test_normalize_vietnamese_url_properties(raw_text):
@@ -52,6 +52,7 @@ def test_normalize_vietnamese_url_properties(raw_text):
 
     # Needs to be lowercase
     assert normalized == normalized.lower()
+
 
 def test_normalize_base_cases():
     assert normalize_vietnamese_url("Cái tên tiếng Việt") == "cai-ten-tieng-viet"

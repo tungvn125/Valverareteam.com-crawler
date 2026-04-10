@@ -14,7 +14,7 @@ class TestSaveSession:
         file_path = str(tmp_path / "session.json")
         state = {
             "cookies": [{"name": "cf_clearance", "value": "abc123"}],
-            "origins": [{"origin": "https://valvrareteam.net", "localStorage": []}]
+            "origins": [{"origin": "https://valvrareteam.net", "localStorage": []}],
         }
 
         save_session(state, file_path)
