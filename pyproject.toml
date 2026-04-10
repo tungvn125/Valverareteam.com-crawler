@@ -7,7 +7,7 @@ name = "vvr-scraper"
 version = "1.9.0"
 description = "Công cụ tải truyện CỰC ĐỘC ĐÁO từ Valvrareteam.net"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 license = {text = "MIT"}
 authors = [
     {name = "Valvrare Team Crawler Contributors"}
@@ -49,7 +49,7 @@ include = ["vvr_scraper*"]
 [tool.setuptools.package-data]
 "vvr_scraper" = ["static/*", "prompts/*.md"]
 
-[dependency-groups]
+[project.optional-dependencies]
 dev = [
     "pytest>=9.0.2",
     "pytest-asyncio>=1.3.0",

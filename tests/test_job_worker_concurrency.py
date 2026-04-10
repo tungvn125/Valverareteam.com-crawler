@@ -1,9 +1,11 @@
 import asyncio
 from unittest.mock import AsyncMock, patch
+
 import pytest
 
+from vvr_scraper.job_models import JobManifest, RenderJob, RenderPayload, ScrapeJob, ScrapePayload
 from vvr_scraper.job_worker import JobWorker
-from vvr_scraper.job_models import JobManifest, ScrapeJob, ScrapePayload, RenderJob, RenderPayload
+
 
 @pytest.mark.asyncio
 async def test_job_worker_concurrency_stress():
@@ -27,7 +29,7 @@ async def test_job_worker_concurrency_stress():
     async def mock_execute(job_id, job):
         nonlocal running_heavy, max_running_heavy, running_crawl, max_running_crawl
         is_heavy = job.task == "render" or "ad-mp3" in (getattr(job.payload, "formats", []) or [])
-        
+
         try:
             if is_heavy:
                 running_heavy += 1
@@ -35,7 +37,7 @@ async def test_job_worker_concurrency_stress():
             else:
                 running_crawl += 1
                 max_running_crawl = max(max_running_crawl, running_crawl)
-            
+
             # Simulate job doing work (random short time)
             await asyncio.sleep(0.01)
             executed_jobs.append(job_id)
@@ -58,20 +60,20 @@ async def test_job_worker_concurrency_stress():
                 await worker.enqueue_job(f"crawl_{i}", payload)
 
         worker_task = asyncio.create_task(worker.worker_loop())
-        
+
         # Wait until all 100 jobs are executed
         while len(executed_jobs) < 100:
             await asyncio.sleep(0.05)
-            
+
         worker_task.cancel()
 
         # Semaphores should enforce limits at all times
         assert max_running_heavy <= 2, f"Heavy limit exceeded: {max_running_heavy}"
         assert max_running_crawl <= 5, f"Crawl limit exceeded: {max_running_crawl}"
-        
+
         # Ensure we processed 100 jobs
         assert len(executed_jobs) == 100
-        
+
         # Final semaphore counts should be restored
         assert running_heavy == 0
         assert running_crawl == 0
@@ -83,18 +85,18 @@ async def test_job_worker_race_condition_cancellation():
     """
     db = AsyncMock()
     worker = JobWorker(db)
-    
+
     cancel_mock = AsyncMock()
     with patch.object(worker, "cancel_dependents", cancel_mock):
         job = JobManifest(root=ScrapeJob(payload=ScrapePayload(slug="x", formats=["EPUB"])))
-        
+
         with patch("vvr_scraper.job_runner.execute_crawl_job", side_effect=Exception("Artificial failure")):
             await worker.enqueue_job("test_cancel", job)
-            
+
             # Run one cycle
             task = asyncio.create_task(worker.worker_loop())
             await asyncio.sleep(0.1)
             task.cancel()
-            
+
         # Due to failure, handle_job_error invokes cancel_dependents
         cancel_mock.assert_called_once_with("test_cancel")

@@ -1,10 +1,11 @@
 import asyncio
-import os
 from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 
 from vvr_scraper.web.models import DownloadRequest
 from vvr_scraper.web.routes.download import run_scrape_task
+
 
 @pytest.fixture
 def mock_story_info():
@@ -39,7 +40,7 @@ async def test_run_scrape_task_success(mock_story_info, mock_chapter_data):
     task_id = "task123"
 
     mock_db = AsyncMock()
-    
+
     with patch("vvr_scraper.web.routes.download.manager.broadcast", new_callable=AsyncMock) as mock_broadcast, \
          patch("vvr_scraper.web.routes.download.lay_thong_tin_truyen", return_value=mock_story_info), \
          patch("vvr_scraper.web.routes.download.get_chapter_tree_list", return_value=mock_chapter_data), \
@@ -58,10 +59,10 @@ async def test_run_scrape_task_success(mock_story_info, mock_chapter_data):
         mock_playwright.return_value.__aenter__.return_value = mock_p
 
         await run_scrape_task(req, task_id)
-        
+
         # Verify broadcasts
         mock_broadcast.assert_any_call({"type": "complete", "task_id": "task123", "path": "/tmp/test_download"})
-        
+
         # Verify db updates
         mock_db.upsert_novel.assert_called_once()
         mock_db.update_library_metadata.assert_called_once()
@@ -70,14 +71,14 @@ async def test_run_scrape_task_success(mock_story_info, mock_chapter_data):
 async def test_run_scrape_task_high_failure_rate(mock_story_info, mock_chapter_data):
     req = DownloadRequest(slug="test-novel", formats=["EPUB"], output_folder="/tmp/test_download")
     task_id = "task123"
-    
+
     with patch("vvr_scraper.web.routes.download.manager.broadcast", new_callable=AsyncMock) as mock_broadcast, \
          patch("vvr_scraper.web.routes.download.lay_thong_tin_truyen", return_value=mock_story_info), \
          patch("vvr_scraper.web.routes.download.get_chapter_tree_list", return_value=mock_chapter_data), \
          patch("vvr_scraper.web.routes.download.scrape_chapters", return_value={}), \
          patch("vvr_scraper.web.routes.download.async_playwright") as mock_playwright, \
          patch("os.makedirs"):
-         
+
         mock_p = AsyncMock()
         mock_browser = AsyncMock()
         mock_p.chromium.launch.return_value = mock_browser
@@ -96,8 +97,8 @@ async def test_run_scrape_task_cancellation():
 
     with patch("vvr_scraper.web.routes.download.manager.broadcast", new_callable=AsyncMock) as mock_broadcast, \
          patch("vvr_scraper.web.routes.download.lay_thong_tin_truyen", side_effect=asyncio.CancelledError):
-        
+
         with pytest.raises(asyncio.CancelledError):
             await run_scrape_task(req, task_id)
-            
+
         mock_broadcast.assert_any_call({"type": "status", "task_id": "task123", "status": "Paused"})
