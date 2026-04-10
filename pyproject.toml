@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vvr-scraper"
-version = "1.9.0"
+version = "1.10.0"
 description = "Công cụ tải truyện CỰC ĐỘC ĐÁO từ Valvrareteam.net"
 readme = "README.md"
 requires-python = ">=3.12"
