@@ -1,15 +1,16 @@
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
 from fastapi.testclient import TestClient
 
 from vvr_scraper.web import app
-from vvr_scraper.job_models import JobManifest, ScrapePayload, ScrapeJob
+
 
 @pytest.fixture
 def client():
     """Create a TestClient with mocked DB to avoid lifespan issues."""
     from contextlib import asynccontextmanager
-    
+
     mock_db = AsyncMock()
     mock_db.create_job = AsyncMock(return_value="mock_job_id")
     mock_db.close = AsyncMock()
@@ -43,7 +44,7 @@ def test_submit_job_without_worker(client):
 def test_submit_job_success_with_dependencies(client):
     worker_mock = AsyncMock()
     app.state.db.create_job = AsyncMock(side_effect=["job_id_1", "job_id_2"])
-    
+
     payload = [
         {
             "task": "crawl",
@@ -58,15 +59,15 @@ def test_submit_job_success_with_dependencies(client):
             "priority": 1
         }
     ]
-    
+
     with patch("vvr_scraper.web.routes.jobs.worker", worker_mock):
         response = client.post("/api/jobs", json=payload)
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "queued"
         assert len(data["job_ids"]) == 2
-        
+
         # Verify dependency resolution mapping crawl_1 -> job_id_1
         # The second create_job call for render job should have depends_on="job_id_1"
         call_args = app.state.db.create_job.call_args_list[1][1]
@@ -76,12 +77,12 @@ def test_submit_job_success_with_dependencies(client):
 def test_submit_job_exception(client):
     worker_mock = AsyncMock()
     app.state.db.create_job = AsyncMock(side_effect=Exception("DB Error"))
-    
+
     payload = {
         "task": "crawl",
         "payload": {"slug": "test", "formats": ["EPUB"]}
     }
-    
+
     with patch("vvr_scraper.web.routes.jobs.worker", worker_mock):
         response = client.post("/api/jobs", json=payload)
         assert response.status_code == 400

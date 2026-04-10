@@ -1,8 +1,7 @@
-import re
-from hypothesis import given, strategies as st
-from urllib.parse import urlparse
+from hypothesis import given
+from hypothesis import strategies as st
 
-from vvr_scraper.utils import sanitize_filename, normalize_vietnamese_url
+from vvr_scraper.utils import normalize_vietnamese_url, sanitize_filename
 
 # Strategy that generates challenging filename strings
 # Includes invalid characters across different platforms, spaces, dots
@@ -20,21 +19,21 @@ def test_sanitize_filename_properties(name):
     Property: sanitized_name must not have consecutive spaces.
     """
     sanitized = sanitize_filename(name)
-    
+
     # 1. No illegal characters
     for char in problematic_chars:
         assert char not in sanitized
-        
+
     # 2. No consecutive spaces
     assert "  " not in sanitized
-    
+
     # 3. No leading/trailing spaces or dots
     if sanitized:
         assert not sanitized.startswith(" ")
         assert not sanitized.endswith(" ")
         assert not sanitized.startswith(".")
         assert not sanitized.endswith(".")
-        
+
     # 4. Same underlying characters (alphanumerics) shouldn't be lost
     # (Though we can't easily assert exactly since multiple spaces map to one)
 
@@ -47,10 +46,10 @@ def test_normalize_vietnamese_url_properties(raw_text):
     It should not contain uppercase, spaces, or Vietnamese accents.
     """
     normalized = normalize_vietnamese_url(raw_text)
-    
+
     # Should not have spaces
     assert " " not in normalized
-    
+
     # Needs to be lowercase
     assert normalized == normalized.lower()
 
