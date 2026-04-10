@@ -10,7 +10,6 @@ from pydantic import BaseModel
 
 from ..utils import get_config_path
 
-
 # --- Request/Response Models ---
 
 class DownloadRequest(BaseModel):

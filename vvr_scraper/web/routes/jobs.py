@@ -2,7 +2,6 @@
 Job management API routes — CRUD for the Universal Task Runner.
 """
 
-import asyncio
 
 from fastapi import APIRouter, HTTPException
 from loguru import logger
@@ -23,7 +22,7 @@ async def list_jobs():
         return jobs
     except Exception as e:
         logger.error(f"Error listing jobs: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/jobs/{job_id}")
@@ -39,7 +38,6 @@ async def get_job_detail(job_id: str):
 @router.post("/jobs")
 async def submit_job(job_manifest: JobManifest):
     """Submits jobs from a manifest to the task runner queue."""
-    from ..state import worker
 
     if worker is None:
         raise HTTPException(status_code=503, detail="JobWorker not initialized")
@@ -93,7 +91,7 @@ async def submit_job(job_manifest: JobManifest):
         import traceback
 
         logger.error(traceback.format_exc())
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.get("/tasks/{task_id}/logs")

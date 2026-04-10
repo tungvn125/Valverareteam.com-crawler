@@ -36,15 +36,18 @@ async def test_client():
             }
         )
 
+    original_db = getattr(app.state, "db", None)
     app.state.db = db
 
-    with TestClient(app) as client:
-        yield client
-
-    await db.close()
-    if os.path.exists(db_path):
-        os.remove(db_path)
-    app.dependency_overrides.clear()
+    try:
+        with TestClient(app) as client:
+            yield client
+    finally:
+        await db.close()
+        if os.path.exists(db_path):
+            os.remove(db_path)
+        app.state.db = original_db
+        app.dependency_overrides.clear()
 
 
 @pytest.mark.asyncio

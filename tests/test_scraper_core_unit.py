@@ -3,10 +3,10 @@ Unit tests for scraper_core.py — lay_chuong_httpx, lay_chuong_voi_hinh_anh, sc
 All network calls are mocked.
 """
 
-import asyncio
+
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from vvr_scraper.models import ContentItem
 from vvr_scraper.scraper_core import (
@@ -15,7 +15,6 @@ from vvr_scraper.scraper_core import (
     scrape_chapters,
 )
 from vvr_scraper.utils import HEADERS
-
 
 # =============================================================================
 # lay_chuong_httpx (Fast Mode)
@@ -255,7 +254,7 @@ class TestScrapeChapters:
         """When HTTPX succeeds, Playwright should NOT be called."""
         content = [ContentItem(type="text", data="Content from HTTPX")]
 
-        with patch("vvr_scraper.scraper_core.lay_chuong_httpx", return_value=content) as mock_httpx:
+        with patch("vvr_scraper.scraper_core.lay_chuong_httpx", return_value=content):
             with patch("vvr_scraper.scraper_core.lay_chuong_voi_hinh_anh") as mock_pw:
                 mock_browser = AsyncMock()
                 result = await scrape_chapters(

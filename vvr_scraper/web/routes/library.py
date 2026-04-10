@@ -40,7 +40,7 @@ async def sync_all_novels():
     novels = await db.get_all_novels()
     sync_count = 0
 
-    settings = load_vvr_settings()
+    load_vvr_settings()
     default_formats = ["EPUB"]
 
     session_state = load_session(get_config_path(".vvr_session.json"))

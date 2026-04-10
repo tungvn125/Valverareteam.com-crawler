@@ -4,11 +4,11 @@ import os
 from datetime import datetime
 
 import httpx
-from bs4 import BeautifulSoup
 from loguru import logger
 from playwright.async_api import async_playwright
 
 from vvr_scraper.db import DatabaseManager
+from vvr_scraper.enums import JobStatus
 from vvr_scraper.exporter import (
     tao_file_epub,
     tao_file_html,
@@ -28,7 +28,7 @@ from vvr_scraper.utils import (
     HEADERS,
     get_config_path,
     get_token_from_state,
-    normalize_vietnamese_url,
+    resolve_story_url,
     sanitize_filename,
 )
 from vvr_scraper.video_renderer import VideoRenderer
@@ -38,23 +38,7 @@ from vvr_scraper.web import run_web_server
 worker = None
 
 
-async def resolve_story_url(name_raw: str, cookies: dict | None = None) -> str | None:
-    """Finds the story URL from sitemap."""
-    normalized = normalize_vietnamese_url(name_raw)
-    sitemap_url = f"{BASE_URL}/sitemap.xml"
 
-    async with httpx.AsyncClient(headers=HEADERS, cookies=cookies) as client:
-        try:
-            response = await client.get(sitemap_url)
-            response.raise_for_status()
-            soup = BeautifulSoup(response.content, "lxml-xml")
-            for loc in soup.find_all("loc"):
-                url = loc.text
-                if normalized in url and "/chuong" not in url:
-                    return url
-        except Exception as e:
-            logger.error(f"Lỗi khi truy cập sitemap: {e}")
-    return None
 
 
 async def execute_crawl_job(payload: ScrapePayload, job_id: str, db: DatabaseManager | None):
@@ -115,12 +99,12 @@ async def execute_crawl_job(payload: ScrapePayload, job_id: str, db: DatabaseMan
                 raise ValueError("No chapters selected or found.")
 
             urls = [f"{BASE_URL}{c['url']}" for c in selected_chaps]
-            total_urls = len(urls)
+            len(urls)
 
             async def on_chapter_done(url, content, idx, total):
                 if db:
                     progress = ((idx + 1) / total) * 90.0  # Reserve 10% for exporting
-                    await db.update_job_status(job_id, "running", progress=progress)
+                    await db.update_job_status(job_id, JobStatus.RUNNING, progress=progress)
 
             scraped = await scrape_chapters(
                 browser, urls, session_state=session_state, token=token, on_chapter_done=on_chapter_done
@@ -130,7 +114,7 @@ async def execute_crawl_job(payload: ScrapePayload, job_id: str, db: DatabaseMan
 
     # 4. Export
     if db:
-        await db.update_job_status(job_id, "running", progress=90.0)
+        await db.update_job_status(job_id, JobStatus.RUNNING, progress=90.0)
 
     # Prepare content for exporters
     full_flat = []
@@ -208,7 +192,7 @@ async def execute_crawl_job(payload: ScrapePayload, job_id: str, db: DatabaseMan
         )
 
     if db:
-        await db.update_job_status(job_id, "success", progress=100.0)
+        await db.update_job_status(job_id, JobStatus.SUCCESS, progress=100.0)
 
 
 async def execute_render_job(payload: RenderPayload, job_id: str, db: DatabaseManager | None):
@@ -217,7 +201,7 @@ async def execute_render_job(payload: RenderPayload, job_id: str, db: DatabaseMa
     """
     logger.info(f"Starting render job {job_id}")
     if db:
-        await db.update_job_status(job_id, "running", progress=10.0)
+        await db.update_job_status(job_id, JobStatus.RUNNING, progress=10.0)
 
     try:
         renderer = VideoRenderer(
@@ -260,12 +244,12 @@ async def execute_render_job(payload: RenderPayload, job_id: str, db: DatabaseMa
             logger.warning(f"Could not mux audio: {e}")
 
         if db:
-            await db.update_job_status(job_id, "success", progress=100.0)
+            await db.update_job_status(job_id, JobStatus.SUCCESS, progress=100.0)
 
     except Exception as e:
         logger.error(f"Render job {job_id} failed: {e}")
         if db:
-            await db.update_job_status(job_id, "failed", error_summary=str(e))
+            await db.update_job_status(job_id, JobStatus.FAILED, error_summary=str(e))
         raise e
 
 
@@ -304,7 +288,7 @@ async def run_manifest(file_path: str):
                 if response.status_code == 200:
                     logger.success("Đã gửi Job tới Server thành công. Bạn có thể theo dõi log trên Web UI.")
                     return
-            except Exception:
+            except Exception:  # noqa: S110
                 # Server not running, fallback to local execution
                 pass
 

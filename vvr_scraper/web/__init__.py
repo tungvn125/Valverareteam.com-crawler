@@ -15,8 +15,7 @@ from loguru import logger
 from ..db import DatabaseManager
 from ..job_worker import JobWorker
 from ..utils import get_config_path
-from .models import Settings, load_vvr_settings
-from .state import _event_loop, download_queue, manager, websocket_sink, worker
+from .deps import get_current_user  # noqa: F401
 
 # Re-export for backward compatibility
 from .models import (  # noqa: F401
@@ -27,12 +26,24 @@ from .models import (  # noqa: F401
     load_vvr_settings,
     save_vvr_settings,
 )
-from .state import ConnectionManager, DownloadManager  # noqa: F401
-from .deps import get_current_user  # noqa: F401
-from .routes.library import auto_sync_background_task, check_library_updates  # noqa: F401
-from .routes.library import sync_all_novels  # noqa: F401 — route function
 from .routes.download import run_scrape_task  # noqa: F401
-from .state import active_tasks, active_tasks_futures, task_log_buffers  # noqa: F401
+from .routes.library import (  # noqa: F401
+    auto_sync_background_task,
+    check_library_updates,
+    sync_all_novels,  # noqa: F401 — route function
+)
+from .state import (  # noqa: F401  # noqa: F401
+    ConnectionManager,
+    DownloadManager,
+    _event_loop,
+    active_tasks,
+    active_tasks_futures,
+    download_queue,
+    manager,
+    task_log_buffers,
+    websocket_sink,
+    worker,
+)
 
 
 @asynccontextmanager
@@ -50,7 +61,6 @@ async def lifespan(app: FastAPI):
     await state.worker.start()
 
     # Start Auto-Sync Background Task
-    from .routes.library import auto_sync_background_task
 
     asyncio.create_task(auto_sync_background_task(app.state.db, state.worker))
 
@@ -65,16 +75,29 @@ async def lifespan(app: FastAPI):
         await app.state.db.close()
 
 
-app = FastAPI(title="Valvrare Team Scraper Web UI", lifespan=lifespan)
+app = FastAPI(
+    title="Valvrare Team Scraper Web UI",
+    version="1.9.1",
+    description="API for managing scraper tasks, job queues, library syncing, and OPDS feeds.",
+    lifespan=lifespan,
+)
+
+# Setup Prometheus metrics
+try:
+    from prometheus_fastapi_instrumentator import Instrumentator
+    Instrumentator().instrument(app).expose(app)
+except ImportError:
+    pass
 
 # Add loguru sink
 logger.add(websocket_sink, level="DEBUG")
 
 # Register routers
-from .routes.api import router as api_router
-from .routes.jobs import router as jobs_router
-from .routes.library import router as library_router
-from .routes.opds import opds_download_router, router as opds_router
+from .routes.api import router as api_router  # noqa: E402
+from .routes.jobs import router as jobs_router  # noqa: E402
+from .routes.library import router as library_router  # noqa: E402
+from .routes.opds import opds_download_router  # noqa: E402
+from .routes.opds import router as opds_router  # noqa: E402
 
 app.include_router(api_router)
 app.include_router(jobs_router)

@@ -6,6 +6,8 @@ from typing import Any
 import aiosqlite
 from loguru import logger
 
+from .enums import ALLOWED_NOVEL_COLUMNS
+
 
 class DatabaseManager:
     def __init__(self, db_path: str = "vvr_library.db"):
@@ -143,7 +145,7 @@ class DatabaseManager:
             lib_cols = [row[1] for row in await cursor.fetchall()]
             if "author" in lib_cols:
                 await db.execute("""
-                    UPDATE novels 
+                    UPDATE novels
                     SET author = (SELECT author FROM library WHERE library.slug = novels.slug)
                     WHERE slug IN (SELECT slug FROM library) AND author IS NULL
                 """)
@@ -194,9 +196,9 @@ class DatabaseManager:
         search_query = f"%{query}%"
         offset = (page - 1) * size
         sql = """
-            SELECT * FROM novels 
-            WHERE title LIKE ? OR author LIKE ? 
-            ORDER BY last_downloaded_at DESC 
+            SELECT * FROM novels
+            WHERE title LIKE ? OR author LIKE ?
+            ORDER BY last_downloaded_at DESC
             LIMIT ? OFFSET ?
         """
         async with db.execute(sql, (search_query, search_query, size, offset)) as cursor:
@@ -264,11 +266,17 @@ class DatabaseManager:
             return
 
         db = await self.get_db()
-        keys = list(metadata.keys())
-        values = list(metadata.values())
+        # Validate column names against whitelist to prevent SQL injection
+        keys = [k for k in metadata.keys() if k in ALLOWED_NOVEL_COLUMNS]
+        if not keys:
+            logger.warning(f"No valid columns to update for slug: {slug}")
+            return
+        values = [metadata[k] for k in keys]
 
-        set_clause = ", ".join([f"{key} = ?" for key in keys])
-        query = f"UPDATE novels SET {set_clause} WHERE slug = ?"
+        set_clause = ", ".join(  # noqa: S608  — column names validated against whitelist
+            [f"{key} = ?" for key in keys]
+        )
+        query = f"UPDATE novels SET {set_clause} WHERE slug = ?"  # noqa: S608
         params = values + [slug]
         async with db.execute(query, tuple(params)) as cursor:
             if cursor.rowcount == 0:
@@ -284,19 +292,23 @@ class DatabaseManager:
         if not slug:
             return
 
-        columns = list(novel_data.keys())
+        # Validate column names against whitelist
+        columns = [c for c in novel_data.keys() if c in ALLOWED_NOVEL_COLUMNS | {"slug"}]
+        if not columns:
+            return
+        filtered_data = {c: novel_data[c] for c in columns}
         placeholders = ", ".join(["?" for _ in columns])
 
-        # Build update clause for ON CONFLICT
+        # Build update clause for ON CONFLICT  # noqa: S608  — columns validated above
         update_clause = ", ".join([f"{col}=excluded.{col}" for col in columns if col != "slug"])
 
         sql = f"""
-            INSERT INTO novels ({", ".join(columns)}) 
+            INSERT INTO novels ({", ".join(columns)})
             VALUES ({placeholders})
             ON CONFLICT(slug) DO UPDATE SET {update_clause}
-        """
+        """  # noqa: S608
 
-        await db.execute(sql, tuple(novel_data.values()))
+        await db.execute(sql, tuple(filtered_data.values()))
         await db.commit()
 
     async def create_job(
@@ -315,8 +327,8 @@ class DatabaseManager:
         db = await self.get_db()
         await db.execute(
             """INSERT INTO jobs (
-                id, task_type, payload, created_at, updated_at, 
-                alias_id, batch_id, depends_on, priority, 
+                id, task_type, payload, created_at, updated_at,
+                alias_id, batch_id, depends_on, priority,
                 from_chapter, to_chapter
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
@@ -355,7 +367,7 @@ class DatabaseManager:
             params.append(error_log_path)
 
         params.append(job_id)
-        query = f"UPDATE jobs SET {', '.join(updates)} WHERE id = ?"
+        query = f"UPDATE jobs SET {', '.join(updates)} WHERE id = ?"  # noqa: S608  — column names are hardcoded above
         await db.execute(query, tuple(params))
         await db.commit()
 

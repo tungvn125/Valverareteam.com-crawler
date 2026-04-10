@@ -208,8 +208,8 @@ async def get_chapter_tree_list(
                                 chapters_list.append({"title": chapter.get_text(strip=True), "url": "", "locked": True})
                             else:
                                 logger.debug(f"Can't find link for chapter: {chapter}")
-                    except Exception:
-                        pass  # Silently skip malformed chapters
+                    except Exception:  # noqa: S110  — Silently skip malformed chapters
+                        pass
 
             data.append({"volume": volume_title, "chapters": chapters_list})
 

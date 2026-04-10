@@ -3,15 +3,10 @@ Unit tests for cli.py — argument parsing, chapter filtering, chapter selection
 URL resolution, export config, and cleanup.
 """
 
-import argparse
-import os
 import sys
+from unittest.mock import AsyncMock, patch
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-
-from vvr_scraper.models import StoryInfo
-
 
 # =============================================================================
 # Argument Parsing

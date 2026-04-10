@@ -39,3 +39,5 @@ verify/
 *.png
 !task_runner.md
 !run.example.json
+.hypothesis/
+error-logs/

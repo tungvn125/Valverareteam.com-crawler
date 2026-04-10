@@ -9,6 +9,8 @@ from loguru import logger
 from vvr_scraper.db import DatabaseManager
 from vvr_scraper.job_models import JobManifest
 
+from .enums import JobStatus
+
 
 class JobWorker:
     def __init__(self, db_manager: DatabaseManager | None):
@@ -43,11 +45,11 @@ class JobWorker:
 
         # 1. Mark 'running' jobs as failed
         try:
-            async with db.execute("SELECT id FROM jobs WHERE status = 'running'") as cursor:
+            async with db.execute("SELECT id FROM jobs WHERE status = ?", (JobStatus.RUNNING.value,)) as cursor:
                 running_jobs = await cursor.fetchall()
                 for row in running_jobs:
                     job_id = row[0] if not hasattr(row, "keys") else row["id"]
-                    await self.db.update_job_status(job_id, "failed", error_summary="Hệ thống bị ngắt quãng")
+                    await self.db.update_job_status(job_id, JobStatus.FAILED, error_summary="Hệ thống bị ngắt quãng")
                     logger.warning(f"Marked running job {job_id} as failed due to restart.")
                     # Also cancel its dependents recursively
                     await self.cancel_dependents(job_id)
@@ -56,7 +58,7 @@ class JobWorker:
 
         # 2. Re-enqueue 'pending' and 'waiting' jobs
         try:
-            async with db.execute("SELECT * FROM jobs WHERE status IN ('pending', 'waiting')") as cursor:
+            async with db.execute("SELECT * FROM jobs WHERE status IN (?, ?)", (JobStatus.PENDING.value, JobStatus.WAITING.value)) as cursor:
                 pending_rows = await cursor.fetchall()
                 for row in pending_rows:
                     row_dict = dict(row) if hasattr(row, "keys") else None
@@ -118,11 +120,11 @@ class JobWorker:
                     all_success = True
                     for dep_uuid in job.root.depends_on:
                         dep_status = await self.db.get_job_status(dep_uuid)
-                        if not dep_status or dep_status["status"] != "success":
+                        if not dep_status or dep_status["status"] != JobStatus.SUCCESS:
                             all_success = False
-                            if dep_status and dep_status["status"] in ("failed", "cancelled"):
+                            if dep_status and dep_status["status"] in (JobStatus.FAILED, JobStatus.CANCELLED):
                                 await self.db.update_job_status(
-                                    job_id, "cancelled", error_summary=f"Dependency {dep_uuid} failed/cancelled"
+                                    job_id, JobStatus.CANCELLED, error_summary=f"Dependency {dep_uuid} failed/cancelled"
                                 )
                                 await self.cancel_dependents(job_id)
                                 break
@@ -130,8 +132,8 @@ class JobWorker:
                     if not all_success:
                         # Check current status to avoid infinite loop if cancelled above
                         current_job = await self.db.get_job_status(job_id)
-                        if current_job and current_job["status"] not in ("cancelled", "failed"):
-                            await self.db.update_job_status(job_id, "waiting")
+                        if current_job and current_job["status"] not in (JobStatus.CANCELLED, JobStatus.FAILED):
+                            await self.db.update_job_status(job_id, JobStatus.WAITING)
                             # Put back to queue after a short delay
                             await asyncio.sleep(5)
                             await self.queue.put((priority, job_id, job))
@@ -175,7 +177,7 @@ class JobWorker:
 
         # Update status to running
         if self.db:
-            await self.db.update_job_status(job_id, "running", progress=0.0)
+            await self.db.update_job_status(job_id, JobStatus.RUNNING, progress=0.0)
 
         try:
             if job.task == "crawl":
@@ -193,7 +195,7 @@ class JobWorker:
                 await start_server_from_job(job.payload)
 
             if self.db:
-                await self.db.update_job_status(job_id, "success", progress=100.0)
+                await self.db.update_job_status(job_id, JobStatus.SUCCESS, progress=100.0)
             logger.success(f"Job {job_id} completed successfully.")
 
         except Exception as e:
@@ -221,7 +223,7 @@ class JobWorker:
             logger.info(f"Detailed error log saved to: {log_path}")
 
             if self.db:
-                await self.db.update_job_status(job_id, "failed", error_summary=str(exc), error_log_path=log_path)
+                await self.db.update_job_status(job_id, JobStatus.FAILED, error_summary=str(exc), error_log_path=log_path)
                 # Recursive Cancellation
                 await self.cancel_dependents(job_id)
         except Exception as e:
@@ -244,7 +246,7 @@ class JobWorker:
                 for row in dependents:
                     dep_id = row[0] if not hasattr(row, "keys") else row["id"]
                     await self.db.update_job_status(
-                        dep_id, "cancelled", error_summary=f"Phụ thuộc vào job {failed_job_id} bị lỗi"
+                        dep_id, JobStatus.CANCELLED, error_summary=f"Phụ thuộc vào job {failed_job_id} bị lỗi"
                     )
                     logger.warning(f"Cancelled job {dep_id} because it depends on failed job {failed_job_id}")
                     # Recursive call

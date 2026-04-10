@@ -31,7 +31,7 @@ class ConnectionManager:
         for connection in self.active_connections:
             try:
                 await connection.send_json(message)
-            except Exception:
+            except Exception:  # noqa: S110  — Drop message if connection is dead
                 pass
 
 

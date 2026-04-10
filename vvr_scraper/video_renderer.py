@@ -171,14 +171,19 @@ class VideoRenderer:
                         await page.evaluate(f"window.player.seekTo({current_time_ms});")
 
                         # Capture screenshot as PNG
+                        # WHY: We take a raw pixel snapshot of the Playwright browser's DOM representing the current timestamp.
+                        # We use PNG (lossless) to avoid compression artifacts before the frame hits FFmpeg for actual MP4 encoding.
                         screenshot = await page.screenshot(type="png", full_page=False)
 
                         # Write to FFmpeg pipe
+                        # WHY: Streaming directly into FFmpeg's STDIN allows us to render the video
+                        # completely in-memory. If we saved thousands of image files to disk instead, the disk I/O
+                        # would aggressively bottleneck the rendering process and consume massive storage.
                         try:
                             process.stdin.write(screenshot)
-                        except BrokenPipeError:
+                        except BrokenPipeError as e:
                             stdout, stderr = process.communicate()
-                            raise RuntimeError(f"FFmpeg pipe broken. Error: {stderr.decode()}")
+                            raise RuntimeError(f"FFmpeg pipe broken. Error: {stderr.decode()}") from e
 
                         progress.update(task, advance=1)
 
@@ -192,8 +197,8 @@ class VideoRenderer:
                 if process.stdin:
                     try:
                         process.stdin.close()
-                    except:
-                        pass
+                    except OSError:
+                        pass  # noqa: S110  — best-effort pipe cleanup
 
                 # Wait for FFmpeg to finish writing file
                 process.wait()

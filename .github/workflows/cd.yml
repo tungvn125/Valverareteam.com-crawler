@@ -1,0 +1,54 @@
+name: CD Pipeline
+
+on:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: write    # To create releases and pushed bumped versions
+  id-token: write    # To authenticate with PyPI (Trusted Publishing)
+
+jobs:
+  release:
+    name: 🚀 Release & Semantic Version
+    runs-on: ubuntu-latest
+    outputs:
+      released: ${{ steps.semantic.outputs.released }}
+      version: ${{ steps.semantic.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Python Semantic Release
+        id: semantic
+        uses: python-semantic-release/python-semantic-release@v9.12.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          commit: true
+          push: true
+
+  publish:
+    name: 📦 Publish to PyPI
+    needs: release
+    if: needs.release.outputs.released == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/vvr-scraper
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Build generic package (Wheel + sdist)
+        run: uv build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/

@@ -3,7 +3,7 @@ import sys
 # Python 3.13 removal of audioop fix
 if sys.version_info >= (3, 13):
     try:
-        import audioop
+        import audioop  # noqa: F401
     except ImportError:
         try:
             import audioop_lts

@@ -9,15 +9,13 @@ from pathlib import Path
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import HTMLResponse
 from loguru import logger
-from playwright.async_api import async_playwright
 
 from ...scraper_core import lay_thong_tin_truyen
 from ...session_manager import load_session
 from ...tao_so_do_cay import get_chapter_tree_list
 from ...utils import BASE_URL, HEADERS, get_config_path, normalize_vietnamese_url, sanitize_filename
-from ..deps import get_db
 from ..models import DownloadRequest, FreesoundCallbackRequest, Settings, load_vvr_settings, save_vvr_settings
 from ..state import active_tasks, download_queue, manager
 
@@ -152,10 +150,10 @@ async def freesound_auth():
         return {"url": url}
     except Exception as e:
         logger.error(f"Error getting Freesound auth URL: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
-@router.post("/api/freesound/callback")
+@router.post("/api/freesound/callback", summary="Freesound OAuth Callback")
 async def freesound_callback(req: FreesoundCallbackRequest):
     """Exchanges code for token and saves it."""
     try:
@@ -169,19 +167,19 @@ async def freesound_callback(req: FreesoundCallbackRequest):
         return {"error": str(e)}, 500
 
 
-@router.get("/api/settings")
+@router.get("/api/settings", summary="Get Server Settings")
 async def get_settings():
     return load_vvr_settings()
 
 
-@router.post("/api/settings")
+@router.post("/api/settings", summary="Update Server Settings")
 async def update_settings(settings: Settings):
     save_vvr_settings(settings)
     await download_queue.update_workers(settings.num_workers)
     return {"status": "ok"}
 
 
-@router.post("/api/download")
+@router.post("/api/download", summary="Legacy Direct Download (v1)")
 async def download_novel(req: DownloadRequest):
     task_id = str(uuid.uuid4())[:8]
 
@@ -205,7 +203,7 @@ async def websocket_endpoint(websocket: WebSocket):
         manager.disconnect(websocket)
 
 
-@router.get("/api/novels/manifest")
+@router.get("/api/novels/manifest", summary="Get Novel Cinematic Manifest")
 async def get_novel_manifest(path: str = Query(..., description="Path relative to default output folder")):
     """Reads and returns the JSON manifest for a given novel/chapter path."""
     settings = load_vvr_settings()
@@ -229,7 +227,7 @@ async def get_novel_manifest(path: str = Query(..., description="Path relative t
             return json.load(f)
     except Exception as e:
         logger.error(f"Error reading manifest at {manifest_file}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # --- Static file routes ---

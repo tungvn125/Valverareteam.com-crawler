@@ -46,7 +46,7 @@ async def test_global_timestamp_calculation(tmp_path):
     with (
         patch("vvr_scraper.exporter.OpenAIParser") as MockParser,
         patch("vvr_scraper.exporter.VoiceManager") as MockVoiceManager,
-        patch("vvr_scraper.exporter.BGMManager") as MockBGMManager,
+        patch("vvr_scraper.exporter.BGMManager"),
         patch("vvr_scraper.exporter.FreesoundManager") as MockFreesoundManager,
         patch("vvr_scraper.exporter.MixingEngine") as MockMixingEngine,
         patch("pydub.AudioSegment.from_file") as MockAudioFromFile,

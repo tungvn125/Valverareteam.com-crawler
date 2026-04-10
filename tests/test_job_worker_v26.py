@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from vvr_scraper.enums import JobStatus
 from vvr_scraper.job_models import JobManifest, RenderJob, RenderPayload, ScrapeJob, ScrapePayload
 from vvr_scraper.job_worker import JobWorker
 
@@ -119,9 +120,9 @@ async def test_job_worker_recovery():
     db.get_db.return_value = mock_conn
 
     def mock_execute(query, *args):
-        if "IN ('pending', 'waiting')" in query:
+        if "IN (?, ?)" in query or "IN ('pending', 'waiting')" in query:
             return MockCursor(pending_jobs)
-        if "status = 'running'" in query:
+        if "status = ?" in query or "status = 'running'" in query:
             return MockCursor(running_jobs)
         return MockCursor()
 
@@ -132,7 +133,7 @@ async def test_job_worker_recovery():
     with patch.object(worker, "worker_loop", return_value=asyncio.sleep(0)):
         await worker.start()
 
-    db.update_job_status.assert_any_call("r1", "failed", error_summary="Hệ thống bị ngắt quãng")
+    db.update_job_status.assert_any_call("r1", JobStatus.FAILED, error_summary="Hệ thống bị ngắt quãng")
     assert worker.queue.qsize() == 1
     priority, job_id, job = await worker.queue.get()
     assert job_id == "p1"
@@ -160,5 +161,5 @@ async def test_recursive_cancellation():
 
     await worker.cancel_dependents("job1")
 
-    db.update_job_status.assert_any_call("job2", "cancelled", error_summary="Phụ thuộc vào job job1 bị lỗi")
-    db.update_job_status.assert_any_call("job3", "cancelled", error_summary="Phụ thuộc vào job job2 bị lỗi")
+    db.update_job_status.assert_any_call("job2", JobStatus.CANCELLED, error_summary="Phụ thuộc vào job job1 bị lỗi")
+    db.update_job_status.assert_any_call("job3", JobStatus.CANCELLED, error_summary="Phụ thuộc vào job job2 bị lỗi")

@@ -185,7 +185,6 @@ class OpenAIParser:
         full_script = []
 
         for i, chunk in enumerate(chunks):
-            chunk_success = False
             retries = 0
             MAX_RETRIES = 3  # 1 initial + 2 retries
 
@@ -195,7 +194,6 @@ class OpenAIParser:
                     logger.info(f"Parsing chunk {i + 1}/{len(chunks)} (Attempt {retries}/{MAX_RETRIES})...")
                     script_part = await self._parse_chunk(chunk)
                     full_script.extend(script_part)
-                    chunk_success = True
                     break
                 except Exception as e:
                     logger.error(f"Error parsing chunk {i + 1} (Attempt {retries}/{MAX_RETRIES}): {e}")
@@ -228,7 +226,7 @@ class VoiceManager:
 
         # Override narrator ID from env if provided
         self.narrator_voice_id = os.getenv("VVR_NARRATOR_VOICE_ID", self.DEFAULT_NARRATOR_VOICE_ID)
-        self._client = httpx.AsyncClient(timeout=None)
+        self._client = httpx.AsyncClient(timeout=300.0)  # 5 minutes for generation
 
     async def close(self):
         """Closes the internal httpx client."""
@@ -330,7 +328,7 @@ class VoiceManager:
                 final_pool = gender_candidates if gender_candidates else candidate_ids
 
                 # Pick a random voice from the pool
-                assigned_voice = random.choice(final_pool)
+                assigned_voice = random.choice(final_pool)  # noqa: S311  — non-cryptographic random choice is fine
 
             # Save to cache and DB
             self._voice_cache[char_normalized] = assigned_voice
@@ -411,7 +409,7 @@ class VoiceManager:
             starts = alignment.get("character_start_times_seconds", [])
             ends = alignment.get("character_end_times_seconds", [])
 
-            for char, start, end in zip(chars, starts, ends):
+            for char, start, end in zip(chars, starts, ends, strict=False):
                 if char.isspace():
                     if current_word_chars:
                         # Finish current word

@@ -408,7 +408,7 @@ class TestEdgeCases:
             ("file\u00a0name.txt", "file\u00a0name.txt"),  # Non-breaking space (kept)
         ]
         for input_name, expected in test_cases:
-            result = sanitize_filename(input_name)
+            sanitize_filename(input_name)
             # Just ensure no exception is raised
 
     @pytest.mark.asyncio

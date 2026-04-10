@@ -5,9 +5,6 @@ get_token_from_state, create_folders_from_tree, and configure_logger.
 
 import json
 import os
-import tempfile
-
-import pytest
 
 from vvr_scraper.utils import (
     configure_logger,
@@ -17,7 +14,6 @@ from vvr_scraper.utils import (
     get_token_from_state,
     normalize_vietnamese_url,
 )
-
 
 # =============================================================================
 # normalize_vietnamese_url
