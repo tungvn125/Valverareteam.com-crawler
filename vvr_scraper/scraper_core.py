@@ -22,11 +22,14 @@ MAX_RETRIES = 2
 async def lay_thong_tin_truyen(client: httpx.AsyncClient, ten_truyen: str, verbose: bool = False) -> StoryInfo:
     """
     Scrapes basic information about the story from its main page using httpx and BeautifulSoup.
+    Uses SSR proxy fallback for reliability.
     """
+    ssr_url = os.getenv("VVR_SSR_URL", "val-ssr-2kzit.ondigitalocean.app")
     url = f"https://valvrareteam.net/{ten_truyen}"
-    logger.debug(f"Fetching story info from: {url}")
+    ssr_target = url.replace("valvrareteam.net", ssr_url)
+    logger.debug(f"Fetching story info from: {ssr_target}")
 
-    response = await client.get(url, follow_redirects=True)
+    response = await client.get(ssr_target, follow_redirects=True, timeout=30.0)
     response.raise_for_status()
     soup = BeautifulSoup(response.text, "html.parser")
 
