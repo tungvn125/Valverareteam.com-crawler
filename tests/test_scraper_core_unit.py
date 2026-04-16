@@ -3,12 +3,15 @@ Unit tests for scraper_core.py — lay_chuong_httpx, lay_chuong_voi_hinh_anh, sc
 All network calls are mocked.
 """
 
+import os
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from vvr_scraper.models import ContentItem
 from vvr_scraper.scraper_core import (
+    lay_thong_tin_truyen,
     lay_chuong_httpx,
     lay_chuong_voi_hinh_anh,
     scrape_chapters,
@@ -148,6 +151,44 @@ class TestLayChuongHttpx:
 
         result = await lay_chuong_httpx(client, "https://valvrareteam.net/c1", verbose=True)
         assert result is None
+
+
+class TestLayThongTinTruyen:
+    @pytest.mark.asyncio
+    async def test_cleans_up_temp_cover_file_when_save_fails(self, tmp_path):
+        story_html = '<html><img class="rd-cover-image" src="https://cdn.example.com/cover.jpg"></html>'
+
+        story_resp = MagicMock()
+        story_resp.text = story_html
+        story_resp.raise_for_status = MagicMock()
+
+        image_resp = MagicMock()
+        image_resp.content = b"fake-image-bytes"
+        image_resp.raise_for_status = MagicMock()
+
+        client = AsyncMock()
+        client.get = AsyncMock(side_effect=[story_resp, image_resp])
+
+        cover_path = tmp_path / "vvr_cover_test.jpg"
+
+        def fake_mkstemp(*args, **kwargs):
+            path = Path(cover_path)
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC)
+            return fd, str(path)
+
+        real_open = open
+
+        def fake_open(path, mode="r", *args, **kwargs):
+            if str(path) == str(cover_path) and mode == "wb":
+                raise OSError("disk full")
+            return real_open(path, mode, *args, **kwargs)
+
+        with patch("vvr_scraper.scraper_core.tempfile.mkstemp", side_effect=fake_mkstemp):
+            with patch("builtins.open", side_effect=fake_open):
+                result = await lay_thong_tin_truyen(client, "test-story")
+
+        assert result.cover_path is None
+        assert cover_path.exists() is False
 
 
 # =============================================================================

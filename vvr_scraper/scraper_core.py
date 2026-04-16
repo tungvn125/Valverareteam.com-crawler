@@ -14,6 +14,7 @@ from loguru import logger
 from playwright.async_api import Browser
 
 from .models import ContentItem, StoryInfo
+from .sources import get_source
 from .utils import BASE_URL, HEADERS
 
 MAX_RETRIES = 2
@@ -21,11 +22,24 @@ MAX_RETRIES = 2
 
 async def lay_thong_tin_truyen(client: httpx.AsyncClient, ten_truyen: str, verbose: bool = False) -> StoryInfo:
     """
-    Scrapes basic information about the story from its main page using httpx and BeautifulSoup.
-    Uses SSR proxy fallback for reliability.
+    Scrapes basic information about the story from its main page.
+    Supports multiple sources including valvrareteam.net and others in .sources module.
     """
+    # Check if it's a full URL or just a slug
+    if ten_truyen.startswith("http"):
+        url = ten_truyen
+    else:
+        url = f"https://valvrareteam.net/{ten_truyen}"
+
+    # Try to find a custom source for non-VVR domains
+    if "valvrareteam.net" not in url:
+        source = get_source(url, client=client)
+        if source:
+            logger.info(f"Using custom source for: {url}")
+            return await source.get_info(url)
+
+    # Standard VVR logic
     ssr_url = os.getenv("VVR_SSR_URL", "val-ssr-2kzit.ondigitalocean.app")
-    url = f"https://valvrareteam.net/{ten_truyen}"
     ssr_target = url.replace("valvrareteam.net", ssr_url)
     logger.debug(f"Fetching story info from: {ssr_target}")
 
@@ -129,15 +143,15 @@ async def lay_thong_tin_truyen(client: httpx.AsyncClient, ten_truyen: str, verbo
             response = await client.get(cover_url, timeout=30.0)
             response.raise_for_status()
 
-            def save_cover():
-                # Use a unique temp file to avoid race conditions in multi-download
-                _fd, _cover_path = tempfile.mkstemp(suffix=".jpg", prefix="vvr_cover_")
-                os.close(_fd)  # Close the fd immediately; fdopen will reopen it
-                with open(_cover_path, "wb") as f:
-                    f.write(response.content)
-                return _cover_path
+            # Use a unique temp file to avoid race conditions in multi-download
+            _fd, cover_path = tempfile.mkstemp(suffix=".jpg", prefix="vvr_cover_")
+            os.close(_fd)
 
-            cover_path = await asyncio.to_thread(save_cover)
+            def save_cover(path: str, content: bytes) -> None:
+                with open(path, "wb") as f:
+                    f.write(content)
+
+            await asyncio.to_thread(save_cover, cover_path, response.content)
             logger.info(f"Đã tải ảnh bìa: {cover_path}")
         except Exception as e:
             logger.warning(f"Không thể tải ảnh bìa: {e}")
@@ -163,12 +177,23 @@ async def lay_thong_tin_truyen(client: httpx.AsyncClient, ten_truyen: str, verbo
 
 
 async def lay_chuong_httpx(
-    client: httpx.AsyncClient, url: str, verbose: bool = False, token: str | None = None
+    client: httpx.AsyncClient, url: str, verbose: bool = False, token: str | None = None, browser: Browser | None = None
 ) -> list[ContentItem] | None:
     """
-    Scrapes a single chapter page using httpx and BeautifulSoup (Fast Mode).
-    Uses the DigitalOcean SSR fallback for better reliability and speed.
+    Scrapes a single chapter page using httpx (Fast Mode).
+    Supports custom sources for non-VVR domains.
     """
+    if "valvrareteam.net" not in url:
+        source = get_source(url, client=client, browser=browser)
+        if source:
+            try:
+                # If it's Hako, it might need browser even in 'Fast' mode (though not really fast)
+                # But BaseSource.get_content handles its own logic
+                return await source.get_content(url)
+            except Exception as e:
+                logger.error(f"Custom source scrape failed for {url}: {e}")
+                return None
+
     ssr_url = os.getenv("VVR_SSR_URL", "val-ssr-2kzit.ondigitalocean.app")
     fallback_url = url.replace("valvrareteam.net", ssr_url)
     logger.debug(f"Fast-scraping from: {fallback_url}")
@@ -281,7 +306,13 @@ async def scrape_chapters(
         on_chapter_done: Optional async callback(url, content, index, total)
                          called after each chapter is processed (success or skip).
     """
-    semaphore = asyncio.Semaphore(concurrent_tasks)
+    # Reduce concurrency for custom sources — they often rate-limit
+    has_custom_urls = any("valvrareteam.net" not in url for url in urls)
+    effective_concurrency = max(1, concurrent_tasks // 2) if has_custom_urls else concurrent_tasks
+    if effective_concurrency != concurrent_tasks:
+        logger.info(f"Custom source detected — reducing concurrency: {concurrent_tasks} → {effective_concurrency}")
+
+    semaphore = asyncio.Semaphore(effective_concurrency)
     scraped_content: dict[str, list[ContentItem]] = {}
     if skipped_urls is None:
         skipped_urls = []
@@ -313,7 +344,8 @@ async def scrape_chapters(
             async with semaphore:
                 content = None
                 # 1. Try Fast Mode (HTTPX) — reuses shared client
-                content = await lay_chuong_httpx(client, url, verbose=verbose, token=token)
+                # Now also supports custom sources which might need browser
+                content = await lay_chuong_httpx(client, url, verbose=verbose, token=token, browser=browser)
 
                 # 2. Try Reliable Mode (Playwright) if Fast Mode failed
                 if not content:
