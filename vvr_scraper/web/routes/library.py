@@ -102,6 +102,7 @@ async def check_library_updates(db: DatabaseManager, mgr: ConnectionManager | No
     novels = await db.get_all_novels()
     total = len(novels)
     updates_found = 0
+    semaphore = asyncio.Semaphore(5)
 
     session_state = load_session(get_config_path(".vvr_session.json"))
     cookies = {}
@@ -110,49 +111,55 @@ async def check_library_updates(db: DatabaseManager, mgr: ConnectionManager | No
             cookies[c["name"]] = c["value"]
 
     async with httpx.AsyncClient(headers=HEADERS, cookies=cookies, timeout=20.0) as client:
-        for i, novel in enumerate(novels):
+
+        async def check_one_novel(i: int, novel: dict):
+            nonlocal updates_found
             slug = novel["slug"]
             title = novel["title"]
 
-            if mgr:
-                await mgr.broadcast(
-                    {"type": "library_check_progress", "current": i + 1, "total": total, "title": title}
-                )
+            async with semaphore:
+                if mgr:
+                    await mgr.broadcast(
+                        {"type": "library_check_progress", "current": i + 1, "total": total, "title": title}
+                    )
 
-            try:
-                info = await lay_thong_tin_truyen(client, slug)
+                try:
+                    info = await lay_thong_tin_truyen(client, slug)
 
-                if info.total_chapters == "Unknown":
-                    logger.warning(f"Unknown chapter count for {title} ({slug}). Skipping.")
-                    continue
+                    if info.total_chapters == "Unknown":
+                        logger.warning(f"Unknown chapter count for {title} ({slug}). Skipping.")
+                        return
 
-                server_count = 0
-                match = re.search(r"(\d+[\d.,]*)", info.total_chapters)
-                if match:
-                    server_count = int(match.group(1).replace(".", "").replace(",", ""))
+                    server_count = 0
+                    match = re.search(r"(\d+[\d.,]*)", info.total_chapters)
+                    if match:
+                        server_count = int(match.group(1).replace(".", "").replace(",", ""))
 
-                last_synced = novel.get("last_synced_count") or 0
-                has_updates = 1 if server_count > last_synced else 0
-                if has_updates:
-                    updates_found += 1
+                    last_synced = novel.get("last_synced_count") or 0
+                    has_updates = 1 if server_count > last_synced else 0
+                    if has_updates:
+                        updates_found += 1
 
-                await db.update_library_metadata(
-                    slug,
-                    {
-                        "server_chapter_count": server_count,
-                        "has_updates": has_updates,
-                        "last_checked_at": datetime.now().isoformat(),
-                    },
-                )
+                    await db.update_library_metadata(
+                        slug,
+                        {
+                            "server_chapter_count": server_count,
+                            "has_updates": has_updates,
+                            "last_checked_at": datetime.now().isoformat(),
+                        },
+                    )
 
-            except httpx.HTTPStatusError as e:
-                if e.response.status_code == 404:
-                    logger.warning(f"Novel {title} ({slug}) not found (404). Archiving.")
-                    await db.update_library_metadata(slug, {"status": "archived"})
-                else:
-                    logger.error(f"HTTP error {e.response.status_code} for {slug}: {e}")
-            except Exception as e:
-                logger.error(f"Error checking update for {slug}: {e}")
+                except httpx.HTTPStatusError as e:
+                    if e.response.status_code == 404:
+                        logger.warning(f"Novel {title} ({slug}) not found (404). Archiving.")
+                        await db.update_library_metadata(slug, {"status": "archived"})
+                    else:
+                        logger.error(f"HTTP error {e.response.status_code} for {slug}: {e}")
+                except Exception as e:
+                    logger.error(f"Error checking update for {slug}: {e}")
+
+        tasks = [check_one_novel(i, novel) for i, novel in enumerate(novels)]
+        await asyncio.gather(*tasks)
 
     if mgr:
         await mgr.broadcast({"type": "library_check_complete", "updates_found": updates_found})
@@ -196,14 +203,6 @@ async def auto_sync_background_task(db_manager: DatabaseManager, worker_instance
             logger.error(f"Error in auto_sync_background_task: {e}")
 
         await asyncio.sleep(3600)
-
-
-@router.get("/library/check-updates")
-async def trigger_library_check_updates():
-    """Trigger library update check in the background."""
-    db = get_db()
-    asyncio.create_task(check_library_updates(db, manager))
-    return {"status": "started"}
 
 
 @router.post("/library/check")
