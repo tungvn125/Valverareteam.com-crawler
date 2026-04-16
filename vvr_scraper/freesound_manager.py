@@ -53,11 +53,14 @@ class FreesoundManager:
         if "access_token" in self.token:
             self.client.set_token(self.token["access_token"], "oauth")
 
-    def get_auth_url(self) -> str:
+    def get_auth_url(self, state: str | None = None) -> str:
         """Returns the Freesound OAuth2 authorization URL."""
         if not self.client_id:
             raise ValueError("FREESOUND_CLIENT_ID is not set.")
-        return f"https://freesound.org/apiv2/oauth2/authorize/?client_id={self.client_id}&response_type=code"
+        url = f"https://freesound.org/apiv2/oauth2/authorize/?client_id={self.client_id}&response_type=code"
+        if state:
+            url += f"&state={state}"
+        return url
 
     async def exchange_code(self, code: str) -> dict[str, str]:
         """Exchanges an authorization code for an access token."""

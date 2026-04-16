@@ -80,6 +80,8 @@ async def test_tao_file_audiodrama_flow(tmp_path):
             patch("vvr_scraper.exporter.ImageGenerator") as MockImageGenerator,
         ):
             vm_instance = MockVoiceManager.return_value
+            vm_instance.get_known_characters = AsyncMock(return_value=[])
+            vm_instance.resolve_aliases = MagicMock(side_effect=lambda x: x)
             vm_instance.get_voice = AsyncMock(return_value="fake_voice_id")
             vm_instance.synthesize = AsyncMock(
                 return_value=(b"fake_audio", [{"word": "Hello", "start": 0, "end": 500}])
@@ -150,6 +152,8 @@ async def test_tao_file_audiodrama_v2_with_moods(tmp_path):
             patch("vvr_scraper.exporter.ImageGenerator") as MockImageGenerator,
         ):
             vm_instance = MockVoiceManager.return_value
+            vm_instance.get_known_characters = AsyncMock(return_value=[])
+            vm_instance.resolve_aliases = MagicMock(side_effect=lambda x: x)
             vm_instance.get_voice = AsyncMock(return_value="fake_voice_id")
             vm_instance.synthesize = AsyncMock(return_value=(b"audio", [{"word": "Action", "start": 0, "end": 500}]))
             vm_instance.close = AsyncMock()
@@ -208,6 +212,9 @@ async def test_tao_file_audiodrama_fallback(tmp_path):
     content_list = [ContentItem(type="text", data="text")]
 
     mock_db = MagicMock()
+    mock_db.get_all_story_voices = AsyncMock(return_value={})
+    mock_db.get_character_profiles = AsyncMock(return_value=[])
+    mock_db.save_character_profile = AsyncMock()
 
     # Don't use clear=True to preserve PATH for pydub
     with patch.dict(os.environ, {"ELEVENLABS_API_KEY": ""}):

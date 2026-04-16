@@ -4,6 +4,7 @@ Global singletons that are accessed across route modules.
 """
 
 import asyncio
+import time
 from typing import TYPE_CHECKING
 
 from fastapi import WebSocket
@@ -11,6 +12,9 @@ from loguru import logger
 
 if TYPE_CHECKING:
     from ..job_worker import JobWorker
+
+OAUTH_STATE_TTL = 600  # 10 minutes
+TASK_LOG_TTL = 3600  # 1 hour
 
 
 class ConnectionManager:
@@ -28,11 +32,14 @@ class ConnectionManager:
             self.active_connections.remove(websocket)
 
     async def broadcast(self, message: dict):
+        dead = []
         for connection in self.active_connections:
             try:
                 await connection.send_json(message)
-            except Exception:  # noqa: S110  — Drop message if connection is dead
-                pass
+            except Exception:
+                dead.append(connection)
+        for conn in dead:
+            self.active_connections.remove(conn)
 
 
 class DownloadManager:
@@ -85,6 +92,24 @@ class DownloadManager:
         await self.queue.put((req, task_id))
 
 
+def cleanup_expired_states():
+    """Remove expired OAuth states and old task log buffers."""
+    now = time.time()
+
+    # Clean expired OAuth states
+    expired_states = [k for k, v in active_oauth_states.items() if now - v > OAUTH_STATE_TTL]
+    for k in expired_states:
+        del active_oauth_states[k]
+
+    # Clean task log buffers for completed tasks (not in active_tasks or active_tasks_futures)
+    completed_buffers = [
+        task_id for task_id in task_log_buffers if task_id not in active_tasks and task_id not in active_tasks_futures
+    ]
+    # Only remove if older than TASK_LOG_TTL (we don't have timestamps, so remove completed ones)
+    for task_id in completed_buffers:
+        del task_log_buffers[task_id]
+
+
 # --- Global Singletons ---
 
 manager = ConnectionManager()
@@ -95,6 +120,7 @@ worker: "JobWorker | None" = None
 active_tasks: dict = {}
 active_tasks_futures: dict[str, asyncio.Task] = {}
 task_log_buffers: dict[str, list[dict]] = {}
+active_oauth_states: dict[str, float] = {}  # {state: timestamp}
 
 # Event loop reference for websocket sink
 _event_loop: asyncio.AbstractEventLoop | None = None

@@ -158,6 +158,8 @@ async def test_voice_manager_assignment_and_persistence():
     mock_db = MagicMock()
     mock_db.save_character_voice = AsyncMock()
     mock_db.get_all_story_voices = AsyncMock(return_value={})
+    mock_db.get_character_profiles = AsyncMock(return_value=[])
+    mock_db.save_character_profile = AsyncMock()
 
     story_id = "story_123"
     vm = VoiceManager(mock_db, story_id)
@@ -171,13 +173,16 @@ async def test_voice_manager_assignment_and_persistence():
     # By default, with no available voices, it should fallback to narrator_voice_id
     assert voice1 == vm.narrator_voice_id
     # Should have saved to DB with normalized name
-    mock_db.save_character_voice.assert_called_with(story_id, "lâm", voice1)
+    mock_db.save_character_profile.assert_called_once()
+    saved_profile = mock_db.save_character_profile.call_args[0][0]
+    assert saved_profile.name == "Lâm"
+    assert saved_profile.voice_id == voice1
 
     # 2. Existing character from cache
     voice2 = await vm.get_voice(char_name)
     assert voice2 == voice1
     # Should NOT have saved to DB again (it was already in DB/cache)
-    assert mock_db.save_character_voice.call_count == 1
+    assert mock_db.save_character_profile.call_count == 1
 
 
 @pytest.mark.asyncio
@@ -194,6 +199,8 @@ async def test_voice_manager_gender_aware():
     mock_db = MagicMock()
     mock_db.save_character_voice = AsyncMock()
     mock_db.get_all_story_voices = AsyncMock(return_value={})
+    mock_db.get_character_profiles = AsyncMock(return_value=[])
+    mock_db.save_character_profile = AsyncMock()
 
     story_id = "story_gender"
     vm = VoiceManager(mock_db, story_id)
@@ -221,6 +228,8 @@ async def test_voice_manager_normalization():
     """Tests that VoiceManager normalizes names (case-insensitive, stripped)."""
     mock_db = MagicMock()
     mock_db.get_all_story_voices = AsyncMock(return_value={"nam": "voice_1"})
+    mock_db.get_character_profiles = AsyncMock(return_value=[])
+    mock_db.save_character_profile = AsyncMock()
 
     story_id = "story_123"
     vm = VoiceManager(mock_db, story_id)

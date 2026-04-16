@@ -138,8 +138,8 @@ class VideoRenderer:
                             resp = await hc.get(f"http://127.0.0.1:{port}/static/cinema.html")
                             if resp.status_code == 200:
                                 break
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"Waiting for temp server readiness on port {port}: {e}")
                     await asyncio.sleep(0.1)
 
                 # Get the slug from manifest path (folder name)

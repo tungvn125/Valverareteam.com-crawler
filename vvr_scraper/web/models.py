@@ -29,6 +29,7 @@ class BatchImportRequest(BaseModel):
 
 class FreesoundCallbackRequest(BaseModel):
     code: str
+    state: str | None = None
 
 
 # --- Settings ---
@@ -37,6 +38,12 @@ class FreesoundCallbackRequest(BaseModel):
 class Settings(BaseModel):
     num_workers: int = 1
     default_output_folder: str = "novels"
+    # Audio Drama settings
+    crossfade_default_ms: int = 2000
+    crossfade_battle_ms: int = 500
+    voice_overlay_offset_ms: int = 1000
+    gap_between_segments_ms: int = 500
+    bgm_volume_db: float = -20.0
 
 
 SETTINGS_FILE_NAME = "vvr_settings.json"

@@ -9,6 +9,8 @@ import httpx
 from loguru import logger
 from openai import AsyncOpenAI
 
+from .models import CharacterProfile
+
 
 class ScriptResult(list):
     """
@@ -85,9 +87,18 @@ class OpenAIParser:
         # Fallback in case of error
         return "You are an expert scriptwriter for audio dramas. Convert web novel text to JSON script format."
 
-    async def _parse_chunk(self, chunk: str) -> list[dict]:
+    async def _parse_chunk(self, chunk: str, known_characters: list[CharacterProfile] | None = None) -> list[dict]:
         """Parses a single chunk of text into a script list."""
         system_instruction = self._load_prompt()
+
+        if known_characters:
+            char_context = "\n## Known Characters (Context)\n"
+            char_context += "Use these characters for role identification and alias resolution:\n"
+            for p in known_characters:
+                aliases_str = ", ".join(p.aliases) if p.aliases else "None"
+                char_context += f"- **{p.name}** (Gender: {p.gender}): Aliases: {aliases_str}\n"
+            system_instruction += char_context
+
         response = await self.client.chat.completions.create(
             model=self.model or "gpt-4o-mini",
             messages=[
@@ -158,7 +169,7 @@ class OpenAIParser:
 
         return script_part
 
-    async def parse_chapter(self, text: str) -> ScriptResult:
+    async def parse_chapter(self, text: str, known_characters: list[CharacterProfile] | None = None) -> ScriptResult:
         """
         Parses chapter text into a list of dialogue/narrator segments and mood shifts using OpenAI.
         Handles large chapters by chunking the text and merging the results.
@@ -192,7 +203,7 @@ class OpenAIParser:
                 retries += 1
                 try:
                     logger.info(f"Parsing chunk {i + 1}/{len(chunks)} (Attempt {retries}/{MAX_RETRIES})...")
-                    script_part = await self._parse_chunk(chunk)
+                    script_part = await self._parse_chunk(chunk, known_characters=known_characters)
                     full_script.extend(script_part)
                     break
                 except Exception as e:
@@ -220,13 +231,17 @@ class VoiceManager:
     def __init__(self, db, story_id: str):
         self.db = db
         self.story_id = story_id
-        self._voice_cache = {}
+        self._voice_cache = {}  # char_name -> voice_id
+        self._profile_cache = {}  # char_name -> CharacterProfile
         self._initialized = False
         self._instance_lock = asyncio.Lock()
 
         # Override narrator ID from env if provided
         self.narrator_voice_id = os.getenv("VVR_NARRATOR_VOICE_ID", self.DEFAULT_NARRATOR_VOICE_ID)
         self._client = httpx.AsyncClient(timeout=300.0)  # 5 minutes for generation
+        # Instance-level snapshots captured under the global lock
+        self._cached_available_voices: list[str] = []
+        self._cached_voice_metadata: dict[str, dict] = {}
 
     async def close(self):
         """Closes the internal httpx client."""
@@ -237,10 +252,18 @@ class VoiceManager:
         if self._initialized:
             return
 
-        # 1. Load existing assignments from DB
+        # 1. Load existing assignments and profiles from DB
         if hasattr(self.db, "get_all_story_voices"):
             db_voices = await self.db.get_all_story_voices(self.story_id)
-            self._voice_cache.update(db_voices)
+            self._voice_cache.update({k.lower(): v for k, v in db_voices.items()})
+
+        if hasattr(self.db, "get_character_profiles"):
+            profiles = await self.db.get_character_profiles(self.story_id)
+            for p in profiles:
+                self._profile_cache[p.name.lower()] = p
+                # Ensure voice cache is in sync
+                if p.voice_id:
+                    self._voice_cache[p.name.lower()] = p.voice_id
 
         # 2. Fetch ElevenLabs voices (using global cache)
         # All reads AND writes to _global_available_voices / _global_voice_metadata
@@ -283,6 +306,11 @@ class VoiceManager:
 
         self._initialized = True
 
+    async def get_known_characters(self) -> list[CharacterProfile]:
+        """Returns all known character profiles for this story."""
+        await self._init_cache()
+        return list(self._profile_cache.values())
+
     async def get_voice(self, character_name: str, gender: str = "unknown") -> str:
         """
         Retrieves the voice ID for a character. Narrator is always the default.
@@ -298,7 +326,13 @@ class VoiceManager:
         async with self._instance_lock:
             await self._init_cache()
 
-            # Check cache (instance and DB)
+            # Check profile cache
+            if char_normalized in self._profile_cache:
+                profile = self._profile_cache[char_normalized]
+                if profile.voice_id:
+                    return profile.voice_id
+
+            # Check legacy voice cache
             if char_normalized in self._voice_cache:
                 return self._voice_cache[char_normalized]
 
@@ -330,15 +364,56 @@ class VoiceManager:
                 # Pick a random voice from the pool
                 assigned_voice = random.choice(final_pool)  # noqa: S311  — non-cryptographic random choice is fine
 
-            # Save to cache and DB
+            # Save to profile cache and DB
+            profile = self._profile_cache.get(char_normalized)
+            if not profile:
+                profile = CharacterProfile(
+                    name=character_name.strip(),
+                    story_id=self.story_id,
+                    gender=gender,
+                    voice_id=assigned_voice,
+                )
+                self._profile_cache[char_normalized] = profile
+            else:
+                profile.voice_id = assigned_voice
+                if gender != "unknown" and profile.gender == "unknown":
+                    profile.gender = gender
+
             self._voice_cache[char_normalized] = assigned_voice
-            if hasattr(self.db, "save_character_voice"):
-                await self.db.save_character_voice(self.story_id, char_normalized, assigned_voice)
+
+            if hasattr(self.db, "save_character_profile"):
+                await self.db.save_character_profile(profile)
 
             logger.debug(
                 f"Assigned voice '{assigned_voice}' ({VoiceManager._global_voice_metadata.get(assigned_voice, {}).get('name', 'Unknown')}) to character '{character_name}' (gender: {gender})"
             )
             return assigned_voice
+
+    def resolve_aliases(self, script_segments: list[dict]) -> list[dict]:
+        """
+        NLP-based alias resolution for script segments.
+        Updates 'role' in segments if it matches a known alias.
+        """
+        # Create mapping from alias to canonical name
+        alias_map = {}
+        for p in self._profile_cache.values():
+            for alias in p.aliases:
+                alias_map[alias.lower().strip()] = p.name
+
+        for seg in script_segments:
+            role = seg.get("role")
+            if not role or role.lower() == "narrator":
+                continue
+
+            role_normalized = role.lower().strip()
+            if role_normalized in alias_map:
+                logger.debug(f"Resolved alias '{role}' to '{alias_map[role_normalized]}'")
+                seg["role"] = alias_map[role_normalized]
+
+        # TODO: Implement "nearest mention" heuristic for ambiguous cases
+        # (e.g. if role is 'hắn', look back for the nearest male character)
+
+        return script_segments
 
     async def synthesize(self, voice_id: str, text: str, stability: float = 0.35) -> tuple[bytes, list[dict]]:
         """

@@ -5,6 +5,8 @@ import { taskAction, fetchTaskLogs } from './api.js';
 
 export const etaCalc = new ETACalculator();
 
+const esc = (s) => s ? String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;') : '';
+
 // Shared UI Functions
 export function showNotification(msg) {
     const toast = document.createElement('div');
@@ -47,11 +49,11 @@ export function renderLogEntry(data) {
     if (data.level === 'ERROR') {
         const suggestion = getActionableErrorSuggestion(data.message);
         if (suggestion) {
-            errActionHTML = `<div style="margin-top:5px; padding:8px; background:var(--error); color:#fff; border-radius:5px; font-weight:bold;">💡 Gợi ý xử lý: ${suggestion}</div>`;
+            errActionHTML = `<div style="margin-top:5px; padding:8px; background:var(--error); color:#fff; border-radius:5px; font-weight:bold;">💡 Gợi ý xử lý: ${esc(suggestion)}</div>`;
         }
     }
 
-    entry.innerHTML = `<span class="time">[${data.time || new Date().toLocaleTimeString()}]</span> <span class="level ${data.level || 'INFO'}">${data.level || 'INFO'}</span> ${data.message} ${errActionHTML}`;
+    entry.innerHTML = `<span class="time">[${esc(data.time || new Date().toLocaleTimeString())}]</span> <span class="level ${esc(data.level || 'INFO').toLowerCase()}">${esc(data.level || 'INFO')}</span> ${esc(data.message)} ${errActionHTML}`;
     logViewer.appendChild(entry);
     logViewer.scrollTop = logViewer.scrollHeight;
 }
@@ -99,7 +101,7 @@ export function createTaskUI(taskId, title) {
     taskItem.onclick = () => selectTask(taskId);
     taskItem.innerHTML = `
         <div class="task-header">
-            <span class="task-title">${title}</span>
+            <span class="task-title">${esc(title)}</span>
             <div class="task-controls">
                 <button class="pause-btn" title="Tạm dừng">⏸</button>
                 <button class="resume-btn" title="Tiếp tục" style="display:none">▶</button>
@@ -223,7 +225,7 @@ export function finishTask(taskId, path) {
         const clist = document.getElementById('completedList');
         const item = document.createElement('div');
         item.className = 'completed-item';
-        item.innerHTML = `<span class="status-dot tooltip" title="Lưu tại: ${path}"></span> <span class="title">${task.title}</span>`;
+        item.innerHTML = `<span class="status-dot tooltip" title="Lưu tại: ${esc(path)}"></span> <span class="title">${esc(task.title)}</span>`;
         clist.prepend(item);
     }
     
