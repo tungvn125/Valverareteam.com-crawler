@@ -3,13 +3,10 @@ OPDS XML Generator Module for Valvrare Team Web Novel Scraper.
 Provides functions to create OPDS catalogs (Atom XML format).
 """
 
-import os
 from datetime import datetime, timezone
 from typing import Any
 
 from lxml import etree
-
-from .utils import sanitize_filename
 
 # Standard Namespaces
 ATOM_NS = "http://www.w3.org/2005/Atom"

@@ -23,6 +23,7 @@ from ...exporter import (
 from ...scraper_core import lay_thong_tin_truyen, scrape_chapters
 from ...session_manager import load_session
 from ...tao_so_do_cay import get_chapter_tree_list
+from ...mixing_engine import TimelineConfig
 from ...utils import BASE_URL, HEADERS, get_config_path, get_token_from_state, sanitize_filename
 from ..deps import get_db
 from ..models import DownloadRequest, load_vvr_settings
@@ -42,7 +43,11 @@ async def run_scrape_task(req: DownloadRequest, task_id: str):
             for c in session_state["cookies"]:
                 cookies[c["name"]] = c["value"]
 
+        # Determine if slug is a full URL (custom source) or VVR slug
+        is_custom_source = req.slug.startswith("http")
+
         async with httpx.AsyncClient(headers=HEADERS, cookies=cookies, timeout=30.0) as client:
+            # For custom sources, pass full URL to lay_thong_tin_truyen
             story_info = await lay_thong_tin_truyen(client, req.slug)
 
         await manager.broadcast({"type": "info", "task_id": task_id, "title": story_info.title})
@@ -84,7 +89,7 @@ async def run_scrape_task(req: DownloadRequest, task_id: str):
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
 
-            story_url = f"{BASE_URL}/{req.slug}"
+            story_url = req.slug if is_custom_source else f"{BASE_URL}/{req.slug}"
             chapter_data = await get_chapter_tree_list(
                 story_url, output_file=f"chapters_{task_id}.json", session_state=session_state, browser=browser
             )
@@ -111,10 +116,14 @@ async def run_scrape_task(req: DownloadRequest, task_id: str):
             if req.skip_illustrations:
                 all_chaps = [c for c in all_chaps if "Minh họa" not in c["title"]]
 
+            def chapter_full_url(chap):
+                """Convert chapter URL to full URL regardless of source."""
+                return chap["url"] if chap["url"].startswith("http") else f"{BASE_URL}{chap['url']}"
+
             if selected_set:
-                urls = [f"{BASE_URL}{c['url']}" for c in all_chaps if f"{BASE_URL}{c['url']}" in selected_set]
+                urls = [chapter_full_url(c) for c in all_chaps if chapter_full_url(c) in selected_set]
             else:
-                urls = [f"{BASE_URL}{c['url']}" for c in all_chaps]
+                urls = [chapter_full_url(c) for c in all_chaps]
 
             logger.info(f"Using {len(urls)} URLs for download")
 
@@ -180,7 +189,7 @@ async def run_scrape_task(req: DownloadRequest, task_id: str):
         for v_info in chapter_data:
             v_chaps = []
             for c_entry in v_info["chapters"]:
-                f_url = f"{BASE_URL}{c_entry['url']}"
+                f_url = c_entry["url"] if c_entry["url"].startswith("http") else f"{BASE_URL}{c_entry['url']}"
                 if f_url in urls_set and f_url in scraped:
                     v_chaps.append({"title": c_entry["title"], "content": scraped[f_url]})
                     full_flat.extend(scraped[f_url])
@@ -220,12 +229,22 @@ async def run_scrape_task(req: DownloadRequest, task_id: str):
                         "VVR_API_KEY or VVR_BASE_URL not found. Audio Drama generation might fail or fallback."
                     )
 
+                settings = load_vvr_settings()
+                tl_config = TimelineConfig(
+                    crossfade_default_ms=settings.crossfade_default_ms,
+                    crossfade_battle_ms=settings.crossfade_battle_ms,
+                    voice_overlay_offset_ms=settings.voice_overlay_offset_ms,
+                    gap_between_segments_ms=settings.gap_between_segments_ms,
+                    bgm_volume_db=settings.bgm_volume_db,
+                )
+
                 await tao_file_audiodrama(
                     content_list=full_flat,
                     filename=fpath,
                     story_id=req.slug,
                     db_manager=db,
                     title=story_info.title,
+                    timeline_config=tl_config,
                 )
 
         # Update library DB

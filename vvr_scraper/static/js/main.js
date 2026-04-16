@@ -172,11 +172,15 @@ function displaySearchResults(results) {
         searchResults.innerHTML = '<div class="search-item">Không tìm thấy kết quả.</div>';
     } else {
         results.forEach(item => {
+            const sourceLabel = item.source === 'valvrareteam' ? 'VVR' :
+                               item.source === 'truyenfull' ? 'TF' :
+                               item.source === 'lnhako' ? 'Hako' : '';
+            const sourceTag = sourceLabel ? ` [${sourceLabel}]` : '';
             const div = document.createElement('div');
             div.className = 'search-item';
             div.innerHTML = `
-                <span class="title">${item.title}</span>
-                <span class="meta">${item.author} | ${item.status || ''} | ${item.totalChapters || '?'} chương</span>
+                <span class="title">${esc(item.title)}${esc(sourceTag)}</span>
+                <span class="meta">${esc(item.author || '')} | ${esc(item.status || '')} | ${item.totalChapters || '?'} chương</span>
             `;
             div.onclick = () => openPreviewModal(item);
             searchResults.appendChild(div);
@@ -482,23 +486,33 @@ function filterLibrary() {
 
         const hasCinema = novel.formats && novel.formats.includes('AD-MP3');
         const cinemaBtn = hasCinema && novel.output_folder ? `<button class="btn-primary btn-sm watch-cinema-btn" style="background: linear-gradient(135deg, #00cfd5, #a855f7); border: none;">Xem Cinema 🎬</button>` : '';
+        const correctBtn = hasCinema ? `<button class="btn-secondary btn-sm correct-novel-btn">Sửa kịch bản</button>` : '';
         
+        // Escape HTML to prevent XSS
+        const esc = (s) => s ? s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;') : '';
+        const safeTitle = esc(novel.title);
+        const safeAuthor = esc(novel.author || 'Ẩn danh');
+        const safeCoverUrl = esc(novel.cover_url || '');
+        const safeStatusClass = esc(statusClass);
+        const safeStatusText = esc(statusText);
+        const noCoverSvg = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='240' fill='%23333'%3E%3Crect width='100%25' height='100%25' fill='%23222'/%3E%3Ctext x='50%25' y='50%25' font-size='16' fill='%23888' text-anchor='middle' dy='.3em'%3ENo Cover%3C/text%3E%3C/svg%3E";
+
         card.innerHTML = `
             ${updateBadge}
             <div class="card-cover">
-                <img src="${novel.cover_url || 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22180%22 height=%22240%22 fill=%22%23333%22%3E%3Crect width=%22100%25%22 height=%22100%25%22 fill=%22%23222%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 font-size=%2216%22 fill=%22%23888%22 text-anchor=%22middle%22 dy=%22.3em%22%3ENo Cover%3C/text%3E%3C/svg%3E'}" alt="${novel.title}" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22180%22 height=%22240%22 fill=%22%23333%22%3E%3Crect width=%22100%25%22 height=%22100%25%22 fill=%22%23222%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 font-size=%2216%22 fill=%22%23888%22 text-anchor=%22middle%22 dy=%22.3em%22%3ENo Cover%3C/text%3E%3C/svg%3E'">
-                <span class="status-badge ${statusClass}">${statusText}</span>
+                <img src="${safeCoverUrl || noCoverSvg}" alt="${safeTitle}" onerror="this.src='${noCoverSvg}'">
+                <span class="status-badge ${safeStatusClass}">${safeStatusText}</span>
             </div>
             <div class="card-info">
-                <div class="card-title" title="${novel.title}">${novel.title}</div>
-                <div class="card-author">${novel.author || 'Ẩn danh'}</div>
+                <div class="card-title" title="${safeTitle}">${safeTitle}</div>
+                <div class="card-author">${safeAuthor}</div>
                 <div class="card-meta">
                     <span>${novel.last_synced_count || novel.last_chapter_count || 0} chương</span>
-                    <span title="${novel.output_folder || 'Chưa có đường dẫn'}">${novel.output_folder ? '📂' : ''}</span>
                 </div>
             </div>
             <div class="card-actions">
                 ${cinemaBtn}
+                ${correctBtn}
                 <button class="btn-primary btn-sm update-novel-btn">Cập nhật</button>
                 <button class="btn-secondary btn-sm preview-novel-btn">Chi tiết</button>
             </div>
@@ -518,6 +532,15 @@ function filterLibrary() {
         
         card.querySelector('.update-novel-btn').onclick = (e) => { e.stopPropagation(); openPreviewModal(novel); };
         card.querySelector('.preview-novel-btn').onclick = (e) => { e.stopPropagation(); openPreviewModal(novel); };
+        
+        const correctBtnEl = card.querySelector('.correct-novel-btn');
+        if (correctBtnEl) {
+            correctBtnEl.onclick = (e) => {
+                e.stopPropagation();
+                window.open(`/static/correction.html?slug=${encodeURIComponent(novel.slug)}`, '_blank');
+            };
+        }
+        
         card.onclick = () => openPreviewModal(novel);
         
         libraryGrid.appendChild(card);

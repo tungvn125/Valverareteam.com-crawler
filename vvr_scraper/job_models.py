@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field, RootModel
 
 
 class ScrapePayload(BaseModel):
-    slug: str
+    slug: str  # VVR slug (e.g. "truyen/ten-truyen-12345"), or full URL (e.g. "https://truyenfull.vision/...")
     chapters: list[int] | None = None
     from_chapter: int | None = None
     to_chapter: int | None = None

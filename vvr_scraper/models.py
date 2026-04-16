@@ -47,6 +47,21 @@ class Volume:
     chapters: list[Chapter]
 
 
+@dataclass
+class CharacterProfile:
+    """Detailed profile for a character in a story."""
+
+    name: str  # canonical name
+    story_id: str
+    aliases: list[str] = field(default_factory=list)
+    gender: str = "unknown"
+    voice_id: str | None = None
+    personality: str | None = None
+    speaking_style: str | None = None
+    emotion_range: float = 0.5
+    color: str | None = None
+
+
 # Type aliases for backward compatibility
 ChapterData = dict[str, str | list[dict[str, str]]]
 VolumeData = dict[str, str | list[ChapterData]]

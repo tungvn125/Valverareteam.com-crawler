@@ -20,6 +20,7 @@ from vvr_scraper.exporter import (
 )
 from vvr_scraper.job_models import JobManifest, RenderPayload, ScrapePayload, ServerPayload
 from vvr_scraper.job_parser import parse_manifest
+from vvr_scraper.mixing_engine import TimelineConfig
 from vvr_scraper.scraper_core import lay_thong_tin_truyen, scrape_chapters
 from vvr_scraper.session_manager import load_session
 from vvr_scraper.tao_so_do_cay import get_chapter_tree_list
@@ -58,9 +59,14 @@ async def execute_crawl_job(payload: ScrapePayload, job_id: str, db: DatabaseMan
     if not story_url:
         raise ValueError(f"Could not resolve story URL for {payload.slug}")
 
-    relative_path = story_url.split(f"{BASE_URL}/")[-1]
+    # Determine if this is a custom source (non-VVR)
+    is_custom_source = "valvrareteam.net" not in story_url
 
     # Use output_folder from payload if provided, otherwise default to slug-based name
+    relative_path = (
+        story_url.split(f"{BASE_URL}/")[-1] if not is_custom_source else story_url.rstrip("/").split("/")[-1]
+    )
+
     if payload.output_folder:
         output_folder = payload.output_folder
     else:
@@ -70,7 +76,8 @@ async def execute_crawl_job(payload: ScrapePayload, job_id: str, db: DatabaseMan
 
     # 2. Get Story Info
     async with httpx.AsyncClient(headers=HEADERS, cookies=cookies) as client:
-        story_info = await lay_thong_tin_truyen(client, relative_path)
+        # For custom sources, pass full URL; for VVR, pass relative path
+        story_info = await lay_thong_tin_truyen(client, story_url if is_custom_source else relative_path)
 
     # 3. Get Chapters
     async with async_playwright() as p:
@@ -95,8 +102,11 @@ async def execute_crawl_job(payload: ScrapePayload, job_id: str, db: DatabaseMan
             if not selected_chaps:
                 raise ValueError("No chapters selected or found.")
 
-            urls = [f"{BASE_URL}{c['url']}" for c in selected_chaps]
-            len(urls)
+            # Build URL list — chapter URLs from custom sources are already full URLs
+            def chapter_full_url(chap):
+                return chap["url"] if chap["url"].startswith("http") else f"{BASE_URL}{chap['url']}"
+
+            urls = [chapter_full_url(c) for c in selected_chaps]
 
             async def on_chapter_done(url, content, idx, total):
                 if db:
@@ -119,7 +129,7 @@ async def execute_crawl_job(payload: ScrapePayload, job_id: str, db: DatabaseMan
     for v_info in chapter_tree:
         v_chaps = []
         for c_entry in v_info["chapters"]:
-            f_url = f"{BASE_URL}{c_entry['url']}"
+            f_url = c_entry["url"] if c_entry["url"].startswith("http") else f"{BASE_URL}{c_entry['url']}"
             if f_url in scraped:
                 v_chaps.append({"title": c_entry["title"], "content": scraped[f_url]})
                 full_flat.extend(scraped[f_url])

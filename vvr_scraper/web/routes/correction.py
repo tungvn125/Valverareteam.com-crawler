@@ -217,7 +217,6 @@ async def save_corrections(slug: str, chapter_idx: int, body: CorrectionRequest)
 
     for i, item in enumerate(script_data):
         if i in corrections_map and item.get("type") == "segment":
-            old_role = item.get("role", "")
             new_role = corrections_map[i]
             item["role"] = new_role
             # Also update gender if we have a profile for the new role
@@ -277,7 +276,6 @@ async def apply_similar(slug: str, body: ApplySimilarRequest):
         raise HTTPException(status_code=404, detail="No matching script found")
 
     # Get the old role from the source segment
-    source_script_path = None
     source_item = None
 
     for s in target_scripts:
@@ -285,12 +283,12 @@ async def apply_similar(slug: str, body: ApplySimilarRequest):
         try:
             with open(script_path, encoding="utf-8") as f:
                 script_data = json.load(f)
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Skipping invalid script file {script_path}: {e}")
             continue
 
         if body.segment_idx < len(script_data) and script_data[body.segment_idx].get("type") == "segment":
             source_item = script_data[body.segment_idx]
-            source_script_path = script_path
             break
 
     if not source_item:
@@ -304,7 +302,8 @@ async def apply_similar(slug: str, body: ApplySimilarRequest):
         try:
             with open(script_path, encoding="utf-8") as f:
                 script_data = json.load(f)
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Skipping invalid script file {script_path}: {e}")
             continue
 
         modified = False

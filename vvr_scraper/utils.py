@@ -264,10 +264,31 @@ def get_token_from_state(state: dict) -> str | None:
 
 
 async def resolve_story_url(name_raw: str, cookies: dict | None = None) -> str | None:
-    """Finds the story URL from sitemap."""
-    normalized = normalize_vietnamese_url(name_raw)
-    sitemap_url = f"{BASE_URL}/sitemap.xml"
+    """Finds the story URL from sitemap or custom sources.
 
+    Supports:
+    - Full URLs (returned as-is)
+    - VVR slugs like "truyen/slug-name-hash" or just "slug-name-hash"
+    - TruyenFull/LnHako slugs (resolved via source search)
+    """
+    if name_raw.startswith("http"):
+        return name_raw
+
+    from .sources import get_source
+
+    # Strip known path prefixes so "truyen/slug" becomes "slug"
+    # This prevents double path segments like "/truyen/truyen/slug"
+    slug = name_raw
+    for prefix in ("truyen/", "sang-tac/", "xuat-ban/"):
+        if slug.startswith(prefix):
+            slug = slug[len(prefix) :]
+            break
+
+    normalized = normalize_vietnamese_url(slug)
+
+    # 1. Try VVR sitemap — also try with "truyen/" prefix in case
+    # the sitemap stores full path slugs like "truyen/name"
+    sitemap_url = f"{BASE_URL}/sitemap.xml"
     async with httpx.AsyncClient(headers=HEADERS, cookies=cookies) as client:
         try:
             response = await client.get(sitemap_url)
@@ -277,6 +298,27 @@ async def resolve_story_url(name_raw: str, cookies: dict | None = None) -> str |
                 url = loc.text
                 if normalized in url and "/chuong" not in url:
                     return url
+                # Also try matching against the original prefix-stripped form
+                if name_raw != slug and name_raw in url and "/chuong" not in url:
+                    return url
         except Exception as e:
-            logger.error(f"Lỗi khi truy cập sitemap: {e}")
+            logger.debug(f"VVR sitemap lookup failed: {e}")
+
+        # 2. Try custom sources (TruyenFull, LnHako)
+        # Use the bare slug (without "truyen/" prefix) to avoid double path segments
+        candidate_urls = [
+            f"https://truyenfull.vision/truyen/{normalized}",
+            f"https://ln.hako.vn/truyen/{normalized}",
+        ]
+        for candidate in candidate_urls:
+            source = get_source(candidate, client=client)
+            if source:
+                try:
+                    info = await source.get_info(candidate)
+                    if info and info.title != "Unknown":
+                        logger.info(f"Resolved via source: {candidate}")
+                        return candidate
+                except Exception:
+                    pass
+
     return None

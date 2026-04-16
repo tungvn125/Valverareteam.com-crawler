@@ -80,3 +80,71 @@ export async function checkLibraryUpdates() {
     if (!res.ok) throw new Error('Failed to trigger update check');
     return await res.json();
 }
+
+// --- Correction API ---
+// Note: slug may contain '/' (e.g. "truyen/novel-name"), so we encode
+// path-unsafe chars but preserve '/' for FastAPI {slug:path} matching.
+
+function encodeSlug(slug) {
+    return slug.split('/').map(encodeURIComponent).join('/');
+}
+
+export async function fetchCorrectionChapters(slug) {
+    const res = await fetch(`/api/correction/${encodeSlug(slug)}/chapters`);
+    if (!res.ok) throw new Error('Failed to fetch chapters');
+    return await res.json();
+}
+
+export async function fetchChapterScript(slug, chapterIdx) {
+    const res = await fetch(`/api/correction/${encodeSlug(slug)}/chapter/${chapterIdx}/script`);
+    if (!res.ok) throw new Error('Failed to fetch script');
+    return await res.json();
+}
+
+export async function saveCorrections(slug, chapterIdx, corrections) {
+    const res = await fetch(`/api/correction/${encodeSlug(slug)}/chapter/${chapterIdx}/save`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ corrections })
+    });
+    if (!res.ok) throw new Error('Failed to save corrections');
+    return await res.json();
+}
+
+export async function applySimilar(slug, segmentIdx, newRole, chapterIdx = null) {
+    const res = await fetch(`/api/correction/${encodeSlug(slug)}/apply-similar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ segment_idx: segmentIdx, new_role: newRole, chapter_idx: chapterIdx })
+    });
+    if (!res.ok) throw new Error('Failed to apply similar');
+    return await res.json();
+}
+
+export async function fetchCharacters(slug) {
+    const res = await fetch(`/api/correction/${encodeSlug(slug)}/characters`);
+    if (!res.ok) throw new Error('Failed to fetch characters');
+    return await res.json();
+}
+
+export async function updateCharacter(slug, characterName, data) {
+    const res = await fetch(`/api/correction/${encodeSlug(slug)}/characters/${encodeURIComponent(characterName)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    });
+    if (!res.ok) throw new Error('Failed to update character');
+    return await res.json();
+}
+
+export async function fetchVoices() {
+    const res = await fetch('/api/correction/voices/list');
+    if (!res.ok) throw new Error('Failed to fetch voices');
+    return await res.json();
+}
+
+export async function previewVoice(voiceId, text = 'Xin chào, tôi là người kể chuyện.') {
+    const res = await fetch(`/api/correction/voices/preview?voice_id=${encodeURIComponent(voiceId)}&text=${encodeURIComponent(text)}`);
+    if (!res.ok) throw new Error('Failed to preview voice');
+    return res.blob();
+}
