@@ -9,6 +9,7 @@ def save_session(state: dict[str, Any], file_path: str):
     """Saves the browser storage state (cookies and local storage) to a file."""
     with open(file_path, "w", encoding="utf-8") as f:
         json.dump(state, f, ensure_ascii=False, indent=2)
+    os.chmod(file_path, 0o600)
 
 
 def load_session(file_path: str) -> dict[str, Any] | None:
