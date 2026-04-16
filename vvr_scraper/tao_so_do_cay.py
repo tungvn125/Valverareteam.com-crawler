@@ -7,6 +7,7 @@ from bs4 import BeautifulSoup
 from loguru import logger
 from playwright.async_api import Browser, async_playwright
 
+from .sources import get_source
 from .utils import HEADERS
 
 
@@ -144,7 +145,10 @@ async def get_chapter_tree_list(
     browser: Browser | None = None,
 ) -> list[dict]:
     """
-    Extracts the chapter tree as a structured JSON list using Playwright.
+    Extracts the chapter tree as a structured JSON list.
+
+    Uses custom source adapters (TruyenFull, LnHako) when available,
+    falls back to Playwright-based VVR scraping for valvrareteam.net URLs.
 
     Args:
         url: URL of the story page.
@@ -155,6 +159,35 @@ async def get_chapter_tree_list(
     Returns:
         List of volume dicts with chapter data.
     """
+    # Try custom source first (TruyenFull, LnHako, etc.)
+    if "valvrareteam.net" not in url:
+        async_client = httpx.AsyncClient(headers=HEADERS, timeout=30.0)
+        try:
+            source = get_source(url, client=async_client, browser=browser)
+            if source:
+                logger.info(f"Using custom source for chapter tree: {url}")
+                try:
+                    tree = await source.get_chapter_list(url)
+                    data = [
+                        {
+                            "volume": vol.volume,
+                            "chapters": [
+                                {"title": ch.title, "url": ch.url, "locked": ch.locked} for ch in vol.chapters
+                            ],
+                        }
+                        for vol in tree
+                    ]
+                    with open(output_file, "w", encoding="utf-8") as f:
+                        json.dump(data, f, ensure_ascii=False, indent=2)
+                    logger.info(f"Đã lưu sơ đồ cây vào {output_file}")
+                    return data
+                except Exception as e:
+                    logger.error(f"Custom source failed for chapter tree: {e}")
+                    return []
+        finally:
+            await async_client.aclose()
+
+    # Fallback: VVR Playwright-based scraping
     logger.info("Đang tạo sơ đồ cây (sử dụng Playwright cho nội dung động)...")
 
     try:
@@ -267,18 +300,19 @@ async def get_chapter_range_urls(
 
     short_hash = uuid4().hex[:8]
     temp_filename = f"temp_sync_{short_hash}.json"
-    chapter_tree = await get_chapter_tree_list(
-        url, output_file=temp_filename, session_state=session_state, browser=browser
-    )
+    try:
+        chapter_tree = await get_chapter_tree_list(
+            url, output_file=temp_filename, session_state=session_state, browser=browser
+        )
+    finally:
+        # Clean up temp file even when chapter tree extraction raises.
+        import os
 
-    # Clean up temp file
-    import os
-
-    if os.path.exists(temp_filename):
-        try:
-            os.remove(temp_filename)
-        except OSError:
-            pass
+        if os.path.exists(temp_filename):
+            try:
+                os.remove(temp_filename)
+            except OSError:
+                pass
 
     # Flatten all chapters from all volumes
     all_chapters = []

@@ -16,6 +16,7 @@ from vvr_scraper.tao_so_do_cay import (
     get_chapter_tree,
     get_chapter_tree_folder,
     get_chapter_tree_list,
+    get_chapter_range_urls,
     get_chapters_by_volume_index,
 )
 from vvr_scraper.utils import HEADERS
@@ -508,3 +509,31 @@ class TestTaoSoDoCayHeaders:
         ua = HEADERS["User-Agent"]
         assert "Mozilla" in ua
         assert "Chrome" in ua
+
+
+class TestGetChapterRangeUrls:
+    @pytest.mark.asyncio
+    async def test_temp_file_removed_when_tree_fetch_raises(self):
+        removed = []
+
+        async def fake_tree(*args, **kwargs):
+            temp_file = kwargs["output_file"]
+            with open(temp_file, "w", encoding="utf-8") as f:
+                f.write("[]")
+            raise RuntimeError("boom")
+
+        def fake_exists(path):
+            return True
+
+        def fake_remove(path):
+            removed.append(path)
+
+        with patch("vvr_scraper.tao_so_do_cay.get_chapter_tree_list", side_effect=fake_tree):
+            with patch("os.path.exists", side_effect=fake_exists):
+                with patch("os.remove", side_effect=fake_remove):
+                    with pytest.raises(RuntimeError):
+                        await get_chapter_range_urls("https://valvrareteam.net/story", 0, 1)
+
+        assert len(removed) == 1
+        assert removed[0].startswith("temp_sync_")
+        assert removed[0].endswith(".json")
