@@ -13,10 +13,10 @@ import pytest
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from vvr_scraper.tao_so_do_cay import (
+    get_chapter_range_urls,
     get_chapter_tree,
     get_chapter_tree_folder,
     get_chapter_tree_list,
-    get_chapter_range_urls,
     get_chapters_by_volume_index,
 )
 from vvr_scraper.utils import HEADERS

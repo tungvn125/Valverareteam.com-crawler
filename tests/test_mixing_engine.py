@@ -1,15 +1,10 @@
-import pytest
 from pydub import AudioSegment
 
 from vvr_scraper.mixing_engine import (
     AudioTimeline,
-    BackgroundTrack,
-    Crossfade,
     MixingEngine,
     TimelineConfig,
-    Track,
 )
-
 
 # ─── MixingEngine (original) ────────────────────────────────
 

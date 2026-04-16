@@ -4,17 +4,15 @@ Tests for the correction API routes.
 
 import json
 import os
-import tempfile
 from pathlib import Path
 
 import pytest
 
 from vvr_scraper.web.routes.correction import (
     ApplySimilarRequest,
-    CorrectionRequest,
     CharacterUpdateRequest,
+    CorrectionRequest,
     _find_script_files,
-    _async_get_output_dir,
 )
 
 
@@ -110,11 +108,13 @@ class TestCorrectionAPI:
 
     @pytest.fixture
     def client(self):
-        from vvr_scraper.web import app
+        import asyncio
+
+        from fastapi.testclient import TestClient
+
         from vvr_scraper.db import DatabaseManager
         from vvr_scraper.utils import get_config_path
-        from fastapi.testclient import TestClient
-        import asyncio
+        from vvr_scraper.web import app
 
         loop = asyncio.new_event_loop()
         db = DatabaseManager(db_path=get_config_path("test_vvr_library.db"))

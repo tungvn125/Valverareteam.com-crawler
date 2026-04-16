@@ -1,10 +1,8 @@
 import math
-from dataclasses import dataclass, field
-from typing import Optional
-
-from pydub import AudioSegment
+from dataclasses import dataclass
 
 from loguru import logger
+from pydub import AudioSegment
 
 
 @dataclass

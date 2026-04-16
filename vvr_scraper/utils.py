@@ -318,7 +318,7 @@ async def resolve_story_url(name_raw: str, cookies: dict | None = None) -> str |
                     if info and info.title != "Unknown":
                         logger.info(f"Resolved via source: {candidate}")
                         return candidate
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Source URL probe failed for {candidate}: {e}")
 
     return None

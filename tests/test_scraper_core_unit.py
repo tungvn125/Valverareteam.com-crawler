@@ -11,9 +11,9 @@ import pytest
 
 from vvr_scraper.models import ContentItem
 from vvr_scraper.scraper_core import (
-    lay_thong_tin_truyen,
     lay_chuong_httpx,
     lay_chuong_voi_hinh_anh,
+    lay_thong_tin_truyen,
     scrape_chapters,
 )
 from vvr_scraper.utils import HEADERS
