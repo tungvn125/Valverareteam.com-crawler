@@ -8,6 +8,7 @@ import os
 import subprocess
 from typing import Any
 
+import httpx
 from loguru import logger
 from playwright.async_api import async_playwright
 
@@ -100,7 +101,6 @@ class VideoRenderer:
 
             # Start a temporary FastAPI server in the background
             import threading
-            import time
 
             import uvicorn
             from fastapi import FastAPI
@@ -118,6 +118,7 @@ class VideoRenderer:
             import socket
 
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             sock.bind(("127.0.0.1", 0))
             port = sock.getsockname()[1]
             sock.close()
@@ -131,7 +132,15 @@ class VideoRenderer:
 
             try:
                 # Wait for server to be ready
-                time.sleep(1)
+                for _ in range(30):
+                    try:
+                        async with httpx.AsyncClient() as hc:
+                            resp = await hc.get(f"http://127.0.0.1:{port}/static/cinema.html")
+                            if resp.status_code == 200:
+                                break
+                    except Exception:
+                        pass
+                    await asyncio.sleep(0.1)
 
                 # Get the slug from manifest path (folder name)
                 novel_slug = os.path.basename(root_dir)
@@ -171,17 +180,12 @@ class VideoRenderer:
                         await page.evaluate(f"window.player.seekTo({current_time_ms});")
 
                         # Capture screenshot as PNG
-                        # WHY: We take a raw pixel snapshot of the Playwright browser's DOM representing the current timestamp.
-                        # We use PNG (lossless) to avoid compression artifacts before the frame hits FFmpeg for actual MP4 encoding.
                         screenshot = await page.screenshot(type="png", full_page=False)
 
                         # Write to FFmpeg pipe
-                        # WHY: Streaming directly into FFmpeg's STDIN allows us to render the video
-                        # completely in-memory. If we saved thousands of image files to disk instead, the disk I/O
-                        # would aggressively bottleneck the rendering process and consume massive storage.
                         try:
                             process.stdin.write(screenshot)
-                        except BrokenPipeError as e:
+                        except (BrokenPipeError, OSError) as e:
                             stdout, stderr = process.communicate()
                             raise RuntimeError(f"FFmpeg pipe broken. Error: {stderr.decode()}") from e
 
@@ -192,16 +196,25 @@ class VideoRenderer:
                             db_progress = 10.0 + ((frame_idx + 1) / total_frames) * 80.0
                             await self.db.update_job_status(self.job_id, "running", progress=db_progress)
 
+            except Exception as e:
+                logger.error(f"Render failed: {e}")
+                # Terminate FFmpeg if it's still running
+                if process.poll() is None:
+                    process.terminate()
+                raise
             finally:
                 # Always ensure cleanup
                 if process.stdin:
                     try:
                         process.stdin.close()
                     except OSError:
-                        pass  # noqa: S110  — best-effort pipe cleanup
+                        pass
 
-                # Wait for FFmpeg to finish writing file
-                process.wait()
+                # Wait for FFmpeg to finish (with timeout to avoid hanging)
+                try:
+                    process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    process.kill()
 
                 # Stop server
                 server.should_exit = True
