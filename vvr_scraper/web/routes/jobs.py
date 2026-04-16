@@ -5,9 +5,14 @@ Job management API routes — CRUD for the Universal Task Runner.
 from fastapi import APIRouter, HTTPException
 from loguru import logger
 
+import vvr_scraper.web.state as state
+
 from ...job_models import JobManifest
 from ..deps import get_db
-from ..state import active_tasks, active_tasks_futures, task_log_buffers, worker
+from ..state import active_tasks, active_tasks_futures, task_log_buffers
+
+# Backward-compatible alias for tests/patches that target module-level `worker`
+worker = state.worker
 
 router = APIRouter(prefix="/api", tags=["Jobs"])
 

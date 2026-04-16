@@ -250,7 +250,10 @@ class JobWorker:
                     dependents = await cursor.fetchall()
                     for row in dependents:
                         dep_id = row[0] if not hasattr(row, "keys") else row["id"]
-                        status = row[1] if hasattr(row, "keys") else row[1]
+                        if hasattr(row, "keys") and "status" in row.keys():
+                            status = row["status"]
+                        else:
+                            status = "waiting"
                         if status in ("waiting", "pending"):
                             await self.db.update_job_status(
                                 dep_id, JobStatus.CANCELLED, error_summary=f"Phụ thuộc vào job {current_id} bị lỗi"

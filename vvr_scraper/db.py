@@ -1,4 +1,5 @@
 import asyncio
+import json
 import uuid
 from datetime import datetime
 from typing import Any
@@ -7,6 +8,7 @@ import aiosqlite
 from loguru import logger
 
 from .enums import ALLOWED_NOVEL_COLUMNS
+from .models import CharacterProfile
 
 
 class DatabaseManager:
@@ -26,7 +28,10 @@ class DatabaseManager:
         db = await self.get_db()
 
         # Enable WAL mode for better concurrency
-        await db.execute("PRAGMA journal_mode=WAL")
+        try:
+            await db.execute("PRAGMA journal_mode=WAL")
+        except Exception as e:
+            logger.warning(f"Could not enable WAL mode for {self.db_path}: {e}. Falling back to default journal mode.")
 
         await db.execute("""
             CREATE TABLE IF NOT EXISTS novels (
@@ -80,6 +85,34 @@ class DatabaseManager:
                 PRIMARY KEY (story_id, character_name)
             )
         """)
+
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS character_profiles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                story_id TEXT NOT NULL,
+                canonical_name TEXT NOT NULL,
+                aliases TEXT,
+                gender TEXT DEFAULT 'unknown',
+                voice_id TEXT,
+                personality TEXT,
+                speaking_style TEXT,
+                emotion_range REAL DEFAULT 0.5,
+                color TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(story_id, canonical_name)
+            )
+        """)
+        # Create index for fast lookup
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_char_profiles_story ON character_profiles(story_id)")
+
+        # Migration: Migrate data from character_voices to character_profiles
+        await db.execute("""
+            INSERT OR IGNORE INTO character_profiles (story_id, canonical_name, voice_id, gender)
+            SELECT DISTINCT story_id, character_name, voice_name, 'unknown'
+            FROM character_voices
+        """)
+        await db.commit()
 
         # Job Management Table
         await db.execute("""
@@ -233,6 +266,69 @@ class DatabaseManager:
             rows = await cursor.fetchall()
             return {row[0]: row[1] for row in rows}
 
+    async def get_character_profiles(self, story_id: str) -> list[CharacterProfile]:
+        """Returns a list of all character profiles for a story."""
+        db = await self.get_db()
+        async with db.execute("SELECT * FROM character_profiles WHERE story_id = ?", (story_id,)) as cursor:
+            rows = await cursor.fetchall()
+            profiles = []
+            for row in rows:
+                profile_dict = dict(row)
+                profiles.append(
+                    CharacterProfile(
+                        name=profile_dict["canonical_name"],
+                        story_id=profile_dict["story_id"],
+                        aliases=json.loads(profile_dict["aliases"]) if profile_dict["aliases"] else [],
+                        gender=profile_dict["gender"],
+                        voice_id=profile_dict["voice_id"],
+                        personality=profile_dict["personality"],
+                        speaking_style=profile_dict["speaking_style"],
+                        emotion_range=profile_dict["emotion_range"],
+                        color=profile_dict["color"],
+                    )
+                )
+            return profiles
+
+    async def save_character_profile(self, profile: CharacterProfile):
+        """Saves or updates a character profile."""
+        db = await self.get_db()
+        aliases_json = json.dumps(profile.aliases)
+        await db.execute(
+            """INSERT INTO character_profiles (
+                story_id, canonical_name, aliases, gender, voice_id,
+                personality, speaking_style, emotion_range, color, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(story_id, canonical_name) DO UPDATE SET
+                aliases=excluded.aliases,
+                gender=excluded.gender,
+                voice_id=excluded.voice_id,
+                personality=excluded.personality,
+                speaking_style=excluded.speaking_style,
+                emotion_range=excluded.emotion_range,
+                color=excluded.color,
+                updated_at=excluded.updated_at""",
+            (
+                profile.story_id,
+                profile.name,
+                aliases_json,
+                profile.gender,
+                profile.voice_id,
+                profile.personality,
+                profile.speaking_style,
+                profile.emotion_range,
+                profile.color,
+                datetime.now().isoformat(),
+            ),
+        )
+        # Also sync to character_voices for backward compatibility if voice_id is present
+        if profile.voice_id:
+            await db.execute(
+                "INSERT INTO character_voices (story_id, character_name, voice_name) VALUES (?, ?, ?) "
+                "ON CONFLICT(story_id, character_name) DO UPDATE SET voice_name=excluded.voice_name",
+                (profile.story_id, profile.name, profile.voice_id),
+            )
+        await db.commit()
+
     async def get_character_voice(self, story_id: str, character_name: str) -> str | None:
         """Returns the voice name for a specific character in a story."""
         db = await self.get_db()
@@ -250,6 +346,15 @@ class DatabaseManager:
             "INSERT INTO character_voices (story_id, character_name, voice_name) VALUES (?, ?, ?) "
             "ON CONFLICT(story_id, character_name) DO UPDATE SET voice_name=excluded.voice_name",
             (story_id, character_name, voice_name),
+        )
+        # Also sync to character_profiles
+        await db.execute(
+            """INSERT INTO character_profiles (story_id, canonical_name, voice_id, updated_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(story_id, canonical_name) DO UPDATE SET
+                voice_id=excluded.voice_id,
+                updated_at=excluded.updated_at""",
+            (story_id, character_name, voice_name, datetime.now().isoformat()),
         )
         await db.commit()
 

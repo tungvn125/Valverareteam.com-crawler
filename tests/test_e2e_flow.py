@@ -20,7 +20,6 @@ from vvr_scraper.exporter import (
 from vvr_scraper.scraper_core import lay_chuong_httpx
 from vvr_scraper.utils import HEADERS
 
-
 TEST_URL = (
     "https://valvrareteam.net/truyen/bi-mat-cua-phu-thuy-tinh-lang-4b74a318/chuong/mo-dau-hac-long-nui-worgan-4b74a38a"
 )
@@ -29,7 +28,10 @@ TEST_STORY_SLUG = "bi-mat-cua-phu-thuy-tinh-lang-4b74a318"
 
 
 @pytest.mark.asyncio
-@pytest.mark.skipif(os.getenv("CI") == "true", reason="Requires real HTTP to Valvrareteam (may be blocked by WAF)")
+@pytest.mark.skipif(
+    os.getenv("CI") == "true" or os.getenv("RUN_E2E") != "1",
+    reason="Requires real HTTP to Valvrareteam and explicit RUN_E2E=1 opt-in",
+)
 class TestScrapeToExportFlow:
     """Test the full flow: scrape chapter -> export to various formats -> verify output"""
 
@@ -130,7 +132,6 @@ class TestScrapeToExportFlow:
     async def test_content_integrity(self):
         """Verify exported content matches scraped content (text preserved)"""
         text_items = [item for item in self.content if item.type == "text"]
-        scraped_text = " ".join(item.data for item in text_items)
 
         md_path = str(self.tmp_path / "integrity.md")
         await tao_file_md(self.content, md_path, self.chapter_title)
@@ -143,7 +144,10 @@ class TestScrapeToExportFlow:
 
 
 @pytest.mark.asyncio
-@pytest.mark.skipif(os.getenv("CI") == "true", reason="Requires real HTTP to Valvrareteam")
+@pytest.mark.skipif(
+    os.getenv("CI") == "true" or os.getenv("RUN_E2E") != "1",
+    reason="Requires real HTTP to Valvrareteam and explicit RUN_E2E=1 opt-in",
+)
 class TestStoryInfoScrape:
     """Test scraping story metadata"""
 
