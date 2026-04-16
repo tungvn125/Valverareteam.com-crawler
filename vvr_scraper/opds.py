@@ -4,7 +4,7 @@ Provides functions to create OPDS catalogs (Atom XML format).
 """
 
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from lxml import etree
@@ -33,7 +33,7 @@ def create_feed(title: str, url: str, icon: str | None = None, next_url: str | N
     feed = etree.Element(f"{{{ATOM_NS}}}feed", nsmap=NSMAP)
 
     etree.SubElement(feed, f"{{{ATOM_NS}}}title").text = title
-    etree.SubElement(feed, f"{{{ATOM_NS}}}updated").text = datetime.now().isoformat() + "Z"
+    etree.SubElement(feed, f"{{{ATOM_NS}}}updated").text = datetime.now(timezone.utc).isoformat()
     etree.SubElement(feed, f"{{{ATOM_NS}}}id").text = url
 
     # Self link
@@ -82,7 +82,7 @@ def add_entry(feed: etree._Element, novel_data: dict[str, Any], base_url: str) -
     # Updated time - use last_downloaded_at if available
     updated = novel_data.get("last_downloaded_at")
     if not updated:
-        updated = datetime.now().isoformat() + "Z"
+        updated = datetime.now(timezone.utc).isoformat()
     elif "Z" not in updated and "+" not in updated:
         updated += "Z"
     etree.SubElement(entry, f"{{{ATOM_NS}}}updated").text = updated
@@ -137,16 +137,6 @@ def add_entry(feed: etree._Element, novel_data: dict[str, Any], base_url: str) -
         format_list = formats if formats else []
 
     mime_types = {"epub": "application/epub+zip", "pdf": "application/pdf"}
-
-    # Get the base folder name from output_folder path
-    output_folder = novel_data.get("output_folder")
-    if output_folder:
-        os.path.basename(output_folder.rstrip("/"))
-    else:
-        # Fallback to slug's last part if output_folder not available
-        novel_data.get("slug", "unknown").split("/")[-1]
-
-    sanitize_filename(novel_data.get("title", "novel"))
 
     for fmt in format_list:
         if fmt in mime_types:
