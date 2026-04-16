@@ -3,7 +3,8 @@ OPDS 1.1 catalog routes for e-book reader apps (Moon+ Reader, KyBook, etc.).
 """
 
 import os
-from datetime import datetime
+from datetime import datetime, timezone
+from urllib.parse import quote_plus
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse
@@ -50,7 +51,7 @@ async def opds_root(request: Request, user: str = Depends(get_current_user)):
             type="application/atom+xml;profile=opds-catalog;kind=navigation",
         )
         etree.SubElement(entry, "{http://www.w3.org/2005/Atom}id").text = f"{base_url}/opds/v1/{path}"
-        etree.SubElement(entry, "{http://www.w3.org/2005/Atom}updated").text = datetime.now().isoformat() + "Z"
+        etree.SubElement(entry, "{http://www.w3.org/2005/Atom}updated").text = datetime.now(timezone.utc).isoformat()
 
     return Response(
         content=opds.to_string(feed), media_type="application/atom+xml;profile=opds-catalog;kind=navigation"
@@ -112,11 +113,13 @@ async def opds_search(
 
     next_url = None
     if len(novels) > size:
-        next_url = f"{base_url}/opds/v1/search?q={q}&page={page + 1}&size={size}"
+        next_url = f"{base_url}/opds/v1/search?q={quote_plus(q)}&page={page + 1}&size={size}"
         novels = novels[:size]
 
     feed = opds.create_feed(
-        f"Kết quả tìm kiếm: {q}", f"{base_url}/opds/v1/search?q={q}&page={page}&size={size}", next_url=next_url
+        f"Kết quả tìm kiếm: {q}",
+        f"{base_url}/opds/v1/search?q={quote_plus(q)}&page={page}&size={size}",
+        next_url=next_url,
     )
 
     for novel in novels:
@@ -140,7 +143,7 @@ async def opds_genres(request: Request, user: str = Depends(get_current_user)):
         entry = etree.SubElement(feed, "{http://www.w3.org/2005/Atom}entry")
         etree.SubElement(entry, "{http://www.w3.org/2005/Atom}title").text = genre
         etree.SubElement(entry, "{http://www.w3.org/2005/Atom}id").text = f"genre:{genre}"
-        etree.SubElement(entry, "{http://www.w3.org/2005/Atom}updated").text = datetime.now().isoformat() + "Z"
+        etree.SubElement(entry, "{http://www.w3.org/2005/Atom}updated").text = datetime.now(timezone.utc).isoformat()
 
     return Response(
         content=opds.to_string(feed), media_type="application/atom+xml;profile=opds-catalog;kind=navigation"
@@ -160,7 +163,7 @@ async def opds_authors(request: Request, user: str = Depends(get_current_user)):
         entry = etree.SubElement(feed, "{http://www.w3.org/2005/Atom}entry")
         etree.SubElement(entry, "{http://www.w3.org/2005/Atom}title").text = author
         etree.SubElement(entry, "{http://www.w3.org/2005/Atom}id").text = f"author:{author}"
-        etree.SubElement(entry, "{http://www.w3.org/2005/Atom}updated").text = datetime.now().isoformat() + "Z"
+        etree.SubElement(entry, "{http://www.w3.org/2005/Atom}updated").text = datetime.now(timezone.utc).isoformat()
 
     return Response(
         content=opds.to_string(feed), media_type="application/atom+xml;profile=opds-catalog;kind=navigation"
@@ -171,9 +174,15 @@ async def opds_authors(request: Request, user: str = Depends(get_current_user)):
 opds_download_router = APIRouter(tags=["OPDS"])
 
 
+ALLOWED_OPDS_FORMATS = {"epub", "pdf", "mobi", "azw3"}
+
+
 @opds_download_router.get("/api/opds/download/{slug:path}")
 async def opds_download(slug: str, fmt: str = "epub", user: str = Depends(get_current_user)):
     """Streams a novel file based on its slug and requested format."""
+    if fmt.lower() not in ALLOWED_OPDS_FORMATS:
+        raise HTTPException(status_code=400, detail="Unsupported format")
+
     db = get_db()
     novel = await db.get_novel_by_slug(slug)
     if not novel:
