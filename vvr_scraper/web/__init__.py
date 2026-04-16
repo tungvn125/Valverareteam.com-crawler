@@ -12,6 +12,9 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
+import vvr_scraper.web.routes.jobs as jobs_routes
+import vvr_scraper.web.state as state
+
 from ..db import DatabaseManager
 from ..job_worker import JobWorker
 from ..utils import get_config_path
@@ -48,17 +51,16 @@ from .state import (  # noqa: F401  # noqa: F401
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    import vvr_scraper.web.state as state
-
     # Startup
     state._event_loop = asyncio.get_running_loop()
     if not hasattr(app.state, "db") or app.state.db is None:
         app.state.db = DatabaseManager(db_path=get_config_path("vvr_library.db"))
-        await app.state.db.init_db()
+    await app.state.db.init_db()
 
     # Universal Task Runner: Start JobWorker
     state.worker = JobWorker(app.state.db)
     await state.worker.start()
+    jobs_routes.worker = state.worker
 
     # Start Auto-Sync Background Task
 
@@ -70,6 +72,7 @@ async def lifespan(app: FastAPI):
     # Shutdown
     if state.worker:
         await state.worker.stop()
+    jobs_routes.worker = None
     await download_queue.stop_workers()
     if hasattr(app.state, "db") and app.state.db:
         await app.state.db.close()
@@ -95,12 +98,14 @@ logger.add(websocket_sink, level="DEBUG")
 
 # Register routers
 from .routes.api import router as api_router  # noqa: E402
+from .routes.correction import router as correction_router  # noqa: E402
 from .routes.jobs import router as jobs_router  # noqa: E402
 from .routes.library import router as library_router  # noqa: E402
 from .routes.opds import opds_download_router  # noqa: E402
 from .routes.opds import router as opds_router  # noqa: E402
 
 app.include_router(api_router)
+app.include_router(correction_router)
 app.include_router(jobs_router)
 app.include_router(library_router)
 app.include_router(opds_router)

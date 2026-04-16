@@ -3,6 +3,8 @@ File export functions for the web novel scraper.
 """
 
 import asyncio
+import html
+import inspect
 import json
 import os
 import urllib.parse
@@ -28,7 +30,7 @@ from .audio_drama import OpenAIParser, ScriptResult, VoiceManager
 from .bgm_manager import BGMManager
 from .freesound_manager import FreesoundManager
 from .image_gen import ImageGenerator
-from .mixing_engine import MixingEngine
+from .mixing_engine import AudioTimeline, MixingEngine, TimelineConfig
 from .models import ContentItem
 from .utils import HEADERS
 from .video_renderer import VideoRenderer
@@ -50,6 +52,13 @@ def _normalize_content_item(item: ContentItemLike) -> ContentItem:
 def _normalize_content_list(items: ContentList) -> list[ContentItem]:
     """Convert list of dicts to list of ContentItems."""
     return [_normalize_content_item(item) for item in items]
+
+
+async def _maybe_await(value):
+    """Await the value if it is awaitable, else return it directly."""
+    if inspect.isawaitable(value):
+        return await value
+    return value
 
 
 async def _download_images_bulk(urls: list[str], max_concurrent: int = 10) -> dict[str, bytes]:
@@ -183,14 +192,14 @@ async def tao_file_epub(
     def process_chapter(chap_data: ChapterData, chap_idx: int) -> epub.EpubHtml:
         title = chap_data.get("title", f"Chương {chap_idx}")
         chapter_obj = epub.EpubHtml(title=title, file_name=f"chap_{chap_idx}.xhtml", lang="vi")
-        html = f"<h1>{title}</h1>"
+        chapter_html = f"<h1>{html.escape(title)}</h1>"
         for item in chap_data.get("content", []):
             norm = _normalize_content_item(item)
             if norm.type == "text":
-                html += f"<p>{norm.data}</p>"
+                chapter_html += f"<p>{html.escape(norm.data)}</p>"
             elif norm.type == "image" and norm.data in url_to_internal_path:
-                html += f'<img src="{url_to_internal_path[norm.data]}" alt="Minh họa"/>'
-        chapter_obj.content = html
+                chapter_html += f'<img src="{url_to_internal_path[norm.data]}" alt="Minh họa"/>'
+        chapter_obj.content = chapter_html
         return chapter_obj
 
     # Assemble structure
@@ -271,6 +280,7 @@ async def tao_file_pdf(
                 pil_img = PILImage.open(img_data)
                 w, h = pil_img.size
                 ratio = min(max_w / w, max_h / h, 1)
+                img_data.seek(0)
                 story.append(Image(img_data, width=w * ratio, height=h * ratio))
                 story.append(Spacer(1, 0.1 * inch))
             except Exception as e:
@@ -283,15 +293,16 @@ async def tao_file_pdf(
 async def tao_file_html(content_list: ContentList, filename: str, title: str = "Chương truyện") -> None:
     """HTML export (Async for API consistency)."""
     logger.info(f"Đang tạo file HTML: {filename}")
-    html = f"<!DOCTYPE html><html lang='vi'><head><meta charset='UTF-8'><title>{title}</title></head><body><h1>{title}</h1>"
+    safe_title = html.escape(title)
+    html_content = f"<!DOCTYPE html><html lang='vi'><head><meta charset='UTF-8'><title>{safe_title}</title></head><body><h1>{safe_title}</h1>"
     for item in _normalize_content_list(content_list):
         if item.type == "text":
-            html += f"<p>{item.data}</p>"
+            html_content += f"<p>{html.escape(item.data)}</p>"
         elif item.type == "image":
-            html += f"<img src='{item.data}' style='max-width:100%'/>"
-    html += "</body></html>"
+            html_content += f"<img src='{html.escape(item.data)}' style='max-width:100%'/>"
+    html_content += "</body></html>"
     with open(filename, "w", encoding="utf-8") as f:
-        f.write(html)
+        f.write(html_content)
     logger.info(f"Tạo file HTML thành công: {filename}")
 
 
@@ -402,13 +413,18 @@ async def tao_file_mp3(content_list: ContentList, filename: str, title: str = "C
 
 
 async def tao_file_audiodrama(
-    content_list: ContentList, filename: str, story_id: str, db_manager: Any, title: str = "Chương truyện"
+    content_list: ContentList,
+    filename: str,
+    story_id: str,
+    db_manager: Any,
+    title: str = "Chương truyện",
+    timeline_config: TimelineConfig | None = None,
 ) -> None:
     """
     AI-Powered Audio Drama generation.
     1. Extracts text and parses into a script (dialogue/narrator) using OpenAI.
     2. Assigns voices to characters using VoiceManager.
-    3. Synthesizes each segment with ElevenLabs, mixes with BGM using MixingEngine.
+    3. Synthesizes each segment with ElevenLabs, mixes with BGM using AudioTimeline.
     4. Caches the script to <filename>.script.json for persistence/debugging.
     """
 
@@ -419,7 +435,12 @@ async def tao_file_audiodrama(
     script_file = f"{filename}.script.json"
     script = []
 
-    # 1. Load cached script if exists
+    # 1. Initialize voice manager to get known characters for parsing context
+    voice_manager = VoiceManager(db_manager, story_id)
+    known_chars_raw = await _maybe_await(voice_manager.get_known_characters())
+    known_chars = known_chars_raw if isinstance(known_chars_raw, list) else []
+
+    # 2. Load cached script if exists
     if os.path.exists(script_file):
         try:
             with open(script_file, encoding="utf-8") as f:
@@ -429,23 +450,29 @@ async def tao_file_audiodrama(
         except Exception as e:
             logger.warning(f"Failed to load cached script: {e}")
 
-    # 2. Parse if needed
+    # 3. Parse if needed
     if not script:
         logger.info(f"Generating audio drama script for {title}...")
         parser = OpenAIParser()
-        script = await parser.parse_chapter(full_text)
+        script = await parser.parse_chapter(full_text, known_characters=known_chars)
         if not script:
             logger.error("OpenAI failed to generate script. Aborting Audio Drama generation.")
             return
-        try:
-            with open(script_file, "w", encoding="utf-8") as f:
-                json.dump(script, f, ensure_ascii=False, indent=2)
-            logger.info(f"Saved script checkpoint to {script_file}")
-        except Exception as e:
-            logger.warning(f"Failed to save script checkpoint: {e}")
 
-    # 3. Prepare voice assignments and handle mood shifts
-    voice_manager = VoiceManager(db_manager, story_id)
+    # 4. Resolve Aliases (NLP-based post-processing)
+    resolved_script = await _maybe_await(voice_manager.resolve_aliases(script))
+    if isinstance(resolved_script, list):
+        script = resolved_script
+
+    # 5. Save script checkpoint (after alias resolution)
+    try:
+        with open(script_file, "w", encoding="utf-8") as f:
+            json.dump(script, f, ensure_ascii=False, indent=2)
+        logger.info(f"Saved script checkpoint to {script_file}")
+    except Exception as e:
+        logger.warning(f"Failed to save script checkpoint: {e}")
+
+    # 6. Prepare voice assignments and handle mood shifts
     enriched_script = ScriptResult()
     for item in script:
         if item.get("type") == "mood_shift":
@@ -488,10 +515,8 @@ async def tao_file_audiodrama(
 
     semaphore = asyncio.Semaphore(5)
 
-    # Audio timing constants
-    VOICE_OVERLAY_OFFSET_MS = 1000
-    CROSSFADE_MS = 1000
-    GAP_BETWEEN_SEGMENTS_MS = 500
+    # Audio timing — from TimelineConfig (or defaults)
+    cfg = timeline_config or TimelineConfig()
 
     # Group into blocks
     blocks = enriched_script.blocks
@@ -517,6 +542,7 @@ async def tao_file_audiodrama(
                 return AudioSegment.silent(duration=500), []
 
     try:
+        timeline = AudioTimeline(cfg)
         final_audio = None
         current_block_start_ms = 0
         all_events = []
@@ -525,6 +551,7 @@ async def tao_file_audiodrama(
             mood_info = block["mood_info"]
             segments = block["segments"]
             tags = mood_info.get("tags", [mood_info.get("mood", "peaceful")])
+            current_mood = mood_info.get("mood", "peaceful")
 
             logger.info(f"Processing Block {i + 1}/{len(blocks)} (Tags: {tags})...")
 
@@ -534,12 +561,10 @@ async def tao_file_audiodrama(
             if visual_prompt:
                 try:
                     bg_full_path = await image_gen.generate(visual_prompt)
-                    # Store as relative path for portability
                     bg_rel_path = os.path.join("backgrounds", os.path.basename(bg_full_path))
                 except Exception as e:
                     logger.warning(f"Failed to generate background image: {e}")
 
-            # Record background event in manifest
             if bg_rel_path:
                 all_events.append(
                     {
@@ -550,7 +575,6 @@ async def tao_file_audiodrama(
                     }
                 )
 
-            # Record VFX event in manifest
             vfx_list = mood_info.get("vfx", [])
             if vfx_list:
                 all_events.append(
@@ -570,7 +594,7 @@ async def tao_file_audiodrama(
             raw_block_alignments = [res[1] for res in synthesis_results]
 
             # Adjust word alignments and create dialogue events
-            segment_offset_in_block_ms = VOICE_OVERLAY_OFFSET_MS
+            segment_offset_in_block_ms = cfg.voice_overlay_offset_ms
             for j, segment_alignments in enumerate(raw_block_alignments):
                 role = segments[j].get("role", "narrator")
                 text = segments[j].get("text", "")
@@ -579,7 +603,6 @@ async def tao_file_audiodrama(
                 seg_duration_ms = len(voice_segments[j])
                 seg_end_ms = seg_start_ms + seg_duration_ms
 
-                # Create dialogue event with word-level alignment
                 dialogue_event = {
                     "type": "dialogue",
                     "start": seg_start_ms,
@@ -590,7 +613,6 @@ async def tao_file_audiodrama(
                 }
 
                 for word_data in segment_alignments:
-                    # Create a copy to avoid modifying original and adjust to global timeline
                     w = {
                         "word": word_data["word"],
                         "start": word_data["start"] + seg_start_ms,
@@ -599,93 +621,107 @@ async def tao_file_audiodrama(
                     dialogue_event["alignment"].append(w)
 
                 all_events.append(dialogue_event)
-                # Update offset for next segment in block
-                segment_offset_in_block_ms += seg_duration_ms + GAP_BETWEEN_SEGMENTS_MS
+                segment_offset_in_block_ms += seg_duration_ms + cfg.gap_between_segments_ms
 
             # 3. Find BGM (Async)
             bgm_track_path = None
-            # Check local first
+            is_temp_bgm = False
             for tag in tags:
                 bgm_track_path = bgm_manager.get_random_track(tag)
                 if bgm_track_path:
                     logger.debug(f"Found local BGM for tag '{tag}': {bgm_track_path}")
                     break
 
-            # If not found locally, try Freesound
             if not bgm_track_path:
                 logger.info(f"No local BGM for {tags}, searching Freesound...")
                 try:
                     fs_results = await freesound_manager.search_bgm(tags, limit=5)
                     if fs_results:
                         sound = fs_results[0]
-                        # Use a unique temp filename for downloaded BGM
                         bgm_track_path = f"temp_bgm_{uuid.uuid4().hex[:8]}_{sound.id}.wav"
                         await freesound_manager.download_and_convert(sound.id, bgm_track_path)
+                        is_temp_bgm = True
                         logger.debug(f"Downloaded Freesound BGM: {bgm_track_path}")
                 except Exception as e:
                     logger.warning(f"Failed to fetch from Freesound: {e}")
                     bgm_track_path = None
 
-            def process_block(v_segments, current_bgm_path, current_final_audio):
-                # 2. Join voice segments with gaps
-                # WHY: ElevenLabs generates voice blocks which might have varying trailing silences.
-                # To maintain natural, conversational pacing between characters without awkward overlaps,
-                # we concatenate them using a fixed, predictable GAP_BETWEEN_SEGMENTS_MS.
+            # 4. Mix block using timeline
+            def process_block_with_timeline(
+                v_segments, current_bgm_path, prev_mood, block_mood, current_final, temp_bgm
+            ):
                 combined_voice = AudioSegment.silent(duration=0)
                 for j, vs in enumerate(v_segments):
                     combined_voice += vs
                     if j < len(v_segments) - 1:
-                        combined_voice += AudioSegment.silent(duration=GAP_BETWEEN_SEGMENTS_MS)
+                        combined_voice += AudioSegment.silent(duration=cfg.gap_between_segments_ms)
 
-                # 4. Mix
+                combined_voice = combined_voice.fade_in(cfg.voice_fade_in_ms).fade_out(cfg.voice_fade_out_ms)
+
                 if current_bgm_path and os.path.exists(current_bgm_path):
                     bgm_audio = AudioSegment.from_file(current_bgm_path)
                 else:
-                    # Fallback to peaceful if everything fails
                     fallback_path = bgm_manager.get_random_track("peaceful")
                     if fallback_path:
                         bgm_audio = AudioSegment.from_file(fallback_path)
                     else:
                         bgm_audio = AudioSegment.silent(duration=10000)
 
-                # Create looped background matching combined_voice + 2s padding
-                # WHY: A dialogue block's duration is arbitrary and might exceed the BGM track's length.
-                # We dynamically loop the BGM to guarantee it covers the voice, and add 2000ms padding
-                # to allow the voice to fade out naturally before the background track switches.
-                bg_duration = len(combined_voice) + 2000
-                background = mixing_engine.create_looped_background(bgm_audio, bg_duration, gain_db=-20.0)
+                bg_duration = len(combined_voice) + cfg.voice_overlay_offset_ms * 2
+                background = mixing_engine.create_looped_background(bgm_audio, bg_duration, gain_db=cfg.bgm_volume_db)
 
-                # Overlay voice
                 block_audio = mixing_engine.overlay_voice_on_background(
-                    background, combined_voice.fade_in(500).fade_out(500), position=VOICE_OVERLAY_OFFSET_MS
+                    background, combined_voice, position=cfg.voice_overlay_offset_ms
                 )
+
+                # Apply BGM crossfade if mood changed
+                if prev_mood is not None and prev_mood != block_mood:
+                    cf_duration = cfg.crossfade_default_ms
+                    if (prev_mood, block_mood) in {
+                        ("peaceful", "battle"),
+                        ("romance", "battle"),
+                        ("peaceful", "tension"),
+                        ("battle", "peaceful"),
+                    }:
+                        cf_duration = cfg.crossfade_battle_ms
+                    # Fade out the end of current block and fade in the start of new block
+                    fade_in = block_audio[:cf_duration].fade_in(cf_duration)
+                    tail_keep = len(block_audio) - cf_duration
+                    if tail_keep > 0:
+                        block_audio = fade_in + block_audio[cf_duration:]
 
                 block_audio_duration = len(block_audio)
 
-                # 5. Append to final audio with crossfade
-                # WHY: Switching directly from one BGM track to another between blocks causes harsh audio popping.
-                # We use CROSSFADE_MS to seamlessly blend the trailing padding of the previous block
-                # with the leading edge of the new block, ensuring a smooth, cinematic audio transition.
-                new_final = current_final_audio
+                new_final = current_final
                 if new_final is None:
                     new_final = block_audio
                 else:
-                    new_final = new_final.append(block_audio, crossfade=CROSSFADE_MS)
+                    new_final = new_final.append(block_audio, crossfade=cfg.crossfade_voice_ms)
 
-                # Cleanup downloaded BGM if it was a temp file
-                if current_bgm_path and "temp_bgm_" in str(current_bgm_path) and os.path.exists(current_bgm_path):
+                # Cleanup temp BGM
+                if temp_bgm and current_bgm_path and os.path.exists(current_bgm_path):
                     try:
                         os.remove(current_bgm_path)
-                    except OSError as e:
-                        logger.debug(f"Could not remove temp BGM file: {e}")
+                    except OSError:
+                        pass
 
                 return new_final, block_audio_duration
 
-            final_audio, block_duration = await asyncio.to_thread(
-                process_block, voice_segments, bgm_track_path, final_audio
-            )
-            # Update current_block_start_ms for next block, account for crossfade overlap
-            current_block_start_ms += block_duration - CROSSFADE_MS
+            try:
+                prev_mood = blocks[i - 1]["mood_info"].get("mood", "peaceful") if i > 0 else None
+                final_audio, block_duration = await asyncio.to_thread(
+                    process_block_with_timeline,
+                    voice_segments,
+                    bgm_track_path,
+                    prev_mood,
+                    current_mood,
+                    final_audio,
+                    is_temp_bgm,
+                )
+                current_block_start_ms += block_duration - cfg.crossfade_voice_ms
+            except Exception as e:
+                logger.error(f"Error processing block {i + 1}: {e}")
+                raise
 
         # Save cinematic manifest as manifest.json in the same folder as the MP3
         manifest_file = os.path.join(os.path.dirname(filename), "manifest.json")
@@ -711,13 +747,7 @@ async def tao_file_audiodrama(
 
             await asyncio.to_thread(export_final)
 
-            # Cleanup script checkpoint if successful
-            script_file = f"{filename}.script.json"
-            if os.path.exists(script_file):
-                try:
-                    os.remove(script_file)
-                except OSError as e:
-                    logger.debug(f"Could not remove script checkpoint: {e}")
+            # Keep script.json for correction UI — do NOT delete on success
         else:
             logger.error("Audio Drama generation failed: No audio produced.")
 
@@ -728,7 +758,9 @@ async def tao_file_audiodrama(
         logger.error(traceback.format_exc())
     finally:
         if "voice_manager" in locals():
-            await voice_manager.close()
+            await _maybe_await(voice_manager.close())
+        if "image_gen" in locals():
+            await _maybe_await(image_gen.close())
 
 
 async def tao_file_mp4(
@@ -739,16 +771,21 @@ async def tao_file_mp4(
     title: str,
     fps: int = 30,
     render_format: str = "landscape",
+    timeline_config: TimelineConfig | None = None,
 ):
     """
     Exports the cinematic novel to an MP4 video by first generating
     an Audio Drama MP3/Manifest and then rendering it.
     """
     # 1. Generate Audio Drama MP3 and manifest.json first
-    # We'll use a temporary MP3 path for the audio
     temp_mp3 = filename.replace(".mp4", ".mp3")
     await tao_file_audiodrama(
-        content_list=content_list, filename=temp_mp3, story_id=story_id, db_manager=db_manager, title=title
+        content_list=content_list,
+        filename=temp_mp3,
+        story_id=story_id,
+        db_manager=db_manager,
+        title=title,
+        timeline_config=timeline_config,
     )
 
     # Check if manifest.json was created
@@ -763,19 +800,21 @@ async def tao_file_mp4(
         manifest_path=manifest_path, output_path=temp_video_nosound, fps=fps, render_format=render_format
     )
 
-    await renderer.render()
+    try:
+        await renderer.render()
 
-    # 3. Mux audio and video
-    if os.path.exists(temp_video_nosound) and os.path.exists(temp_mp3):
-        await renderer.mux_audio(temp_video_nosound, temp_mp3, filename)
-
+        # 3. Mux audio and video
+        if os.path.exists(temp_video_nosound) and os.path.exists(temp_mp3):
+            await renderer.mux_audio(temp_video_nosound, temp_mp3, filename)
+        else:
+            logger.error("Failed to generate MP4: Missing temporary video or audio file.")
+    finally:
         # Cleanup temporary files
         try:
-            os.remove(temp_video_nosound)
+            if os.path.exists(temp_video_nosound):
+                os.remove(temp_video_nosound)
             # We might want to keep the MP3 depending on user choice,
             # but for this flow, we follow the MP4 request.
             # os.remove(temp_mp3)
         except OSError as e:
             logger.debug(f"Could not remove temp video file: {e}")
-    else:
-        logger.error("Failed to generate MP4: Missing temporary video or audio file.")
