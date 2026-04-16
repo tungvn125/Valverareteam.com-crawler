@@ -40,8 +40,7 @@ async def search_novels(q: str = Query(..., min_length=3)):
                 "Referer": f"{BASE_URL}/",
                 "Accept": "application/json, text/plain, */*",
             }
-            url = f"{SSR_API_URL}?title={q}"
-            response = await client.get(url, headers=headers)
+            response = await client.get(SSR_API_URL, params={"title": q}, headers=headers)
             response.raise_for_status()
             results = response.json()
 
