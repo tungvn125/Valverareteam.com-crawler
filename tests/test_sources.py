@@ -1,11 +1,11 @@
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-import httpx
+from unittest.mock import AsyncMock, MagicMock
 
-from vvr_scraper.sources import get_source, _SOURCE_CACHE
-from vvr_scraper.sources.truyenfull import TruyenFullSource
+import httpx
+import pytest
+
+from vvr_scraper.sources import _SOURCE_CACHE, get_source
 from vvr_scraper.sources.lnhako import LnHakoSource
-from vvr_scraper.models import StoryInfo, ContentItem
+from vvr_scraper.sources.truyenfull import TruyenFullSource
 
 
 @pytest.mark.asyncio

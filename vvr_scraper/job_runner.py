@@ -20,7 +20,6 @@ from vvr_scraper.exporter import (
 )
 from vvr_scraper.job_models import JobManifest, RenderPayload, ScrapePayload, ServerPayload
 from vvr_scraper.job_parser import parse_manifest
-from vvr_scraper.mixing_engine import TimelineConfig
 from vvr_scraper.scraper_core import lay_thong_tin_truyen, scrape_chapters
 from vvr_scraper.session_manager import load_session
 from vvr_scraper.tao_so_do_cay import get_chapter_tree_list
