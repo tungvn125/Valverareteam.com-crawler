@@ -22,7 +22,7 @@ class JobWorker:
 
     async def enqueue_job(self, job_id: str, job: JobManifest):
         # Access priority from the root job object
-        priority = getattr(job.root, "priority", 3)
+        priority = getattr(job.root, "priority", 0)
         # PriorityQueue expects (priority, job_id, job)
         await self.queue.put((priority, job_id, job))
         logger.info(f"Enqueued job {job_id}: {job.task} with priority {priority}")
@@ -234,26 +234,28 @@ class JobWorker:
             logger.error(f"Failed to write error log for job {job_id}: {e}")
 
     async def cancel_dependents(self, failed_job_id: str):
-        """Recursively cancels all jobs that depend on the failed job."""
+        """Cancels all jobs that depend on the failed job using iterative BFS."""
         if not self.db:
             return
 
-        db = await self.db.get_db()
-        # Find jobs where depends_on contains failed_job_id
-        # Use SQLite string concatenation to ensure exact match in comma-separated list
-        query = "SELECT id FROM jobs WHERE ',' || depends_on || ',' LIKE ?"
-        pattern = f"%,{failed_job_id},%"
+        queue = [failed_job_id]
+        while queue:
+            current_id = queue.pop(0)
+            db = await self.db.get_db()
+            query = "SELECT id, status FROM jobs WHERE ',' || depends_on || ',' LIKE ?"
+            pattern = f"%,{current_id},%"
 
-        try:
-            async with db.execute(query, (pattern,)) as cursor:
-                dependents = await cursor.fetchall()
-                for row in dependents:
-                    dep_id = row[0] if not hasattr(row, "keys") else row["id"]
-                    await self.db.update_job_status(
-                        dep_id, JobStatus.CANCELLED, error_summary=f"Phụ thuộc vào job {failed_job_id} bị lỗi"
-                    )
-                    logger.warning(f"Cancelled job {dep_id} because it depends on failed job {failed_job_id}")
-                    # Recursive call
-                    await self.cancel_dependents(dep_id)
-        except Exception as e:
-            logger.error(f"Error during recursive cancellation for job {failed_job_id}: {e}")
+            try:
+                async with db.execute(query, (pattern,)) as cursor:
+                    dependents = await cursor.fetchall()
+                    for row in dependents:
+                        dep_id = row[0] if not hasattr(row, "keys") else row["id"]
+                        status = row[1] if hasattr(row, "keys") else row[1]
+                        if status in ("waiting", "pending"):
+                            await self.db.update_job_status(
+                                dep_id, JobStatus.CANCELLED, error_summary=f"Phụ thuộc vào job {current_id} bị lỗi"
+                            )
+                            logger.warning(f"Cancelled job {dep_id} because it depends on failed job {current_id}")
+                            queue.append(dep_id)
+            except Exception as e:
+                logger.error(f"Error during cancellation for job {current_id}: {e}")
