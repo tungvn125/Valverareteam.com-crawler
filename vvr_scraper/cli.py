@@ -84,8 +84,9 @@ class NovelCompleter(Completer):
             if self.token:
                 headers["Authorization"] = f"Bearer {self.token}"
 
-            url = f"https://val-ssr-2kzit.ondigitalocean.app/api/novels/search?title={text}"
-            response = self.client.get(url, headers=headers)
+            response = self.client.get(
+                "https://val-ssr-2kzit.ondigitalocean.app/api/novels/search", params={"title": text}, headers=headers
+            )
 
             if response.status_code == 200:
                 results = response.json()
