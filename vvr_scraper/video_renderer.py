@@ -12,6 +12,8 @@ import httpx
 from loguru import logger
 from playwright.async_api import async_playwright
 
+from .utils import resolve_playwright_headless
+
 
 class VideoRenderer:
     def __init__(
@@ -87,7 +89,7 @@ class VideoRenderer:
         process = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
 
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
+            browser = await p.chromium.launch(headless=resolve_playwright_headless())
             # Use a large viewport to match target resolution
             context = await browser.new_context(
                 viewport={"width": self.width, "height": self.height}, device_scale_factor=1

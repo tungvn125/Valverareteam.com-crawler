@@ -6,6 +6,7 @@ get_token_from_state, create_folders_from_tree, and configure_logger.
 import json
 import os
 
+import vvr_scraper.utils as utils
 from vvr_scraper.utils import (
     configure_logger,
     create_folders_from_tree,
@@ -211,6 +212,41 @@ class TestCreateFoldersFromTree:
 
         subdirs = os.listdir(base)
         assert len(subdirs) == 2
+
+
+# =============================================================================
+# resolve_playwright_headless
+# =============================================================================
+
+
+def test_resolve_playwright_headless_defaults_to_true(monkeypatch):
+    monkeypatch.delenv("VVR_PLAYWRIGHT_MODE", raising=False)
+    assert utils.resolve_playwright_headless() is True
+
+
+def test_resolve_playwright_headless_from_env_head(monkeypatch):
+    monkeypatch.setenv("VVR_PLAYWRIGHT_MODE", "head")
+    assert utils.resolve_playwright_headless() is False
+
+
+def test_resolve_playwright_headless_from_env_headless(monkeypatch):
+    monkeypatch.setenv("VVR_PLAYWRIGHT_MODE", "headless")
+    assert utils.resolve_playwright_headless() is True
+
+
+def test_resolve_playwright_headless_invalid_env_falls_back_default(monkeypatch):
+    monkeypatch.setenv("VVR_PLAYWRIGHT_MODE", "invalid")
+    assert utils.resolve_playwright_headless() is True
+
+
+def test_resolve_playwright_headless_cli_head_overrides_env(monkeypatch):
+    monkeypatch.setenv("VVR_PLAYWRIGHT_MODE", "headless")
+    assert utils.resolve_playwright_headless(cli_mode="head") is False
+
+
+def test_resolve_playwright_headless_cli_headless_overrides_env(monkeypatch):
+    monkeypatch.setenv("VVR_PLAYWRIGHT_MODE", "head")
+    assert utils.resolve_playwright_headless(cli_mode="headless") is True
 
 
 # =============================================================================

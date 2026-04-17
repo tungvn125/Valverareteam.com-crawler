@@ -43,6 +43,7 @@ from .utils import (
     get_config_path,
     get_token_from_state,
     normalize_vietnamese_url,
+    resolve_playwright_headless,
     resolve_story_url,
     sanitize_filename,
 )
@@ -223,6 +224,14 @@ class ValvrareScraperCLI:
         parser.add_argument("--workers", type=int, default=1, help="Số lượng novel tải song song (chế độ web).")
         parser.add_argument("--no-browser", action="store_true", help="Không tự động mở trình duyệt.")
 
+        playwright_group = parser.add_mutually_exclusive_group()
+        playwright_group.add_argument(
+            "--head-playwright", action="store_true", help="Chạy Playwright ở chế độ có giao diện."
+        )
+        playwright_group.add_argument(
+            "--headless-playwright", action="store_true", help="Buộc Playwright chạy headless."
+        )
+
         selection_group = parser.add_mutually_exclusive_group()
         selection_group.add_argument("--all", action="store_true", help="Tải tất cả.")
         selection_group.add_argument("--volumes", nargs="+", type=int, help="Tải các tập cụ thể.")
@@ -325,6 +334,13 @@ class ValvrareScraperCLI:
                         selected.append(all_chaps[i][1])
         return selected
 
+    def _cli_playwright_mode(self) -> str | None:
+        if self.args.head_playwright:
+            return "head"
+        if self.args.headless_playwright:
+            return "headless"
+        return None
+
     async def run(self):
         """Main execution flow."""
         # Handle 'run' command
@@ -334,7 +350,7 @@ class ValvrareScraperCLI:
                 return
             from .job_runner import run_manifest
 
-            await run_manifest(self.args.ten_truyen[1])
+            await run_manifest(self.args.ten_truyen[1], playwright_mode=self._cli_playwright_mode())
             return
 
         # Handle 'freesound-login' command
@@ -371,7 +387,12 @@ class ValvrareScraperCLI:
             if not self.args.no_browser:
                 webbrowser.open(url)
 
-            await run_web_server(host=self.args.host, port=self.args.port, num_workers=self.args.workers)
+            await run_web_server(
+                host=self.args.host,
+                port=self.args.port,
+                num_workers=self.args.workers,
+                playwright_mode=self._cli_playwright_mode(),
+            )
             return
 
         await self.setup_session()
@@ -415,7 +436,7 @@ class ValvrareScraperCLI:
             return
 
         # Folder name is based on the slug from the URL
-        relative_path = story_url.split(f"{BASE_URL}/")[-1]
+        relative_path = story_url.rstrip("/").split(f"{BASE_URL}/")[-1]
         self.output_folder = self.args.output_folder or sanitize_filename(relative_path.split("/")[-1])
         os.makedirs(self.output_folder, exist_ok=True)
 
@@ -426,7 +447,9 @@ class ValvrareScraperCLI:
 
         # Open browser early to share between chapter tree and scraping
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
+            browser = await p.chromium.launch(
+                headless=resolve_playwright_headless(cli_mode=self._cli_playwright_mode())
+            )
             try:
                 # 3. Load Chapter List (using shared browser)
                 logger.info(f"Đang lấy danh sách chương cho '{story_info.title}'...")
@@ -454,7 +477,7 @@ class ValvrareScraperCLI:
                 export_config = await self._get_export_config(story_url)
 
                 # 6. Scrape with live progress
-                urls = [f"{BASE_URL}{c['url']}" for c in selected_chaps]
+                urls = [c["url"] if c["url"].startswith("http") else f"{BASE_URL}{c['url']}" for c in selected_chaps]
 
                 with Progress(
                     SpinnerColumn(),
@@ -580,14 +603,16 @@ class ValvrareScraperCLI:
     async def _generate_files(self, chapter_data, selected_chaps, scraped, story_info, config):
         # Map URL to metadata
         url_to_vol = {c["url"]: v["volume"] for v in chapter_data for c in v["chapters"]}
-        url_to_title = {f"{BASE_URL}{c['url']}": c["title"] for c in selected_chaps}
+        url_to_title = {
+            (c["url"] if c["url"].startswith("http") else f"{BASE_URL}{c['url']}"): c["title"] for c in selected_chaps
+        }
 
         mode = config["mode_idx"]
 
         if mode == 1:  # Rieng
             for url, content in scraped.items():
-                rel_url = url.replace(BASE_URL, "")
-                vol_name = url_to_vol.get(rel_url, "Unknown")
+                lookup_url = url.replace(BASE_URL, "") if url.startswith(BASE_URL) else url
+                vol_name = url_to_vol.get(lookup_url, "Unknown")
                 folder = os.path.join(self.output_folder, sanitize_filename(vol_name))
                 os.makedirs(folder, exist_ok=True)
                 title = url_to_title.get(url, "Chapter")
@@ -598,7 +623,8 @@ class ValvrareScraperCLI:
         elif mode == 2:  # Volume
             vol_map = {}
             for url, content in scraped.items():
-                v = url_to_vol.get(url.replace(BASE_URL, ""), "Unknown")
+                lookup_url = url.replace(BASE_URL, "") if url.startswith(BASE_URL) else url
+                v = url_to_vol.get(lookup_url, "Unknown")
                 if v not in vol_map:
                     vol_map[v] = []
                 vol_map[v].append({"title": url_to_title[url], "content": content})
@@ -615,7 +641,7 @@ class ValvrareScraperCLI:
             for v_info in chapter_data:
                 v_chaps = []
                 for c_entry in v_info["chapters"]:
-                    f_url = f"{BASE_URL}{c_entry['url']}"
+                    f_url = c_entry["url"] if c_entry["url"].startswith("http") else f"{BASE_URL}{c_entry['url']}"
                     if f_url in scraped:
                         v_chaps.append({"title": c_entry["title"], "content": scraped[f_url]})
                         full_flat.extend(scraped[f_url])

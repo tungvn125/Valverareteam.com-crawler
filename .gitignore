@@ -41,3 +41,4 @@ verify/
 !run.example.json
 .hypothesis/
 error-logs/
+.playwright-*/

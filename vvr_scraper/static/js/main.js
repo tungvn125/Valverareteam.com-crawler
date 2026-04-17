@@ -42,6 +42,29 @@ const browseBtn = document.getElementById('browseBtn');
 let defaultOutputFolder = '';
 let libraryData = [];
 
+function openModal(modal) {
+    if (!modal) return;
+    modal.style.display = 'flex';
+}
+
+function closeModal(modal) {
+    if (!modal) return;
+    modal.style.display = 'none';
+}
+
+function isModalOpen(modal) {
+    return !!modal && modal.style.display === 'flex';
+}
+
+function initModalDismissal(modal) {
+    if (!modal) return;
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            closeModal(modal);
+        }
+    });
+}
+
 // Init Theme & Settings
 function initTheme() {
     const savedTheme = localStorage.getItem('theme');
@@ -109,7 +132,7 @@ async function openSettings() {
         if (!outputPathInput.value && defaultOutputFolder) {
             outputPathInput.value = defaultOutputFolder;
         }
-        settingsModal.style.display = 'flex';
+        openModal(settingsModal);
     } catch (e) {
         console.error(e);
     }
@@ -117,9 +140,7 @@ async function openSettings() {
 
 settingsBtn.onclick = openSettings;
 
-document.querySelector('#settingsModal .btn-secondary').onclick = () => {
-    settingsModal.style.display = 'none';
-};
+document.querySelector('#settingsModal .btn-secondary').onclick = () => closeModal(settingsModal);
 
 settingsForm.onsubmit = async (e) => {
     e.preventDefault();
@@ -127,7 +148,7 @@ settingsForm.onsubmit = async (e) => {
     const default_output_folder = document.getElementById('defaultOutputFolder').value.trim();
     try {
         await api.saveSettings({ num_workers, default_output_folder });
-        settingsModal.style.display = 'none';
+        closeModal(settingsModal);
     } catch (e) {
         alert('Lỗi khi lưu cài đặt.');
     }
@@ -207,7 +228,7 @@ async function openPreviewModal(item) {
     document.getElementById('previewViews').textContent = '-';
     document.getElementById('previewDescContent').textContent = 'Đang tải thông tin...';
     
-    previewModal.style.display = 'flex';
+    openModal(previewModal);
     searchResults.style.display = 'none';
 
     try {
@@ -244,15 +265,11 @@ async function openPreviewModal(item) {
 
 document.querySelector('#previewModal .btn-secondary').onclick = () => closeModal(previewModal);
 
-function closeModal(modal) {
-    if (modal) modal.style.display = 'none';
-}
-
 // Chapter Selection
 async function openSelectionModal(item) {
     state.currentSlug = item.slug;
     state.currentTitle = item.title;
-    selectionModal.style.display = 'flex';
+    openModal(selectionModal);
     chapterTreeContainer.innerHTML = '<div class="loading-msg">Đang tải danh sách chương...</div>';
     chapterSearchInput.value = '';
     state.selectedUrls.clear();
@@ -386,7 +403,7 @@ document.getElementById('confirmSelectionBtn').onclick = () => {
     closeModal(selectionModal);
     document.getElementById('modalTitle').textContent = `Tải: ${state.currentTitle}`;
     document.getElementById('modalSlug').value = state.currentSlug;
-    downloadModal.style.display = 'flex';
+    openModal(downloadModal);
 };
 
 document.querySelector('#downloadModal .modal-actions .btn-secondary').onclick = () => closeModal(downloadModal);
@@ -414,7 +431,7 @@ document.getElementById('downloadForm').onsubmit = async (e) => {
 };
 
 batchImportBtn.onclick = () => {
-    batchImportModal.style.display = 'flex';
+    openModal(batchImportModal);
     batchImportUrls.value = '';
 };
 document.querySelector('#batchImportModal .btn-secondary').onclick = () => closeModal(batchImportModal);
@@ -617,6 +634,16 @@ scanFoldersBtn.onclick = async () => {
 };
 
 librarySearchInput.oninput = filterLibrary;
+
+[previewModal, selectionModal, downloadModal, settingsModal, batchImportModal].forEach(initModalDismissal);
+
+document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const activeModal = [batchImportModal, downloadModal, selectionModal, previewModal, settingsModal].find(isModalOpen);
+    if (activeModal) {
+        closeModal(activeModal);
+    }
+});
 
 // App Init
 async function initApp() {

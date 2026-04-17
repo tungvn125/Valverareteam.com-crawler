@@ -8,7 +8,7 @@ from loguru import logger
 from playwright.async_api import Browser, async_playwright
 
 from .sources import get_source
-from .utils import HEADERS
+from .utils import HEADERS, resolve_playwright_headless
 
 
 async def get_chapter_tree(url: str, output_file: str, cookies: dict[str, str] | None = None):
@@ -194,7 +194,7 @@ async def get_chapter_tree_list(
         # Get HTML content — reuse provided browser or create one
         if browser is None:
             async with async_playwright() as p:
-                _browser = await p.chromium.launch()
+                _browser = await p.chromium.launch(headless=resolve_playwright_headless())
                 html_content = await _fetch_chapter_page(_browser, url, session_state)
                 await _browser.close()
         else:

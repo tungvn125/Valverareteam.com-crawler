@@ -299,3 +299,7 @@ class TestAPIEndpoints:
         with patch.dict(os.environ, {"VVR_OPDS_USER": "admin", "VVR_OPDS_PASS": "correct"}):
             response = client.get("/opds/v1/root", auth=("admin", "wrong"))
             assert response.status_code == 401
+
+    def test_favicon_served(self, client):
+        response = client.get("/favicon.ico")
+        assert response.status_code == 200

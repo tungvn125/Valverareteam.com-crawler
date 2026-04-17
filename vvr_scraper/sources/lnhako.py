@@ -1,8 +1,10 @@
+import asyncio
 import re
 
 import httpx
 from bs4 import BeautifulSoup
 from playwright.async_api import Browser
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from ..models import ContentItem, StoryInfo
 from ..utils import HEADERS
@@ -53,11 +55,19 @@ class LnHakoSource(BaseSource):
         description_elem = soup.select_one("div.summary-content")
         description = description_elem.text.strip() if description_elem else "No description"
 
-        cover_img = soup.find("div", class_="series-cover")
         cover_url = None
-        if cover_img and cover_img.get("style"):
-            url_match = re.search(r"url\(['\"]?([^'\")]+)['\"]?\)", cover_img["style"])
-            cover_url = url_match.group(1) if url_match else None
+
+        og_image = soup.select_one("meta[property='og:image']")
+        if og_image and og_image.get("content"):
+            cover_url = og_image.get("content")
+
+        if not cover_url:
+            cover_img = soup.select_one(".series-cover .content.img-in-ratio") or soup.find(
+                "div", class_="series-cover"
+            )
+            if cover_img and cover_img.get("style"):
+                url_match = re.search(r"url\(['\"]?([^'\")]+)['\"]?\)", cover_img["style"])
+                cover_url = url_match.group(1) if url_match else None
 
         genres = [a.text.strip() for a in soup.select("div.series-gernes a")]
 
@@ -146,27 +156,39 @@ class LnHakoSource(BaseSource):
         if not self.browser:
             raise RuntimeError("Browser instance required for LnHakoSource content extraction")
 
-        page = await self.browser.new_page()
-        try:
-            await page.goto(chapter_url, wait_until="networkidle", timeout=60000)
-            await page.wait_for_selector("#chapter-content", timeout=30000)
+        max_attempts = 3
+        backoffs = [2, 4]
 
-            # Get text paragraphs
-            # hako usually has content in <p> tags inside #chapter-content
-            paragraphs = await page.locator("#chapter-content p").all_inner_texts()
+        for attempt in range(max_attempts):
+            page = await self.browser.new_page()
+            try:
+                await page.goto(chapter_url, wait_until="networkidle", timeout=60000)
+                try:
+                    await page.wait_for_selector("#chapter-content", timeout=30000)
+                except (PlaywrightTimeoutError, TimeoutError):
+                    # Some Hako chapters render the container late, but text nodes can still be queryable.
+                    await page.wait_for_selector("#chapter-content p, #chapter-content img", timeout=30000)
 
-            extracted_content = []
-            for p in paragraphs:
-                if p.strip():
-                    extracted_content.append(ContentItem(type="text", data=p.strip()))
+                # Get text paragraphs
+                # hako usually has content in <p> tags inside #chapter-content
+                paragraphs = await page.locator("#chapter-content p").all_inner_texts()
 
-            # Also get images if any
-            images = await page.locator("#chapter-content img").all()
-            for img in images:
-                src = await img.get_attribute("src")
-                if src:
-                    extracted_content.append(ContentItem(type="image", data=src))
+                extracted_content = []
+                for p in paragraphs:
+                    if p.strip():
+                        extracted_content.append(ContentItem(type="text", data=p.strip()))
 
-            return extracted_content
-        finally:
-            await page.close()
+                # Also get images if any
+                images = await page.locator("#chapter-content img").all()
+                for img in images:
+                    src = await img.get_attribute("src")
+                    if src:
+                        extracted_content.append(ContentItem(type="image", data=src))
+
+                return extracted_content
+            except (PlaywrightTimeoutError, TimeoutError):
+                if attempt == max_attempts - 1:
+                    raise
+                await asyncio.sleep(backoffs[attempt])
+            finally:
+                await page.close()

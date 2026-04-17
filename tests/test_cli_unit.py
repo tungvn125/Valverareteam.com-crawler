@@ -3,8 +3,9 @@ Unit tests for cli.py — argument parsing, chapter filtering, chapter selection
 URL resolution, export config, and cleanup.
 """
 
+import os
 import sys
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -98,6 +99,20 @@ class TestArgumentParsing:
     def test_skip_illustrations(self):
         cli = self._parse(["ten-truyen", "--khong-minh-hoa"])
         assert cli.args.khong_minh_hoa is True
+
+    def test_head_playwright_flag(self):
+        cli = self._parse(["ten-truyen", "--head-playwright"])
+        assert cli.args.head_playwright is True
+        assert cli.args.headless_playwright is False
+
+    def test_headless_playwright_flag(self):
+        cli = self._parse(["ten-truyen", "--headless-playwright"])
+        assert cli.args.headless_playwright is True
+        assert cli.args.head_playwright is False
+
+    def test_head_playwright_and_headless_playwright_mutually_exclusive(self):
+        with pytest.raises(SystemExit):
+            self._parse(["ten-truyen", "--head-playwright", "--headless-playwright"])
 
     def test_no_positional_args(self):
         cli = self._parse([])
@@ -383,4 +398,54 @@ class TestRunCommandDispatch:
                             cli = ValvrareScraperCLI()
                             with patch("webbrowser.open"):
                                 await cli.run()
-                            mock_web.assert_called_once_with(host="127.0.0.1", port=9999, num_workers=1)
+                            mock_web.assert_called_once_with(
+                                host="127.0.0.1", port=9999, num_workers=1, playwright_mode=None
+                            )
+
+
+class TestRunWebServerPlaywrightModeEnvRestore:
+    @pytest.mark.asyncio
+    async def test_restore_previous_env_value_after_serve(self, monkeypatch):
+        monkeypatch.setenv("VVR_PLAYWRIGHT_MODE", "head")
+
+        from vvr_scraper.web import run_web_server
+
+        mock_server = Mock()
+        mock_server.serve = AsyncMock(return_value=None)
+
+        with patch("vvr_scraper.web.uvicorn.Config", return_value=Mock()):
+            with patch("vvr_scraper.web.uvicorn.Server", return_value=mock_server):
+                await run_web_server(playwright_mode="headless")
+
+        assert os.environ["VVR_PLAYWRIGHT_MODE"] == "head"
+
+    @pytest.mark.asyncio
+    async def test_remove_env_when_originally_unset(self, monkeypatch):
+        monkeypatch.delenv("VVR_PLAYWRIGHT_MODE", raising=False)
+
+        from vvr_scraper.web import run_web_server
+
+        mock_server = Mock()
+        mock_server.serve = AsyncMock(return_value=None)
+
+        with patch("vvr_scraper.web.uvicorn.Config", return_value=Mock()):
+            with patch("vvr_scraper.web.uvicorn.Server", return_value=mock_server):
+                await run_web_server(playwright_mode="headless")
+
+        assert "VVR_PLAYWRIGHT_MODE" not in os.environ
+
+    @pytest.mark.asyncio
+    async def test_restore_env_on_serve_exception(self, monkeypatch):
+        monkeypatch.setenv("VVR_PLAYWRIGHT_MODE", "head")
+
+        from vvr_scraper.web import run_web_server
+
+        mock_server = Mock()
+        mock_server.serve = AsyncMock(side_effect=RuntimeError("boom"))
+
+        with patch("vvr_scraper.web.uvicorn.Config", return_value=Mock()):
+            with patch("vvr_scraper.web.uvicorn.Server", return_value=mock_server):
+                with pytest.raises(RuntimeError, match="boom"):
+                    await run_web_server(playwright_mode="headless")
+
+        assert os.environ["VVR_PLAYWRIGHT_MODE"] == "head"

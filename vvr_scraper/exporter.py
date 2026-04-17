@@ -54,6 +54,13 @@ def _normalize_content_list(items: ContentList) -> list[ContentItem]:
     return [_normalize_content_item(item) for item in items]
 
 
+def _normalize_image_url(url: str) -> str:
+    """Normalize image URLs before download/export."""
+    if url.startswith("//"):
+        return f"https:{url}"
+    return url
+
+
 async def _maybe_await(value):
     """Await the value if it is awaitable, else return it directly."""
     if inspect.isawaitable(value):
@@ -147,7 +154,7 @@ async def tao_file_epub(
             for ci in chap.get("content", []):
                 norm = _normalize_content_item(ci)
                 if norm.type == "image":
-                    all_image_urls.append(norm.data)
+                    all_image_urls.append(_normalize_image_url(norm.data))
 
     # 2. Pre-download all images concurrently
     image_cache = await _download_images_bulk(all_image_urls)
@@ -197,8 +204,10 @@ async def tao_file_epub(
             norm = _normalize_content_item(item)
             if norm.type == "text":
                 chapter_html += f"<p>{html.escape(norm.data)}</p>"
-            elif norm.type == "image" and norm.data in url_to_internal_path:
-                chapter_html += f'<img src="{url_to_internal_path[norm.data]}" alt="Minh họa"/>'
+            elif norm.type == "image":
+                image_url = _normalize_image_url(norm.data)
+                if image_url in url_to_internal_path:
+                    chapter_html += f'<img src="{url_to_internal_path[image_url]}" alt="Minh họa"/>'
         chapter_obj.content = chapter_html
         return chapter_obj
 

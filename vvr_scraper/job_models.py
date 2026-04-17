@@ -13,6 +13,7 @@ class ScrapePayload(BaseModel):
     skip_illustrations: bool = False
     output_folder: str | None = None
     formats: list[str] = Field(default_factory=lambda: ["epub", "pdf", "cinema"])
+    playwright_mode: Literal["head", "headless"] | None = None
 
 
 class RenderPayload(BaseModel):

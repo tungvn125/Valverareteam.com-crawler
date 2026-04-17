@@ -24,7 +24,14 @@ from ...mixing_engine import TimelineConfig
 from ...scraper_core import lay_thong_tin_truyen, scrape_chapters
 from ...session_manager import load_session
 from ...tao_so_do_cay import get_chapter_tree_list
-from ...utils import BASE_URL, HEADERS, get_config_path, get_token_from_state, sanitize_filename
+from ...utils import (
+    BASE_URL,
+    HEADERS,
+    get_config_path,
+    get_token_from_state,
+    resolve_playwright_headless,
+    sanitize_filename,
+)
 from ..deps import get_db
 from ..models import DownloadRequest, load_vvr_settings
 from ..state import active_tasks, active_tasks_futures, manager, task_log_buffers
@@ -87,7 +94,7 @@ async def run_scrape_task(req: DownloadRequest, task_id: str):
 
         # Open browser early to share between chapter tree and scraping
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
+            browser = await p.chromium.launch(headless=resolve_playwright_headless())
 
             story_url = req.slug if is_custom_source else f"{BASE_URL}/{req.slug}"
             chapter_data = await get_chapter_tree_list(

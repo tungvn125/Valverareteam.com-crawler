@@ -4,6 +4,7 @@ Tests for scraper.py - Main crawler functionality
 
 import os
 import sys
+import zipfile
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -253,6 +254,55 @@ class TestTaoFileEpub:
         await tao_file_epub(filepath, "Test Book", "Test Author", chapters_data)
 
         assert os.path.exists(filepath)
+
+    async def test_epub_normalizes_protocol_relative_image_urls(self, tmp_path):
+        chapters_data = [
+            {
+                "title": "Chapter 1",
+                "content": [
+                    {"type": "image", "data": "//images.novelpia.com/test.file"},
+                ],
+            }
+        ]
+        filepath = str(tmp_path / "test.epub")
+
+        async def fake_download(urls, max_concurrent=10):
+            assert urls == ["https://images.novelpia.com/test.file"]
+            return {"https://images.novelpia.com/test.file": b"fake-image"}
+
+        with patch("vvr_scraper.exporter._download_images_bulk", new=AsyncMock(side_effect=fake_download)):
+            await tao_file_epub(filepath, "Test Book", "Test Author", chapters_data)
+
+        assert os.path.exists(filepath)
+        with zipfile.ZipFile(filepath, "r") as zip_ref:
+            names = zip_ref.namelist()
+            assert any(name.startswith("EPUB/images/") for name in names)
+
+    async def test_epub_keeps_separate_paragraph_blocks(self, tmp_path):
+        chapters_data = [
+            {
+                "title": "Chapter 1",
+                "content": [
+                    {"type": "text", "data": "Doan 1"},
+                    {"type": "text", "data": '"Loi thoai rieng"'},
+                    {"type": "text", "data": "Doan 3"},
+                ],
+            }
+        ]
+        filepath = str(tmp_path / "test.epub")
+
+        await tao_file_epub(filepath, "Test Book", "Test Author", chapters_data)
+
+        with zipfile.ZipFile(filepath, "r") as zip_ref:
+            chapter_files = [name for name in zip_ref.namelist() if name.endswith("chap_1.xhtml")]
+            chapter_html = zip_ref.read(chapter_files[0]).decode("utf-8")
+
+        assert chapter_html.count("<p>") == 3
+        assert "<p>Doan 1</p>" in chapter_html
+        assert '<p>"Loi thoai rieng"</p>' in chapter_html
+        assert "<p>Doan 3</p>" in chapter_html
+        assert chapter_html.index("<p>Doan 1</p>") < chapter_html.index('<p>"Loi thoai rieng"</p>')
+        assert chapter_html.index('<p>"Loi thoai rieng"</p>') < chapter_html.index("<p>Doan 3</p>")
 
 
 @pytest.mark.asyncio
