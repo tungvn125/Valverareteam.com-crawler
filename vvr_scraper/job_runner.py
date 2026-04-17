@@ -28,6 +28,7 @@ from vvr_scraper.utils import (
     HEADERS,
     get_config_path,
     get_token_from_state,
+    resolve_playwright_headless,
     resolve_story_url,
     sanitize_filename,
 )
@@ -80,7 +81,7 @@ async def execute_crawl_job(payload: ScrapePayload, job_id: str, db: DatabaseMan
 
     # 3. Get Chapters
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
+        browser = await p.chromium.launch(headless=resolve_playwright_headless(payload.playwright_mode))
         try:
             chapter_tree = await get_chapter_tree_list(
                 story_url, output_file="chapter_list.json", session_state=session_state, browser=browser
@@ -268,7 +269,7 @@ async def start_server_from_job(payload: ServerPayload):
     await run_web_server(host=payload.host, port=payload.port)
 
 
-async def run_manifest(file_path: str):
+async def run_manifest(file_path: str, playwright_mode: str | None = None):
     """
     Reads a JSON manifest file, validates it, and executes the job.
     If a local server is running, submits via API to show logs in Web UI.
@@ -283,14 +284,21 @@ async def run_manifest(file_path: str):
 
         manifest = JobManifest.model_validate(data)
 
+        if playwright_mode in {"head", "headless"}:
+            for job in manifest.jobs:
+                if job.task == "crawl":
+                    job.payload.playwright_mode = playwright_mode
+
         # Validation and parsing
         parse_manifest(manifest)
+
+        submission_data = manifest.model_dump(mode="json")
 
         # Try to submit to local server first (for Web UI logs)
         server_url = "http://127.0.0.1:8000/api/jobs"
         async with httpx.AsyncClient(timeout=5.0) as client:
             try:
-                response = await client.post(server_url, json=data)
+                response = await client.post(server_url, json=submission_data)
                 if response.status_code == 200:
                     logger.success("Đã gửi Job tới Server thành công. Bạn có thể theo dõi log trên Web UI.")
                     return

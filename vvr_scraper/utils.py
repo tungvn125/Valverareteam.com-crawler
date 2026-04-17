@@ -45,6 +45,22 @@ HEADERS = {
 }
 
 
+def resolve_playwright_headless(cli_mode: str | None = None) -> bool:
+    """Resolve Playwright headless mode from CLI/env/default precedence."""
+    if cli_mode == "head":
+        return False
+    if cli_mode == "headless":
+        return True
+
+    env_mode = (os.getenv("VVR_PLAYWRIGHT_MODE") or "").strip().lower()
+    if env_mode == "head":
+        return False
+    if env_mode == "headless":
+        return True
+
+    return True
+
+
 def sanitize_filename(name: str) -> str:
     """
     Sanitizes a string to be used as a valid filename or directory name.

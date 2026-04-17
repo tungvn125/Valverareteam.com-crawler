@@ -2,7 +2,7 @@ import asyncio
 import re
 
 import httpx
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, NavigableString, Tag
 from loguru import logger
 
 from ..models import ContentItem, StoryInfo
@@ -13,11 +13,47 @@ _MAX_RETRIES = 3
 _RETRY_DELAY = 2.0
 
 
+def _extract_text_segments(element: Tag) -> list[str]:
+    """Split TruyenFull's single-paragraph + <br><br> markup into logical paragraphs."""
+    segments: list[str] = []
+    current: list[str] = []
+    consecutive_breaks = 0
+
+    for node in element.children:
+        if isinstance(node, NavigableString):
+            text = str(node).strip()
+            if text:
+                current.append(text)
+                consecutive_breaks = 0
+            continue
+
+        if node.name == "br":
+            consecutive_breaks += 1
+            if consecutive_breaks >= 2 and current:
+                segment = " ".join(current).strip()
+                if segment:
+                    segments.append(segment)
+                current = []
+            continue
+
+        text = node.get_text(" ", strip=True)
+        if text:
+            current.append(text)
+            consecutive_breaks = 0
+
+    if current:
+        segment = " ".join(current).strip()
+        if segment:
+            segments.append(segment)
+
+    return segments
+
+
 async def _request_with_retry(client: httpx.AsyncClient, url: str, params: dict | None = None) -> httpx.Response:
     """Make an HTTP GET request with exponential backoff on 429/503."""
     last_resp = None
     for attempt in range(_MAX_RETRIES):
-        resp = await client.get(url, params=params)
+        resp = await client.get(url, params=params, follow_redirects=True)
         if resp.status_code in (429, 503):
             delay = _RETRY_DELAY * (2**attempt)
             logger.warning(f"Rate-limited ({resp.status_code}) on {url}, retrying in {delay:.1f}s...")
@@ -156,8 +192,8 @@ class TruyenFullSource(BaseSource):
                 if img_src:
                     extracted_content.append(ContentItem(type="image", data=img_src))
             elif element.name == "p":
-                text = element.get_text(strip=True)
-                if text:
+                text_segments = _extract_text_segments(element)
+                for text in text_segments:
                     extracted_content.append(ContentItem(type="text", data=text))
 
         if not extracted_content:

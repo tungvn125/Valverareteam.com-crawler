@@ -18,7 +18,7 @@ from ...db import DatabaseManager
 from ...scraper_core import lay_thong_tin_truyen
 from ...session_manager import load_session
 from ...tao_so_do_cay import get_chapter_tree_list
-from ...utils import BASE_URL, HEADERS, get_config_path, sanitize_filename
+from ...utils import BASE_URL, HEADERS, get_config_path, resolve_playwright_headless, sanitize_filename
 from ..deps import get_db
 from ..models import BatchImportRequest, DownloadRequest, load_vvr_settings
 from ..state import ConnectionManager, active_tasks, download_queue, manager
@@ -48,7 +48,7 @@ async def sync_all_novels():
     semaphore = asyncio.Semaphore(3)
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
+        browser = await p.chromium.launch(headless=resolve_playwright_headless())
 
         async def sync_one(novel):
             nonlocal sync_count

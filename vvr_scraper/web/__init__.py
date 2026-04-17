@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
@@ -123,14 +124,40 @@ if os.path.exists(static_dir):
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 
-async def run_web_server(host: str = "127.0.0.1", port: int = 8000, num_workers: int | None = None):
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    favicon_path = os.path.join(static_dir, "favicon.ico")
+    return FileResponse(favicon_path)
+
+
+async def run_web_server(
+    host: str = "127.0.0.1",
+    port: int = 8000,
+    num_workers: int | None = None,
+    playwright_mode: str | None = None,
+):
     """Starts the Uvicorn server in the current event loop."""
     if num_workers is None:
         settings = load_vvr_settings()
         num_workers = settings.num_workers
 
+    env_key = "VVR_PLAYWRIGHT_MODE"
+    had_previous_playwright_mode = env_key in os.environ
+    previous_playwright_mode = os.environ.get(env_key)
+
+    if playwright_mode:
+        os.environ[env_key] = playwright_mode
+
     download_queue.num_workers = num_workers
     logger.info(f"Starting web server at http://{host}:{port} with {num_workers} workers")
     config = uvicorn.Config(app, host=host, port=port, log_level="info")
     server = uvicorn.Server(config)
-    await server.serve()
+
+    try:
+        await server.serve()
+    finally:
+        if playwright_mode:
+            if had_previous_playwright_mode:
+                os.environ[env_key] = previous_playwright_mode if previous_playwright_mode is not None else ""
+            else:
+                os.environ.pop(env_key, None)
