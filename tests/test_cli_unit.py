@@ -403,6 +403,51 @@ class TestRunCommandDispatch:
                             )
 
 
+class TestSocialCreateAdminCommand:
+    def test_social_create_admin_command_parses(self):
+        with patch.object(sys, "argv", ["vvrt", "social", "create-admin", "--username", "alice", "--password", "secret123"]):
+            with patch("vvr_scraper.cli.configure_logger"):
+                with patch("vvr_scraper.cli.get_config_path", return_value="/tmp/fake.db"):
+                    with patch("vvr_scraper.cli.DatabaseManager"):
+                        from vvr_scraper.cli import ValvrareScraperCLI
+
+                        cli = ValvrareScraperCLI()
+                        assert cli.args.ten_truyen[:2] == ["social", "create-admin"]
+                        assert cli.args.username == "alice"
+                        assert cli.args.password == "secret123"
+
+    def test_social_create_admin_defaults_display_name(self):
+        with patch.object(sys, "argv", ["vvrt", "social", "create-admin", "--username", "bob", "--password", "pass1234"]):
+            with patch("vvr_scraper.cli.configure_logger"):
+                with patch("vvr_scraper.cli.get_config_path", return_value="/tmp/fake.db"):
+                    with patch("vvr_scraper.cli.DatabaseManager"):
+                        from vvr_scraper.cli import ValvrareScraperCLI
+
+                        cli = ValvrareScraperCLI()
+                        assert cli.args.display_name is None
+
+    @pytest.mark.asyncio
+    async def test_social_create_admin_dispatches(self):
+        with patch.object(sys, "argv", ["vvrt", "social", "create-admin", "--username", "alice", "--password", "secret123"]):
+            with patch("vvr_scraper.cli.configure_logger"):
+                with patch("vvr_scraper.cli.get_config_path", return_value="/tmp/fake.db"):
+                    with patch("vvr_scraper.cli.DatabaseManager"):
+                        from vvr_scraper.cli import ValvrareScraperCLI
+
+                        cli = ValvrareScraperCLI()
+                        with patch("vvr_scraper.social.db.SocialDatabaseManager") as MockSocialDB:
+                            mock_db = AsyncMock()
+                            mock_db.create_admin_user = AsyncMock(return_value={"username": "alice"})
+                            MockSocialDB.return_value = mock_db
+                            with patch("vvr_scraper.social.auth.hash_password", return_value="hashed_pw"):
+                                await cli.run()
+                        mock_db.init_db.assert_called_once()
+                        mock_db.create_admin_user.assert_called_once_with(
+                            username="alice", hashed_password="hashed_pw", display_name="alice"
+                        )
+                        mock_db.close.assert_called_once()
+
+
 class TestRunWebServerPlaywrightModeEnvRestore:
     @pytest.mark.asyncio
     async def test_restore_previous_env_value_after_serve(self, monkeypatch):

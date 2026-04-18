@@ -1,4 +1,5 @@
 import asyncio
+import os
 import uuid
 from datetime import UTC, datetime
 
@@ -135,3 +136,94 @@ class SocialDatabaseManager:
             )
         rows = await cursor.fetchall()
         return [dict(row) for row in rows]
+
+    async def create_invite_code(self, code: str, created_by: str, max_uses: int = 1) -> dict:
+        now = datetime.now(UTC).isoformat()
+        db = await self.get_db()
+        await db.execute(
+            "INSERT INTO invite_codes (code, created_by, max_uses, use_count, created_at) VALUES (?, ?, ?, 0, ?)",
+            (code, created_by, max_uses, now),
+        )
+        await db.commit()
+        return {"code": code, "created_by": created_by, "max_uses": max_uses, "use_count": 0}
+
+    async def get_invite_code(self, code: str) -> dict | None:
+        db = await self.get_db()
+        cursor = await db.execute("SELECT * FROM invite_codes WHERE code = ?", (code,))
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+    async def list_invite_codes(self) -> list[dict]:
+        db = await self.get_db()
+        cursor = await db.execute("SELECT * FROM invite_codes")
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    async def get_user_by_username(self, username: str) -> dict | None:
+        db = await self.get_db()
+        cursor = await db.execute("SELECT * FROM users WHERE username = ?", (username,))
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+    async def get_user_by_id(self, user_id: str) -> dict | None:
+        db = await self.get_db()
+        cursor = await db.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+    async def has_any_admin(self) -> bool:
+        db = await self.get_db()
+        cursor = await db.execute("SELECT COUNT(*) FROM users WHERE role = 'admin'")
+        row = await cursor.fetchone()
+        return row[0] > 0
+
+    async def create_admin_user(self, username: str, hashed_password: str, display_name: str) -> dict:
+        user_id = str(uuid.uuid4())
+        now = datetime.now(UTC).isoformat()
+        db = await self.get_db()
+        try:
+            await db.execute(
+                "INSERT INTO users (id, username, display_name, hashed_password, invite_code_used, role, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (user_id, username, display_name, hashed_password, None, "admin", now),
+            )
+            await db.commit()
+        except aiosqlite.IntegrityError as exc:
+            raise ValueError(f"username '{username}' is already taken") from exc
+        return {"id": user_id, "username": username, "display_name": display_name, "role": "admin"}
+
+    async def register_user_with_invite(
+        self, invite_code: str, username: str, hashed_password: str, display_name: str
+    ) -> dict:
+        if await self.get_user_by_username(username):
+            raise ValueError(f"username '{username}' is already taken")
+
+        invite = await self.get_invite_code(invite_code)
+        if not invite:
+            bootstrap_code = os.getenv("VVR_ADMIN_CODE")
+            if invite_code == bootstrap_code and not await self.has_any_admin():
+                role = "admin"
+            else:
+                raise ValueError("invalid invite code")
+        else:
+            if invite["use_count"] >= invite["max_uses"]:
+                raise ValueError("invite code exhausted")
+            role = "member"
+
+        user_id = str(uuid.uuid4())
+        now = datetime.now(UTC).isoformat()
+        db = await self.get_db()
+        try:
+            await db.execute(
+                "INSERT INTO users (id, username, display_name, hashed_password, invite_code_used, role, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (user_id, username, display_name, hashed_password, invite_code, role, now),
+            )
+        except aiosqlite.IntegrityError as exc:
+            raise ValueError(f"username '{username}' is already taken") from exc
+
+        if invite:
+            await db.execute(
+                "UPDATE invite_codes SET use_count = use_count + 1 WHERE code = ?",
+                (invite_code,),
+            )
+        await db.commit()
+        return {"id": user_id, "username": username, "display_name": display_name, "role": role}
