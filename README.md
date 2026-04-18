@@ -1,200 +1,99 @@
-# Valvrare Team Web Novel Scraper (VVR-Scraper)
+# VVR-Scraper
 
-Hệ thống tự động hóa khai thác và chuyển đổi nội dung từ Valvrare Team sang các định dạng đa phương tiện (Ebook, Audiobook, Cinematic Video).
+## Overview
 
-## 🚀 Tính năng chính
+VVR-Scraper is a Python 3.12+ command-line and web tool for downloading and exporting stories from Valvrare Team into multiple output formats. The package exposes `vvrt` as its CLI entry point and also includes a FastAPI-based Web UI for managing downloads, job execution, and library sync, alongside separate OPDS feed endpoints for reader clients.
 
-- **Hybrid Scraping**: Kết hợp HTTPX (Fast mode via SSR Proxy) và Playwright (Reliable mode) để vượt rào cản kỹ thuật và trích xuất nội dung chính xác.
-- **Đa nguồn (Multi-Source)**: Hỗ trợ tải truyện từ nhiều nguồn khác nhau qua hệ thống Source Adapter mở rộng:
-    - **Valvrare Team** (valvrareteam.net) — Nguồn gốc, hỗ trợ đầy đủ Volume/Chapter.
-    - **TruyenFull** (truyenfull.vision) — Tải qua HTTPX, không cần Playwright cho nội dung.
-    - **LnHako** (ln.hako.vn) — Yêu cầu Playwright để giải mã nội dung (xor_shuffle). Hỗ trợ cấu trúc Volume.
-- **Đa định dạng xuất bản**:
-    - **Ebooks**: EPUB (với cấu trúc Volume/Chapter), PDF, HTML, Markdown, TXT.
-    - **Audiobook**: Chuyển đổi văn bản thành giọng nói (TTS) chất lượng cao sử dụng ElevenLabs.
-    - **Audio Drama (v2.5)**: Tự động phân tích kịch bản bằng OpenAI, gán giọng nhân vật, chèn nhạc nền (BGM) và hiệu ứng âm thanh (SFX) từ Freesound.
-    - **Cinematic Video (MP4)**: Kết xuất video với hiệu ứng chuyển cảnh, Ken Burns, VFX và đồng bộ phụ đề Karaoke chính xác từng mili giây.
-- **Cinema Player**: Trình phát web tích hợp cho phép trải nghiệm nội dung Cinematic ngay trên trình duyệt.
-- **Personal OPDS Server**: Cung cấp feed sách chuẩn OPDS 1.1 để kết nối trực tiếp với các ứng dụng đọc sách (Moon+ Reader, KyBook, v.v.).
-- **Job Orchestrator**: Hệ thống hàng đợi (Queue) và Task Runner mạnh mẽ, hỗ trợ tự động hóa việc theo dõi và tải chương mới.
+## Current Capabilities
 
-## 🛠 Yêu cầu hệ thống
+- Download stories by slug from the `vvrt` CLI.
+- Export output as `PDF`, `EPUB`, `HTML`, `MD`, `TXT`, `MP3`, `AD-MP3`, or `MP4`.
+- Choose download scope with all chapters, selected volumes, or selected chapters.
+- Run a Web UI with task queue workers, health checks, and Prometheus metrics endpoints.
+- Persist local library and settings data under the app config directory.
+- Run the containerized Web UI with Docker or Docker Compose.
 
-- **Python**: 3.12+
-- **Công cụ bổ trợ**: 
-    - [FFmpeg](https://ffmpeg.org/): Bắt buộc để xử lý âm thanh và kết xuất video.
-    - [Playwright](https://playwright.dev/): Cần thiết cho chế độ Reliable Scraping và Video Rendering.
-- **API Keys**:
-    - `OPENAI_API_KEY`: Dùng cho AI Director (phân tích kịch bản và sinh ảnh).
-    - `ELEVENLABS_API_KEY`: Dùng cho giọng đọc AI chất lượng cao.
-    - `FREESOUND_API_KEY`: Dùng để tìm kiếm nhạc nền và hiệu ứng.
+## System Requirements
 
-## 📦 Cài đặt
+- Python 3.12+
+- FFmpeg for audio and video workflows
+- Playwright with Chromium installed for scraping and rendering paths
 
-Cách đơn giản nhất là cài đặt trực tiếp từ PyPI:
+## Installation
+
+Install the package in your current environment:
 
 ```bash
-# Sử dụng uv (Khuyến nghị)
-uv pip install vvr-scraper
+pip install -e .
+```
 
-# Hoặc sử dụng pip truyền thống
-pip install vvr-scraper
+Install the Playwright browser runtime required by the scraper:
 
-# Cài đặt Playwright browsers (Bắt buộc cho chế độ Reliable mode và Video Render)
+```bash
 playwright install chromium
 ```
 
-### Cài đặt từ mã nguồn (Dành cho nhà phát triển)
+If you plan to generate `MP3`, `AD-MP3`, or `MP4` output, make sure `ffmpeg` is available on your system path before running `vvrt`.
 
-Nếu bạn muốn đóng góp hoặc sử dụng phiên bản mới nhất từ Git:
+## CLI Quickstart
 
-```bash
-git clone https://github.com/your-repo/valvrareteam-net-crawler.git
-cd valvrareteam-net-crawler
-uv pip install -e .
-playwright install chromium
-```
+`vvrt` is the package entry point defined in `pyproject.toml`.
 
-## 🐳 Docker
-
-### Sử dụng Image có sẵn
+Download a story as EPUB:
 
 ```bash
-# Pull image từ Docker Hub (nếu có)
-docker pull vvr-scraper
-
-# Chạy nhanh với EPUB output
-docker run --rm -v $(pwd)/output:/home/vvr/app/novels vvr-scraper vvrt ten-truyen-slug -f EPUB
-
-# Chạy Web UI
-docker run --rm -p 8000:8000 vvr-scraper vvrt web --host 0.0.0.0 --port 8000
+vvrt <slug> -f EPUB
 ```
 
-### Build Image từ Dockerfile
+Notes:
+
+- `<slug>` is passed as the positional story argument.
+- The CLI also supports `--all`, `--volumes`, `--chapters`, `--output`, `--gop`, `--head-playwright`, and `--headless-playwright`.
+- `EPUB` is the default format, but the explicit example above matches the supported `--format` choices in code.
+
+## Web UI Quickstart
+
+Start the web server from the CLI:
 
 ```bash
-# Build image
-docker build -t vvr-scraper .
-
-# Chạy CLI
-docker run --rm -v $(pwd)/output:/home/vvr/app/novels vvr-scraper vvrt ten-truyen-slug -f EPUB
-
-# Chạy Web UI với OPDS
-docker run --rm -p 8000:8000 \
-  -e OPENAI_API_KEY=your_key \
-  -e VVR_API_KEY=your_key \
-  vvr-scraper vvrt web --host 0.0.0.0 --port 8000
+vvrt web --host 0.0.0.0 --port 8000
 ```
 
-### Docker Compose (Recommended)
+Useful related flags:
 
-```yaml
-version: '3.8'
-services:
-  vvr-scraper:
-    build: .
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./novels:/home/vvr/app/novels
-      - ./config:/home/vvr/.config/vvr-scraper
-    environment:
-      - OPENAI_API_KEY=your_openai_key
-      - VVR_API_KEY=your_vvr_key
-      - VVR_BASE_URL=https://api.openai.com/v1
-    restart: unless-stopped
-```
+- `--workers` to control concurrent download workers in web mode
+- `--no-browser` to avoid opening a local browser automatically
+- `--head-playwright` or `--headless-playwright` to control browser mode used by scraping tasks
 
-```bash
-# Build và chạy
-docker-compose up -d
+The underlying server is implemented with FastAPI and Uvicorn. In local CLI usage, the default host is `127.0.0.1` and the default port is `8000` unless you override them.
 
-# Theo dõi logs
-docker-compose logs -f
-```
+## Environment Configuration
 
-## ⚙️ Cấu hình
+The project can run with no extra environment variables for basic CLI scraping and local web usage, but some features depend on optional configuration:
 
-Tạo file `.env` hoặc thiết lập biến môi trường:
+- `VVR_API_KEY`, `VVR_BASE_URL`, `VVR_MODEL` for AI-assisted audio drama and related workflows
+- `ELEVENLABS_API_KEY`, `VVR_NARRATOR_VOICE_ID` for voice generation
+- `OPENAI_API_KEY` for image generation features
+- `FREESOUND_CLIENT_ID`, `FREESOUND_CLIENT_SECRET` for Freesound integration
+- `VVR_SSR_URL` to override the SSR endpoint used during scraping
+- `VVR_OPDS_USER`, `VVR_OPDS_PASS` to configure OPDS access; current OPDS routes expect both values and return a configuration error when they are missing
+- `VVR_AUTO_SYNC=1` to enable periodic library auto-sync in web mode
+- `VVR_PLAYWRIGHT_MODE` to control Playwright mode at runtime
 
-```env
-# API Keys
-OPENAI_API_KEY=your_openai_key
-VVR_API_KEY=your_vvr_key
-VVR_BASE_URL=https://api.openai.com/v1
-ELEVENLABS_API_KEY=your_elevenlabs_key
-FREESOUND_CLIENT_ID=your_id
-FREESOUND_CLIENT_SECRET=your_secret
+The provided Docker Compose setup exposes the Web UI on `${VVR_PORT:-8000}`, Prometheus on `9090`, Grafana on `3000`, and maps persistent data with named volumes.
 
-# Tùy chọn (Optional)
-VVR_SSR_URL=val-ssr-2kzit.ondigitalocean.app
-VVR_OPDS_USER=admin
-VVR_OPDS_PASS=password
-```
+## Detailed Docs
 
-## 📖 Hướng dẫn sử dụng
+- [CLI guide](docs/cli.md)
+- [Web UI guide](docs/web-ui.md)
+- [Job runner guide](docs/job-runner.md)
+- [Library and OPDS guide](docs/library-opds.md)
+- [Media pipeline guide](docs/media-pipeline.md)
+- [Docker deployment guide](docs/docker-deploy.md)
+- [Contributing guide](CONTRIBUTING.md)
 
-### CLI (Command Line Interface)
+The Web UI is designed primarily for local desktop usage. Features that rely on host-native dialogs, such as the folder picker used by the `Browse...` action, may not work in headless or containerized deployments.
 
-Sử dụng lệnh `vvrt` để thực hiện các tác vụ:
+## Disclaimer
 
-```bash
-# Lấy sơ đồ cây của một truyện (hỗ trợ nhiều nguồn)
-vvrt tree https://valvrareteam.net/truyen/ten-truyen
-vvrt tree https://truyenfull.vision/thong-thien-chi-lo/
-vvrt tree https://ln.hako.vn/truyen/25956-ban-gai-doi-xu-voi-toi-qua-tot
-
-# Tải và xuất định dạng EPUB
-vvrt ten-truyen-slug -f EPUB
-
-# Tải từ nguồn khác nhau (truyền URL trực tiếp)
-vvrt https://truyenfull.vision/thong-thien-chi-lo/ -f EPUB
-vvrt https://ln.hako.vn/truyen/25956-ban-gai-doi-xu-voi-toi-qua-tot -f PDF
-
-# Tạo Audio Drama cho một chương
-vvrt ten-truyen-slug -f AD-MP3
-
-# Render video Cinematic
-vvrt ten-truyen-slug -f MP4
-```
-
-### Web UI & OPDS
-
-Khởi chạy máy chủ web:
-
-```bash
-vvrt web --port 8000
-```
-
-- **Giao diện quản lý**: `http://localhost:8000`
-- **OPDS Feed**: `http://localhost:8000/opds/v1/root`
-- **Cinema Player**: Truy cập qua API hoặc giao diện web.
-
-### Job Runner
-
-Chạy các tác vụ hàng loạt qua manifest JSON:
-
-```bash
-vvrt run manifest.json
-```
-
-## 🏗 Kiến trúc dự án
-
-- `vvr_scraper/scraper_core.py`: Lõi xử lý trích xuất dữ liệu, hỗ trợ đa nguồn qua Source Adapter.
-- `vvr_scraper/sources/`: Hệ thống Source Adapter mở rộng (`BaseSource` ABC).
-    - `truyenfull.py`: Adapter cho truyenfull.vision (HTTPX, kết xuất hình ảnh trong chương).
-    - `lnhako.py`: Adapter cho ln.hako.vn (Playwright cho nội dung, cấu trúc Volume).
-- `vvr_scraper/exporter.py`: Chuyển đổi dữ liệu sang các định dạng đích.
-- `vvr_scraper/audio_drama.py`: Logic AI Director và quản lý âm thanh.
-- `vvr_scraper/video_renderer.py`: Kết xuất MP4 sử dụng Playwright và FFmpeg.
-- `vvr_scraper/db.py`: Quản lý SQLite với cơ chế an toàn async.
-- `vvr_scraper/web.py`: API Server (FastAPI) và OPDS.
-- `vvr_scraper/tao_so_do_cay.py`: Trích xuất sơ đồ chương, tự động chọn Source Adapter theo URL.
-- `vvr_scraper/utils.py`: Hàm tiện ích bao gồm `resolve_story_url()` hỗ trợ đa nguồn.
-
-## 🛡 Bảo mật và Quy định
-
-Dự án này được tạo ra cho mục đích học tập và lưu trữ cá nhân. Vui lòng tôn trọng bản quyền của dịch giả và tác giả. Không sử dụng công cụ này để thực hiện các hành vi gây hại đến máy chủ của Valvrare Team.
-
----
-© 2024-2026 VVR-Scraper Team.
+This project is intended for personal-use automation and local archival workflows. You are responsible for respecting copyright, site terms, and any applicable laws when using it. Do not use the scraper in abusive ways, including aggressive repeated requests or other behavior that could disrupt the source service.
