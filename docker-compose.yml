@@ -31,6 +31,9 @@ services:
       - VVR_OPDS_PASS=${VVR_OPDS_PASS:-}
       # --- Auto Sync ---
       - VVR_AUTO_SYNC=${VVR_AUTO_SYNC:-0}
+      # --- Social Reader Auth ---
+      - VVR_JWT_SECRET=${VVR_JWT_SECRET:-change-this-random-secret}
+      - VVR_ADMIN_CODE=${VVR_ADMIN_CODE:-}
 
     volumes:
       # Thư mục truyện (persistent)

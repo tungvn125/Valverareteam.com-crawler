@@ -18,6 +18,7 @@ import vvr_scraper.web.state as state
 
 from ..db import DatabaseManager
 from ..job_worker import JobWorker
+from ..social.db import SocialDatabaseManager
 from ..utils import get_config_path
 from .deps import get_current_user  # noqa: F401
 
@@ -56,7 +57,11 @@ async def lifespan(app: FastAPI):
     state._event_loop = asyncio.get_running_loop()
     if not hasattr(app.state, "db") or app.state.db is None:
         app.state.db = DatabaseManager(db_path=get_config_path("vvr_library.db"))
+    if not hasattr(app.state, "social_db") or app.state.social_db is None:
+        app.state.social_db = SocialDatabaseManager(db_path=get_config_path("social.db"))
+
     await app.state.db.init_db()
+    await app.state.social_db.init_db()
 
     # Universal Task Runner: Start JobWorker
     state.worker = JobWorker(app.state.db)
@@ -75,6 +80,8 @@ async def lifespan(app: FastAPI):
         await state.worker.stop()
     jobs_routes.worker = None
     await download_queue.stop_workers()
+    if hasattr(app.state, "social_db") and app.state.social_db:
+        await app.state.social_db.close()
     if hasattr(app.state, "db") and app.state.db:
         await app.state.db.close()
 
