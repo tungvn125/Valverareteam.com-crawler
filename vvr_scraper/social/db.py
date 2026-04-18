@@ -1,7 +1,11 @@
 import asyncio
+import uuid
+from datetime import UTC, datetime
 
 import aiosqlite
 from loguru import logger
+
+REACTION_TYPES = {"heart", "cry", "wow", "angry", "fire", "skull", "think", "clap"}
 
 
 class SocialDatabaseManager:
@@ -51,3 +55,83 @@ class SocialDatabaseManager:
         if self._db:
             await self._db.close()
             self._db = None
+
+    async def create_user_for_test(self, username: str, role: str = "member") -> str:
+        user_id = str(uuid.uuid4())
+        db = await self.get_db()
+        await db.execute(
+            "INSERT INTO users (id, username, display_name, hashed_password, invite_code_used, role, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (user_id, username, username, "hashed", None, role, datetime.now(UTC).isoformat()),
+        )
+        await db.commit()
+        return user_id
+
+    async def create_reaction(self, user_id: str, book_slug: str, chapter_id: str, anchor: str, reaction_type: str):
+        if reaction_type not in REACTION_TYPES:
+            raise ValueError("invalid reaction type")
+        reaction_id = str(uuid.uuid4())
+        now = datetime.now(UTC).isoformat()
+        db = await self.get_db()
+        try:
+            await db.execute(
+                "INSERT INTO reactions (id, user_id, book_slug, chapter_id, anchor, reaction_type, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (reaction_id, user_id, book_slug, chapter_id, anchor, reaction_type, now),
+            )
+            await db.commit()
+        except aiosqlite.IntegrityError as exc:
+            raise ValueError("reaction already exists") from exc
+
+    async def list_reactions(self, book_slug: str, chapter_id: str, anchor: str | None = None) -> list[dict]:
+        db = await self.get_db()
+        if anchor:
+            cursor = await db.execute(
+                "SELECT * FROM reactions WHERE book_slug = ? AND chapter_id = ? AND anchor = ?",
+                (book_slug, chapter_id, anchor),
+            )
+        else:
+            cursor = await db.execute(
+                "SELECT * FROM reactions WHERE book_slug = ? AND chapter_id = ?",
+                (book_slug, chapter_id),
+            )
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    async def get_comment(self, comment_id: str) -> dict | None:
+        db = await self.get_db()
+        cursor = await db.execute("SELECT * FROM comments WHERE id = ?", (comment_id,))
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+    async def create_comment(
+        self, user_id: str, book_slug: str, chapter_id: str, anchor: str | None, content: str, parent_id: str | None
+    ) -> str:
+        if parent_id:
+            parent = await self.get_comment(parent_id)
+            if not parent:
+                raise ValueError("parent comment not found")
+            if parent["parent_id"] is not None:
+                raise ValueError("comments may only be one level deep")
+        comment_id = str(uuid.uuid4())
+        now = datetime.now(UTC).isoformat()
+        db = await self.get_db()
+        await db.execute(
+            "INSERT INTO comments (id, user_id, book_slug, chapter_id, anchor, parent_id, content, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (comment_id, user_id, book_slug, chapter_id, anchor, parent_id, content, now, now),
+        )
+        await db.commit()
+        return comment_id
+
+    async def list_comments(self, book_slug: str, chapter_id: str, anchor: str | None = None) -> list[dict]:
+        db = await self.get_db()
+        if anchor:
+            cursor = await db.execute(
+                "SELECT * FROM comments WHERE book_slug = ? AND chapter_id = ? AND anchor = ?",
+                (book_slug, chapter_id, anchor),
+            )
+        else:
+            cursor = await db.execute(
+                "SELECT * FROM comments WHERE book_slug = ? AND chapter_id = ?",
+                (book_slug, chapter_id),
+            )
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
