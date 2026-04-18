@@ -171,6 +171,10 @@ class SocialDatabaseManager:
         row = await cursor.fetchone()
         return dict(row) if row else None
 
+    async def create_random_invite(self, created_by: str, max_uses: int = 1) -> dict:
+        code = str(uuid.uuid4())[:8]
+        return await self.create_invite_code(code=code, created_by=created_by, max_uses=max_uses)
+
     async def has_any_admin(self) -> bool:
         db = await self.get_db()
         cursor = await db.execute("SELECT COUNT(*) FROM users WHERE role = 'admin'")

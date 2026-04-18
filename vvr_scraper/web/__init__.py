@@ -19,6 +19,7 @@ import vvr_scraper.web.state as state
 from ..db import DatabaseManager
 from ..job_worker import JobWorker
 from ..social.db import SocialDatabaseManager
+from ..social.router import admin_router, auth_router, social_router, websocket_router
 from ..utils import get_config_path
 from .deps import get_current_user  # noqa: F401
 
@@ -118,6 +119,10 @@ app.include_router(jobs_router)
 app.include_router(library_router)
 app.include_router(opds_router)
 app.include_router(opds_download_router)
+app.include_router(auth_router, prefix="/api/auth", tags=["Social Auth"])
+app.include_router(admin_router, prefix="/api/admin", tags=["Social Admin"])
+app.include_router(social_router, prefix="/api/social", tags=["Social"])
+app.include_router(websocket_router, tags=["Social"])
 
 # Mount novel assets
 vvr_settings_for_mount = load_vvr_settings()
