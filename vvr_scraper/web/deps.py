@@ -55,14 +55,9 @@ def get_db(request: Request | None = None):
     return db
 
 
-def get_social_db(request: Request | None = None):
+async def get_social_db(request: Request):
     """Returns the social database manager from request/app state."""
-    if request is not None:
-        state = request.app.state
-    else:
-        from . import app
-
-        state = app.state
+    state = request.app.state
 
     db = getattr(state, "social_db", None)
     if db is None:
