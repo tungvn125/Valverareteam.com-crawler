@@ -1,25 +1,27 @@
 # ============================================================
 # VVR-Scraper Docker Image
-# Multi-stage build: dependencies → runtime
+# Multi-stage build: wheel/venv dependencies -> runtime
 # ============================================================
 
 # --- Stage 1: Builder (install Python deps) ---
 FROM python:3.12-slim AS builder
 
 WORKDIR /build
+ENV PATH="/opt/venv/bin:$PATH"
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 # Install build tools needed for some Python packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy only dependency files first (better layer caching)
-COPY pyproject.toml ./
-COPY vvr_scraper/__init__.py ./vvr_scraper/
-
 # Install dependencies into a virtual environment
 RUN python -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
+
+# Copy package metadata and source needed for editable install
+COPY pyproject.toml ./
+COPY vvr_scraper ./vvr_scraper
+
 RUN pip install --no-cache-dir -e .
 
 
@@ -29,6 +31,9 @@ FROM python:3.12-slim AS runtime
 # Metadata
 LABEL maintainer="VVR-Scraper Contributors"
 LABEL description="Valvrare Team Web Novel Scraper - Ebook, Audiobook, Cinematic Video"
+
+ENV PATH="/opt/venv/bin:$PATH"
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 # Install system dependencies:
 #   - FFmpeg: audio/video processing
@@ -59,10 +64,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Copy virtual environment from builder
 COPY --from=builder /opt/venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
 
 # Install Playwright Chromium browser
 RUN playwright install chromium
+
+# Keep browser binaries available to the non-root runtime user
+RUN chmod -R 755 /ms-playwright
 
 # Create non-root user for security
 RUN useradd --create-home --shell /bin/bash vvr
@@ -88,6 +95,6 @@ HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # Default: start the web server
-# Override with: docker run vvr-scraper vvrt crawl <slug> -f EPUB
+# Override with: docker run vvr-scraper <slug> -f EPUB
 ENTRYPOINT ["vvrt"]
 CMD ["web", "--host", "0.0.0.0", "--port", "8000"]

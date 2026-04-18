@@ -14,9 +14,14 @@ services:
 
     # API Keys & Config
     environment:
-      # --- BẮT BUỘC cho Audio Drama ---
+      # --- Dùng cho image generation ---
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      # --- BẮT BUỘC cho Audio Drama / AI parsing ---
+      - VVR_API_KEY=${VVR_API_KEY:-}
+      - VVR_BASE_URL=${VVR_BASE_URL:-}
+      - VVR_MODEL=${VVR_MODEL:-}
       - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY:-}
+      - VVR_NARRATOR_VOICE_ID=${VVR_NARRATOR_VOICE_ID:-}
       # --- Tùy chọn ---
       - FREESOUND_CLIENT_ID=${FREESOUND_CLIENT_ID:-}
       - FREESOUND_CLIENT_SECRET=${FREESOUND_CLIENT_SECRET:-}
@@ -24,11 +29,6 @@ services:
       # --- OPDS Auth ---
       - VVR_OPDS_USER=${VVR_OPDS_USER:-admin}
       - VVR_OPDS_PASS=${VVR_OPDS_PASS:-}
-      # --- AI config ---
-      - VVR_API_KEY=${VVR_API_KEY:-}
-      - VVR_BASE_URL=${VVR_BASE_URL:-}
-      - VVR_MODEL=${VVR_MODEL:-}
-      - VVR_NARRATOR_VOICE_ID=${VVR_NARRATOR_VOICE_ID:-}
       # --- Auto Sync ---
       - VVR_AUTO_SYNC=${VVR_AUTO_SYNC:-0}
 

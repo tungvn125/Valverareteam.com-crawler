@@ -2,7 +2,8 @@
 vat-cung-te-cua-sakuchishi-nghi-thuc-di-giao*/
 bi mat cua phu thuy tinh lang*/
 DejaVuSans.ttf
-docs/
+docs/superpowers/
+old-doc-bak/
 .superpowers/
 .venv/
 __pycache__/
@@ -15,7 +16,6 @@ memory/
 *.epub
 *.pdf
 *.html
-*.md
 *.txt
 *.db
 *.db-shm
