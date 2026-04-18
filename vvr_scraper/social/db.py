@@ -1,12 +1,20 @@
 import asyncio
 import os
 import uuid
+from collections import defaultdict
 from datetime import UTC, datetime
 
 import aiosqlite
 from loguru import logger
 
 REACTION_TYPES = {"heart", "cry", "wow", "angry", "fire", "skull", "think", "clap"}
+
+
+def group_reactions_by_anchor(reactions: list[dict]) -> dict[str, list[dict]]:
+    anchors: dict[str, list[dict]] = defaultdict(list)
+    for r in reactions:
+        anchors[r["anchor"]].append(r)
+    return dict(anchors)
 
 
 class SocialDatabaseManager:
@@ -67,7 +75,7 @@ class SocialDatabaseManager:
         await db.commit()
         return user_id
 
-    async def create_reaction(self, user_id: str, book_slug: str, chapter_id: str, anchor: str, reaction_type: str):
+    async def create_reaction(self, user_id: str, book_slug: str, chapter_id: str, anchor: str, reaction_type: str) -> str:
         if reaction_type not in REACTION_TYPES:
             raise ValueError("invalid reaction type")
         reaction_id = str(uuid.uuid4())
@@ -81,6 +89,18 @@ class SocialDatabaseManager:
             await db.commit()
         except aiosqlite.IntegrityError as exc:
             raise ValueError("reaction already exists") from exc
+        return reaction_id
+
+    async def get_reaction(self, reaction_id: str) -> dict | None:
+        db = await self.get_db()
+        cursor = await db.execute("SELECT * FROM reactions WHERE id = ?", (reaction_id,))
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+    async def delete_reaction(self, reaction_id: str) -> None:
+        db = await self.get_db()
+        await db.execute("DELETE FROM reactions WHERE id = ?", (reaction_id,))
+        await db.commit()
 
     async def list_reactions(self, book_slug: str, chapter_id: str, anchor: str | None = None) -> list[dict]:
         db = await self.get_db()
@@ -135,7 +155,34 @@ class SocialDatabaseManager:
                 (book_slug, chapter_id),
             )
         rows = await cursor.fetchall()
-        return [dict(row) for row in rows]
+        parents = []
+        replies_by_parent = defaultdict(list)
+        for row in rows:
+            payload = dict(row)
+            payload["replies"] = []
+            if payload["parent_id"]:
+                replies_by_parent[payload["parent_id"]].append(payload)
+            else:
+                parents.append(payload)
+        for parent in parents:
+            parent["replies"] = replies_by_parent[parent["id"]]
+        return parents
+
+    async def update_comment(self, comment_id: str, content: str) -> dict:
+        now = datetime.now(UTC).isoformat()
+        db = await self.get_db()
+        await db.execute(
+            "UPDATE comments SET content = ?, updated_at = ? WHERE id = ?",
+            (content, now, comment_id),
+        )
+        await db.commit()
+        return await self.get_comment(comment_id)
+
+    async def delete_comment(self, comment_id: str) -> None:
+        db = await self.get_db()
+        await db.execute("DELETE FROM comments WHERE id = ?", (comment_id,))
+        await db.execute("DELETE FROM comments WHERE parent_id = ?", (comment_id,))
+        await db.commit()
 
     async def create_invite_code(self, code: str, created_by: str, max_uses: int = 1) -> dict:
         now = datetime.now(UTC).isoformat()
