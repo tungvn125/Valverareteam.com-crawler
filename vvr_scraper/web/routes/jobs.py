@@ -2,7 +2,7 @@
 Job management API routes — CRUD for the Universal Task Runner.
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from loguru import logger
 
 import vvr_scraper.web.state as state
@@ -18,21 +18,23 @@ router = APIRouter(prefix="/api", tags=["Jobs"])
 
 
 @router.get("/jobs")
-async def list_jobs():
+async def list_jobs(request: Request = None):
     """Returns the 50 most recent jobs from the database."""
     try:
-        db = get_db()
+        db = get_db(request)
         jobs = await db.get_recent_jobs(limit=50)
         return jobs
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error listing jobs: {e}")
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/jobs/{job_id}")
-async def get_job_detail(job_id: str):
+async def get_job_detail(job_id: str, request: Request = None):
     """Returns detailed information for a specific job."""
-    db = get_db()
+    db = get_db(request)
     job = await db.get_job_status(job_id)
     if not job:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
@@ -40,7 +42,7 @@ async def get_job_detail(job_id: str):
 
 
 @router.post("/jobs")
-async def submit_job(job_manifest: JobManifest):
+async def submit_job(job_manifest: JobManifest, request: Request = None):
     """Submits jobs from a manifest to the task runner queue."""
 
     if worker is None:
@@ -51,7 +53,7 @@ async def submit_job(job_manifest: JobManifest):
 
         from ...job_parser import parse_manifest
 
-        db = get_db()
+        db = get_db(request)
 
         # 1. Parse and validate dependencies (Topological Sort)
         jobs = parse_manifest(job_manifest)

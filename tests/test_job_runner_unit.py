@@ -5,15 +5,18 @@ execute_render_job, run_manifest, start_server_from_job.
 
 import json
 import os
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from vvr_scraper.job_models import (
     RenderPayload,
+    ScrapePayload,
     ServerPayload,
 )
 from vvr_scraper.job_runner import (
+    execute_crawl_job,
     execute_render_job,
     resolve_story_url,
     run_manifest,
@@ -169,6 +172,207 @@ class TestExecuteRenderJob:
             # Should not crash with db=None
             await execute_render_job(payload, "job-no-db", None)
             mock_renderer.render.assert_called_once()
+
+
+# =============================================================================
+# execute_crawl_job
+# =============================================================================
+
+
+class TestExecuteCrawlJob:
+    @pytest.mark.asyncio
+    async def test_updates_progress_and_metadata(self, tmp_path):
+        mock_db = AsyncMock()
+        payload = ScrapePayload(slug="story-slug", formats=["EPUB"], output_folder=str(tmp_path / "out"))
+        mock_story_info = SimpleNamespace(
+            title="Story",
+            author="Author",
+            description="Desc",
+            slug="story-slug",
+            cover_url=None,
+            cover_path=None,
+            genres=["Action"],
+        )
+        mock_export = AsyncMock()
+        resolved_story_url = "https://valvrareteam.net/truyen/story-slug"
+        expected_relative_path = "truyen/story-slug"
+
+        mock_browser = AsyncMock()
+        mock_playwright = AsyncMock()
+        mock_playwright.chromium.launch = AsyncMock(return_value=mock_browser)
+        mock_playwright_context = AsyncMock()
+        mock_playwright_context.__aenter__.return_value = mock_playwright
+        mock_playwright_context.__aexit__.return_value = None
+
+        async def scrape_side_effect(_browser, _urls, session_state=None, token=None, on_chapter_done=None):
+            await on_chapter_done("https://valvrareteam.net/c1", [{"type": "text", "data": "Hello"}], 0, 2)
+            await on_chapter_done("https://valvrareteam.net/c2", [{"type": "text", "data": "World"}], 1, 2)
+            return {
+                "https://valvrareteam.net/c1": [{"type": "text", "data": "Hello"}],
+                "https://valvrareteam.net/c2": [{"type": "text", "data": "World"}],
+            }
+
+        with (
+            patch(
+                "vvr_scraper.job_runner.resolve_story_url",
+                new=AsyncMock(return_value=resolved_story_url),
+            ),
+            patch("vvr_scraper.job_runner.load_session", return_value=None),
+            patch("vvr_scraper.job_runner.lay_thong_tin_truyen", new=AsyncMock(return_value=mock_story_info)) as mock_story_info_fetch,
+            patch(
+                "vvr_scraper.job_runner.get_chapter_tree_list",
+                new=AsyncMock(
+                    return_value=[
+                        {
+                            "volume": "Volume 1",
+                            "chapters": [
+                                {"title": "Ch 1", "url": "/c1"},
+                                {"title": "Ch 2", "url": "/c2"},
+                            ],
+                        }
+                    ]
+                ),
+            ) as mock_get_chapter_tree,
+            patch(
+                "vvr_scraper.job_runner.scrape_chapters",
+                new=AsyncMock(side_effect=scrape_side_effect),
+            ) as mock_scrape_chapters,
+            patch("vvr_scraper.job_runner.tao_file_epub", new=mock_export),
+            patch("vvr_scraper.job_runner.async_playwright", return_value=mock_playwright_context),
+        ):
+            await execute_crawl_job(payload, "job-1", mock_db)
+
+        mock_story_info_fetch.assert_awaited_once()
+        assert mock_story_info_fetch.await_args.args[1] == expected_relative_path
+        mock_get_chapter_tree.assert_awaited_once_with(
+            resolved_story_url,
+            output_file="chapter_list.json",
+            session_state=None,
+            browser=mock_browser,
+        )
+        assert mock_scrape_chapters.await_args.args[0] is mock_browser
+        assert mock_scrape_chapters.await_args.args[1] == ["https://valvrareteam.net/c1", "https://valvrareteam.net/c2"]
+        assert mock_scrape_chapters.await_args.kwargs["session_state"] is None
+        assert mock_scrape_chapters.await_args.kwargs["token"] is None
+        assert callable(mock_scrape_chapters.await_args.kwargs["on_chapter_done"])
+        mock_db.update_job_status.assert_any_await("job-1", "running", progress=45.0)
+        mock_db.update_job_status.assert_any_await("job-1", "running", progress=90.0)
+        mock_db.update_job_status.assert_any_await("job-1", "success", progress=100.0)
+        mock_db.upsert_novel.assert_awaited_once()
+        mock_db.update_library_metadata.assert_awaited_once()
+        mock_export.assert_awaited_once_with(
+            os.path.join(str(tmp_path / "out"), "Story.epub"),
+            "Story",
+            "Author",
+            [
+                {
+                    "volume": "Volume 1",
+                    "chapters": [
+                        {"title": "Ch 1", "content": [{"type": "text", "data": "Hello"}]},
+                        {"title": "Ch 2", "content": [{"type": "text", "data": "World"}]},
+                    ],
+                }
+            ],
+            "Desc",
+            None,
+            ["Action"],
+        )
+
+    @pytest.mark.asyncio
+    async def test_raises_when_story_url_cannot_be_resolved(self, tmp_path):
+        payload = ScrapePayload(slug="missing-story", formats=["EPUB"], output_folder=str(tmp_path / "out"))
+
+        with patch("vvr_scraper.job_runner.resolve_story_url", new=AsyncMock(return_value=None)):
+            with pytest.raises(ValueError, match="Could not resolve story URL"):
+                await execute_crawl_job(payload, "job-2", AsyncMock())
+
+    @pytest.mark.asyncio
+    async def test_raises_when_no_chapters_are_selected_after_resolution(self, tmp_path):
+        payload = ScrapePayload(
+            slug="story-slug",
+            formats=["EPUB"],
+            output_folder=str(tmp_path / "out"),
+            chapters=[99],
+        )
+        mock_story_info = SimpleNamespace(
+            title="Story",
+            author="Author",
+            description="Desc",
+            slug="story-slug",
+            cover_url=None,
+            cover_path=None,
+            genres=["Action"],
+        )
+
+        mock_browser = AsyncMock()
+        mock_playwright = AsyncMock()
+        mock_playwright.chromium.launch = AsyncMock(return_value=mock_browser)
+        mock_playwright_context = AsyncMock()
+        mock_playwright_context.__aenter__.return_value = mock_playwright
+        mock_playwright_context.__aexit__.return_value = None
+
+        with (
+            patch(
+                "vvr_scraper.job_runner.resolve_story_url",
+                new=AsyncMock(return_value="https://valvrareteam.net/truyen/story-slug"),
+            ),
+            patch("vvr_scraper.job_runner.load_session", return_value=None),
+            patch("vvr_scraper.job_runner.lay_thong_tin_truyen", new=AsyncMock(return_value=mock_story_info)),
+            patch(
+                "vvr_scraper.job_runner.get_chapter_tree_list",
+                new=AsyncMock(return_value=[{"volume": "Volume 1", "chapters": [{"title": "Ch 1", "url": "/c1"}]}]),
+            ),
+            patch("vvr_scraper.job_runner.scrape_chapters", new=AsyncMock()) as mock_scrape_chapters,
+            patch("vvr_scraper.job_runner.async_playwright", return_value=mock_playwright_context),
+        ):
+            with pytest.raises(ValueError, match="No chapters selected or found"):
+                await execute_crawl_job(payload, "job-3", AsyncMock())
+
+        mock_scrape_chapters.assert_not_awaited()
+        mock_browser.close.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_closes_browser_when_scrape_chapters_fails(self, tmp_path):
+        payload = ScrapePayload(slug="story-slug", formats=["EPUB"], output_folder=str(tmp_path / "out"))
+        mock_story_info = SimpleNamespace(
+            title="Story",
+            author="Author",
+            description="Desc",
+            slug="story-slug",
+            cover_url=None,
+            cover_path=None,
+            genres=["Action"],
+        )
+
+        mock_browser = AsyncMock()
+        mock_playwright = AsyncMock()
+        mock_playwright.chromium.launch = AsyncMock(return_value=mock_browser)
+        mock_playwright_context = AsyncMock()
+        mock_playwright_context.__aenter__.return_value = mock_playwright
+        mock_playwright_context.__aexit__.return_value = None
+
+        with (
+            patch(
+                "vvr_scraper.job_runner.resolve_story_url",
+                new=AsyncMock(return_value="https://valvrareteam.net/truyen/story-slug"),
+            ),
+            patch("vvr_scraper.job_runner.load_session", return_value=None),
+            patch("vvr_scraper.job_runner.lay_thong_tin_truyen", new=AsyncMock(return_value=mock_story_info)),
+            patch(
+                "vvr_scraper.job_runner.get_chapter_tree_list",
+                new=AsyncMock(return_value=[{"volume": "Volume 1", "chapters": [{"title": "Ch 1", "url": "/c1"}]}]),
+            ),
+            patch(
+                "vvr_scraper.job_runner.scrape_chapters",
+                new=AsyncMock(side_effect=RuntimeError("scrape failed")),
+            ) as mock_scrape_chapters,
+            patch("vvr_scraper.job_runner.async_playwright", return_value=mock_playwright_context),
+        ):
+            with pytest.raises(RuntimeError, match="scrape failed"):
+                await execute_crawl_job(payload, "job-4", AsyncMock())
+
+        mock_scrape_chapters.assert_awaited_once()
+        mock_browser.close.assert_awaited_once()
 
 
 # =============================================================================

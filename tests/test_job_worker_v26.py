@@ -130,7 +130,7 @@ async def test_job_worker_recovery():
     mock_conn.execute = MagicMock(side_effect=mock_execute)
     worker = JobWorker(db)
 
-    with patch.object(worker, "worker_loop", return_value=asyncio.sleep(0)):
+    with patch.object(worker, "worker_loop", new=AsyncMock()):
         await worker.start()
 
     db.update_job_status.assert_any_call("r1", JobStatus.FAILED, error_summary="Hệ thống bị ngắt quãng")

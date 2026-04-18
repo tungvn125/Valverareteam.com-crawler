@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime
 
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from loguru import logger
 from playwright.async_api import async_playwright
 
@@ -27,16 +27,16 @@ router = APIRouter(prefix="/api", tags=["Library"])
 
 
 @router.get("/library")
-async def get_library():
+async def get_library(request: Request = None):
     """Returns all entries from the library database."""
-    db = get_db()
+    db = get_db(request)
     return await db.get_all_novels()
 
 
 @router.post("/library/sync-all")
-async def sync_all_novels():
+async def sync_all_novels(request: Request = None):
     """Queues incremental downloads for all novels that have updates."""
-    db = get_db()
+    db = get_db(request)
     novels = await db.get_all_novels()
     sync_count = 0
 

@@ -5,7 +5,7 @@ FastAPI dependencies for the web server.
 import hmac
 import os
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from loguru import logger
 
@@ -36,9 +36,20 @@ def get_current_user(credentials: HTTPBasicCredentials = Depends(security)):
     return credentials.username
 
 
-def get_db():
-    """Returns the database manager from app state.
-    Must be called within a request context where app is accessible."""
-    from . import app
+def get_db(request: Request | None = None):
+    """Returns the database manager from request/app state.
 
-    return app.state.db
+    Prefer the current request when available so route handlers do not need to
+    reach through the module-level FastAPI app singleton.
+    """
+    if request is not None:
+        state = request.app.state
+    else:
+        from . import app
+
+        state = app.state
+
+    db = getattr(state, "db", None)
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database not initialized")
+    return db

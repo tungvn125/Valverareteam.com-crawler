@@ -39,6 +39,28 @@ from vvr_scraper.web import run_web_server
 worker = None
 
 
+def _chapter_full_url(chapter_url: str) -> str:
+    return chapter_url if chapter_url.startswith("http") else f"{BASE_URL}{chapter_url}"
+
+
+def _build_export_structures(chapter_tree: list[dict], scraped: dict) -> tuple[list, list[dict]]:
+    full_flat = []
+    full_structure = []
+
+    for volume in chapter_tree:
+        volume_chapters = []
+        for chapter in volume["chapters"]:
+            full_url = _chapter_full_url(chapter["url"])
+            if full_url in scraped:
+                volume_chapters.append({"title": chapter["title"], "content": scraped[full_url]})
+                full_flat.extend(scraped[full_url])
+
+        if volume_chapters:
+            full_structure.append({"volume": volume["volume"], "chapters": volume_chapters})
+
+    return full_flat, full_structure
+
+
 async def execute_crawl_job(payload: ScrapePayload, job_id: str, db: DatabaseManager | None):
     """
     Executes a crawl (scrape) job: resolves story, scrapes chapters,
@@ -103,10 +125,7 @@ async def execute_crawl_job(payload: ScrapePayload, job_id: str, db: DatabaseMan
                 raise ValueError("No chapters selected or found.")
 
             # Build URL list — chapter URLs from custom sources are already full URLs
-            def chapter_full_url(chap):
-                return chap["url"] if chap["url"].startswith("http") else f"{BASE_URL}{chap['url']}"
-
-            urls = [chapter_full_url(c) for c in selected_chaps]
+            urls = [_chapter_full_url(chapter["url"]) for chapter in selected_chaps]
 
             async def on_chapter_done(url, content, idx, total):
                 if db:
@@ -124,17 +143,7 @@ async def execute_crawl_job(payload: ScrapePayload, job_id: str, db: DatabaseMan
         await db.update_job_status(job_id, JobStatus.RUNNING, progress=90.0)
 
     # Prepare content for exporters
-    full_flat = []
-    full_structure = []
-    for v_info in chapter_tree:
-        v_chaps = []
-        for c_entry in v_info["chapters"]:
-            f_url = c_entry["url"] if c_entry["url"].startswith("http") else f"{BASE_URL}{c_entry['url']}"
-            if f_url in scraped:
-                v_chaps.append({"title": c_entry["title"], "content": scraped[f_url]})
-                full_flat.extend(scraped[f_url])
-        if v_chaps:
-            full_structure.append({"volume": v_info["volume"], "chapters": v_chaps})
+    full_flat, full_structure = _build_export_structures(chapter_tree, scraped)
 
     for fmt in payload.formats:
         fmt = fmt.upper()
