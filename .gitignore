@@ -9,6 +9,7 @@ old-doc-bak/
 __pycache__/
 **/__pycache__/
 chapter_list.json
+.opencode/plans/
 cover.jpg
 .pytest_cache/
 .claude/

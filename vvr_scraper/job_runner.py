@@ -273,7 +273,7 @@ async def start_server_from_job(payload: ServerPayload):
     """Starts the FastAPI web server."""
     logger.info(f"Starting server at {payload.host}:{payload.port}")
     if payload.opds_password:
-        os.environ["VVR_OPDS_PASSWORD"] = payload.opds_password
+        os.environ["VVR_OPDS_PASS"] = payload.opds_password
 
     await run_web_server(host=payload.host, port=payload.port)
 
