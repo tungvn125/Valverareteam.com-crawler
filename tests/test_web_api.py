@@ -362,3 +362,16 @@ class TestWebDeps:
 
         assert exc_info.value.status_code == 503
         assert exc_info.value.detail == "Database not initialized"
+
+
+@pytest.mark.asyncio
+async def test_get_social_db_raises_http_503_when_social_database_missing():
+    from vvr_scraper.web.deps import get_social_db
+
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace()))
+
+    with pytest.raises(HTTPException) as exc_info:
+        await get_social_db(request)
+
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.detail == "Social database not initialized"
