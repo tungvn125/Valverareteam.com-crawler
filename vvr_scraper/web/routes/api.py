@@ -50,9 +50,11 @@ async def search_novels(q: str = Query(..., min_length=3)):
                 if title and _id:
                     item["slug"] = "truyen/" + normalize_vietnamese_url(title) + "-" + _id[-8:]
             return results
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Search error: {e}")
-        return []
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/api/browse")
@@ -92,12 +94,12 @@ async def browse_folder():
         root.destroy()
         if folder_selected:
             return {"path": os.path.abspath(folder_selected)}
-    except ImportError:
+    except ImportError as e:
         logger.error("Tkinter not found.")
-        return {"error": "Tính năng này yêu cầu 'python3-tk' hoặc 'zenity'."}
+        raise HTTPException(status_code=500, detail="Tính năng này yêu cầu 'python3-tk' hoặc 'zenity'.") from e
     except Exception as e:
         logger.error(f"Error opening folder dialog: {e}")
-        return {"error": str(e)}
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
     return {"path": None}
 
@@ -133,9 +135,11 @@ async def get_story_info(slug: str):
                 "cover_url": story_info.cover_url,
                 "cover_path": story_info.cover_path,
             }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error fetching story info: {e}")
-        return {"error": str(e)}
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/api/freesound/auth")
@@ -161,9 +165,11 @@ async def freesound_callback(req: FreesoundCallbackRequest):
         fs_manager = FreesoundManager()
         await fs_manager.exchange_code(req.code)
         return {"status": "success", "message": "Freesound authentication successful."}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error exchanging Freesound code: {e}")
-        return {"error": str(e)}, 500
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/api/settings", summary="Get Server Settings")

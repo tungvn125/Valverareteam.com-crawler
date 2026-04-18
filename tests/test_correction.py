@@ -5,6 +5,7 @@ Tests for the correction API routes.
 import json
 import os
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -139,3 +140,101 @@ class TestCorrectionAPI:
         assert response.status_code == 200
         data = response.json()
         assert "characters" in data
+
+    def test_apply_similar_returns_500_when_all_matching_scripts_are_invalid(self, client, tmp_path):
+        novel_dir = tmp_path / "novel"
+        chapter_dir = novel_dir / "chapters" / "1"
+        chapter_dir.mkdir(parents=True)
+        script_path = chapter_dir / "Novel.1.ad.mp3.script.json"
+        script_path.write_text("{not valid json", encoding="utf-8")
+
+        with patch("vvr_scraper.web.routes.correction._async_get_output_dir", return_value=novel_dir):
+            response = client.post(
+                "/api/correction/test-slug/apply-similar",
+                json={"segment_idx": 0, "new_role": "Mahiru", "chapter_idx": 1},
+            )
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "No readable script found for chapter 1"
+
+    def test_apply_similar_returns_500_when_saving_script_fails(self, client, tmp_path):
+        novel_dir = tmp_path / "novel"
+        chapter_dir = novel_dir / "chapters" / "1"
+        chapter_dir.mkdir(parents=True)
+        script_path = chapter_dir / "Novel.1.ad.mp3.script.json"
+        script_path.write_text(
+            json.dumps(
+                [
+                    {"type": "segment", "role": "Narrator", "text": "first"},
+                    {"type": "segment", "role": "Narrator", "text": "second"},
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        original_replace = os.replace
+        failed_once = False
+
+        def failing_replace(src, dst, *args, **kwargs):
+            nonlocal failed_once
+            if Path(dst) == script_path and not failed_once:
+                failed_once = True
+                raise OSError("disk full")
+            return original_replace(src, dst, *args, **kwargs)
+
+        with (
+            patch("vvr_scraper.web.routes.correction._async_get_output_dir", return_value=novel_dir),
+            patch("os.replace", side_effect=failing_replace),
+        ):
+            response = client.post(
+                "/api/correction/test-slug/apply-similar",
+                json={"segment_idx": 0, "new_role": "Mahiru", "chapter_idx": 1},
+            )
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == f"Error saving script: disk full ({script_path.name})"
+
+    def test_apply_similar_rolls_back_earlier_files_when_later_save_fails(self, client, tmp_path):
+        novel_dir = tmp_path / "novel"
+        chapter1_dir = novel_dir / "chapters" / "1"
+        chapter2_dir = novel_dir / "chapters" / "2"
+        chapter1_dir.mkdir(parents=True)
+        chapter2_dir.mkdir(parents=True)
+
+        script1_path = chapter1_dir / "Novel.1.ad.mp3.script.json"
+        script2_path = chapter2_dir / "Novel.2.ad.mp3.script.json"
+
+        original_script1 = [
+            {"type": "segment", "role": "Narrator", "text": "chapter1-source"},
+            {"type": "segment", "role": "Narrator", "text": "chapter1-target"},
+        ]
+        original_script2 = [
+            {"type": "segment", "role": "Narrator", "text": "chapter2-target"},
+        ]
+
+        script1_path.write_text(json.dumps(original_script1), encoding="utf-8")
+        script2_path.write_text(json.dumps(original_script2), encoding="utf-8")
+
+        original_replace = os.replace
+        failed_once = False
+
+        def failing_replace(src, dst, *args, **kwargs):
+            nonlocal failed_once
+            if Path(dst) == script2_path and not failed_once:
+                failed_once = True
+                raise OSError("disk full")
+            return original_replace(src, dst, *args, **kwargs)
+
+        with (
+            patch("vvr_scraper.web.routes.correction._async_get_output_dir", return_value=novel_dir),
+            patch("os.replace", side_effect=failing_replace),
+        ):
+            response = client.post(
+                "/api/correction/test-slug/apply-similar",
+                json={"segment_idx": 0, "new_role": "Mahiru"},
+            )
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == f"Error saving script: disk full ({script2_path.name})"
+        assert json.loads(script1_path.read_text(encoding="utf-8")) == original_script1
+        assert json.loads(script2_path.read_text(encoding="utf-8")) == original_script2

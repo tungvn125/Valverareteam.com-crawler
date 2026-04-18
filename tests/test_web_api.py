@@ -6,9 +6,11 @@ OPDS routes, and API endpoints.
 
 import json
 import os
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from fastapi import HTTPException
 
 from vvr_scraper.web import (
     ConnectionManager,
@@ -18,6 +20,7 @@ from vvr_scraper.web import (
     app,
     load_vvr_settings,
 )
+from vvr_scraper.web.deps import get_db
 
 # =============================================================================
 # ConnectionManager
@@ -237,6 +240,17 @@ class TestAPIEndpoints:
         assert response.status_code == 200
         assert len(response.json()) == 2
 
+    def test_get_library_returns_http_503_when_database_missing(self, client):
+        original_db = app.state.db
+        app.state.db = None
+        try:
+            response = client.get("/api/library")
+        finally:
+            app.state.db = original_db
+
+        assert response.status_code == 503
+        assert response.json()["detail"] == "Database not initialized"
+
     def test_list_jobs(self, client):
         app.state.db.get_recent_jobs = AsyncMock(
             return_value=[
@@ -303,3 +317,48 @@ class TestAPIEndpoints:
     def test_favicon_served(self, client):
         response = client.get("/favicon.ico")
         assert response.status_code == 200
+
+    def test_story_info_returns_http_500_on_internal_error(self, client):
+        with patch("vvr_scraper.web.routes.api.lay_thong_tin_truyen", new_callable=AsyncMock) as mock_info:
+            mock_info.side_effect = RuntimeError("story failed")
+
+            response = client.get("/api/story_info", params={"slug": "test-story"})
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "story failed"
+
+    def test_story_info_preserves_http_exception(self, client):
+        with patch("vvr_scraper.web.routes.api.lay_thong_tin_truyen", new_callable=AsyncMock) as mock_info:
+            mock_info.side_effect = HTTPException(status_code=404, detail="story missing")
+
+            response = client.get("/api/story_info", params={"slug": "missing-story"})
+
+        assert response.status_code == 404
+        assert response.json()["detail"] == "story missing"
+
+    def test_freesound_callback_returns_http_500_on_exchange_failure(self, client):
+        with patch("vvr_scraper.freesound_manager.FreesoundManager") as mock_manager:
+            instance = mock_manager.return_value
+            instance.exchange_code = AsyncMock(side_effect=RuntimeError("boom"))
+
+            response = client.post("/api/freesound/callback", json={"code": "bad-code"})
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "boom"
+
+
+class TestWebDeps:
+    def test_get_db_prefers_request_state(self):
+        request_db = object()
+        request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(db=request_db)))
+
+        assert get_db(request) is request_db
+
+    def test_get_db_raises_http_503_when_database_missing(self):
+        request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace()))
+
+        with pytest.raises(HTTPException) as exc_info:
+            get_db(request)
+
+        assert exc_info.value.status_code == 503
+        assert exc_info.value.detail == "Database not initialized"

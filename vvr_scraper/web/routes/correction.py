@@ -5,6 +5,7 @@ Correction UI API routes — review and fix character attribution in audio drama
 import json
 import os
 import re
+import tempfile
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
@@ -265,6 +266,7 @@ async def apply_similar(slug: str, body: ApplySimilarRequest):
 
     changed_count = 0
     changed_indices: list[dict] = []
+    pending_writes: list[dict] = []
 
     # Determine which scripts to search
     if body.chapter_idx is not None:
@@ -277,6 +279,7 @@ async def apply_similar(slug: str, body: ApplySimilarRequest):
 
     # Get the old role from the source segment
     source_item = None
+    readable_scripts = 0
 
     for s in target_scripts:
         script_path = output_dir / s["path"]
@@ -287,16 +290,25 @@ async def apply_similar(slug: str, body: ApplySimilarRequest):
             logger.debug(f"Skipping invalid script file {script_path}: {e}")
             continue
 
+        readable_scripts += 1
+
         if body.segment_idx < len(script_data) and script_data[body.segment_idx].get("type") == "segment":
             source_item = script_data[body.segment_idx]
             break
+
+    if readable_scripts == 0:
+        if body.chapter_idx is not None:
+            detail = f"No readable script found for chapter {body.chapter_idx}"
+        else:
+            detail = "No readable scripts found for this novel"
+        raise HTTPException(status_code=500, detail=detail)
 
     if not source_item:
         raise HTTPException(status_code=404, detail=f"Segment {body.segment_idx} not found")
 
     old_role = source_item.get("role", "")
 
-    # Apply to all segments with the same old role
+    # Prepare all modifications before writing anything to disk.
     for s in target_scripts:
         script_path = output_dir / s["path"]
         try:
@@ -319,8 +331,49 @@ async def apply_similar(slug: str, body: ApplySimilarRequest):
                 changed_indices.append({"chapter_idx": s["chapter_idx"], "segment_idx": i})
 
         if modified:
-            with open(script_path, "w", encoding="utf-8") as f:
-                json.dump(script_data, f, ensure_ascii=False, indent=2)
+            pending_writes.append({"path": script_path, "data": script_data})
+
+    backups: list[tuple[Path, Path]] = []
+    temp_paths: list[Path] = []
+
+    try:
+        for pending in pending_writes:
+            script_path = pending["path"]
+            fd, temp_name = tempfile.mkstemp(dir=script_path.parent, prefix=f".{script_path.name}.", suffix=".tmp")
+            os.close(fd)
+            temp_path = Path(temp_name)
+            temp_paths.append(temp_path)
+
+            try:
+                with open(temp_path, "w", encoding="utf-8") as f:
+                    json.dump(pending["data"], f, ensure_ascii=False, indent=2)
+            except OSError as e:
+                raise HTTPException(status_code=500, detail=f"Error saving script: {e} ({script_path.name})") from e
+
+        for pending, temp_path in zip(pending_writes, temp_paths, strict=True):
+            script_path = pending["path"]
+            try:
+                backup_fd, backup_name = tempfile.mkstemp(
+                    dir=script_path.parent,
+                    prefix=f".{script_path.name}.",
+                    suffix=".bak",
+                )
+                os.close(backup_fd)
+                backup_path = Path(backup_name)
+                backup_path.write_bytes(script_path.read_bytes())
+                backups.append((script_path, backup_path))
+                os.replace(temp_path, script_path)
+            except OSError as e:
+                for restore_path, backup_path in reversed(backups):
+                    os.replace(backup_path, restore_path)
+                raise HTTPException(status_code=500, detail=f"Error saving script: {e} ({script_path.name})") from e
+    finally:
+        for temp_path in temp_paths:
+            if temp_path.exists():
+                temp_path.unlink()
+        for _, backup_path in backups:
+            if backup_path.exists():
+                backup_path.unlink()
 
     return {
         "status": "ok",

@@ -22,7 +22,8 @@ def caplog_loguru(caplog):
 async def db_manager(tmp_path):
     db_path = tmp_path / "test_library.db"
     manager = DatabaseManager(str(db_path))
-    return manager
+    yield manager
+    await manager.close()
 
 
 @pytest.mark.asyncio
@@ -55,6 +56,8 @@ async def test_init_db_adds_columns(tmp_path):
     assert "last_checked_at" in columns
     assert "genres" in columns
     assert "description" in columns
+
+    await manager.close()
 
 
 @pytest.mark.asyncio
