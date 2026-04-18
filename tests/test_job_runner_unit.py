@@ -218,7 +218,9 @@ class TestExecuteCrawlJob:
                 new=AsyncMock(return_value=resolved_story_url),
             ),
             patch("vvr_scraper.job_runner.load_session", return_value=None),
-            patch("vvr_scraper.job_runner.lay_thong_tin_truyen", new=AsyncMock(return_value=mock_story_info)) as mock_story_info_fetch,
+            patch(
+                "vvr_scraper.job_runner.lay_thong_tin_truyen", new=AsyncMock(return_value=mock_story_info)
+            ) as mock_story_info_fetch,
             patch(
                 "vvr_scraper.job_runner.get_chapter_tree_list",
                 new=AsyncMock(
