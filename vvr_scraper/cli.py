@@ -224,6 +224,10 @@ class ValvrareScraperCLI:
         parser.add_argument("--workers", type=int, default=1, help="Số lượng novel tải song song (chế độ web).")
         parser.add_argument("--no-browser", action="store_true", help="Không tự động mở trình duyệt.")
 
+        parser.add_argument("--username", help="Username for social admin bootstrap.")
+        parser.add_argument("--password", help="Password for social admin bootstrap.")
+        parser.add_argument("--display-name", help="Display name for social admin bootstrap.")
+
         playwright_group = parser.add_mutually_exclusive_group()
         playwright_group.add_argument(
             "--head-playwright", action="store_true", help="Chạy Playwright ở chế độ có giao diện."
@@ -343,6 +347,22 @@ class ValvrareScraperCLI:
 
     async def run(self):
         """Main execution flow."""
+        # Handle 'social create-admin' command
+        if self.args.ten_truyen and len(self.args.ten_truyen) >= 2 and self.args.ten_truyen[:2] == ["social", "create-admin"]:
+            from .social.auth import hash_password
+            from .social.db import SocialDatabaseManager
+
+            social_db = SocialDatabaseManager(db_path=get_config_path("social.db"))
+            await social_db.init_db()
+            user = await social_db.create_admin_user(
+                username=self.args.username,
+                hashed_password=hash_password(self.args.password),
+                display_name=self.args.display_name or self.args.username,
+            )
+            console.print(f"Created admin user: {user['username']}")
+            await social_db.close()
+            return
+
         # Handle 'run' command
         if self.args.ten_truyen and self.args.ten_truyen[0] == "run":
             if len(self.args.ten_truyen) < 2:
