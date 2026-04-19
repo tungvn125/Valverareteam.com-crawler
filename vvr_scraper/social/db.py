@@ -18,6 +18,15 @@ def group_reactions_by_anchor(reactions: list[dict]) -> dict[str, list[dict]]:
 
 
 class SocialDatabaseManager:
+
+    async def _enrich_user(self, db, payload: dict) -> dict:
+        user_id = payload.get("user_id")
+        if user_id and "user" not in payload:
+            cursor = await db.execute("SELECT id, username, display_name, role, created_at FROM users WHERE id = ?", (user_id,))
+            row = await cursor.fetchone()
+            if row:
+                payload["user"] = {"id": row[0], "username": row[1], "displayName": row[2], "role": row[3]}
+        return payload
     def __init__(self, db_path: str):
         self.db_path = db_path
         self._db = None
@@ -115,7 +124,12 @@ class SocialDatabaseManager:
                 (book_slug, chapter_id),
             )
         rows = await cursor.fetchall()
-        return [dict(row) for row in rows]
+        result = []
+        for row in rows:
+            payload = dict(row)
+            await self._enrich_user(db, payload)
+            result.append(payload)
+        return result
 
     async def get_comment(self, comment_id: str) -> dict | None:
         db = await self.get_db()
@@ -159,6 +173,7 @@ class SocialDatabaseManager:
         replies_by_parent = defaultdict(list)
         for row in rows:
             payload = dict(row)
+            await self._enrich_user(db, payload)
             payload["replies"] = []
             if payload["parent_id"]:
                 replies_by_parent[payload["parent_id"]].append(payload)

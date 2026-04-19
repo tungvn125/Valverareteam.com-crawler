@@ -1,12 +1,10 @@
 import os
 from datetime import UTC, datetime, timedelta
 
+import bcrypt
 import jwt
 from fastapi import Depends, Header, HTTPException
-from passlib.context import CryptContext
 from pydantic import BaseModel
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def get_jwt_secret() -> str:
@@ -17,11 +15,11 @@ def get_jwt_secret() -> str:
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
 def verify_password(password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(password, hashed_password)
+    return bcrypt.checkpw(password.encode("utf-8"), hashed_password.encode("utf-8"))
 
 
 def create_access_token(user_id: str, username: str, role: str) -> str:
