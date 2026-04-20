@@ -7,6 +7,7 @@ import pytest
 from vvr_scraper.audio_drama import ScriptResult
 from vvr_scraper.exporter import tao_file_audiodrama
 from vvr_scraper.models import ContentItem
+from vvr_scraper.tts.base import VoiceSpec, SynthesisResult, WordAlignment
 
 
 @pytest.mark.asyncio
@@ -51,7 +52,7 @@ async def test_global_timestamp_calculation(tmp_path):
         patch("vvr_scraper.exporter.MixingEngine") as MockMixingEngine,
         patch("pydub.AudioSegment.from_file") as MockAudioFromFile,
         patch("pydub.AudioSegment.silent") as MockSilent,
-        patch("os.getenv", return_value="fake_key"),
+        patch.dict(os.environ, {"ELEVENLABS_API_KEY": "fake_key"}),
     ):
         # Mock Parser
         parser_instance = MockParser.return_value
@@ -59,7 +60,7 @@ async def test_global_timestamp_calculation(tmp_path):
 
         # Mock VoiceManager
         vm_instance = MockVoiceManager.return_value
-        vm_instance.get_voice = AsyncMock(return_value="voice1")
+        vm_instance.get_voice = AsyncMock(return_value=VoiceSpec(voice_id="voice1"))
         vm_instance.close = AsyncMock()
 
         # Mock FreesoundManager
@@ -73,13 +74,16 @@ async def test_global_timestamp_calculation(tmp_path):
             image_gen_instance.generate = AsyncMock(return_value="backgrounds/fake.webp")
 
             # Mock synthesis to return 2s audio and some alignments
-            mock_audio_bytes = b"fake audio"
-
             async def get_mock_alignments(*args, **kwargs):
-                return mock_audio_bytes, [
-                    {"word": "Hắn", "start": 100, "end": 200},
-                    {"word": "bước", "start": 300, "end": 400},
-                ]
+                return SynthesisResult(
+                    audio_bytes=b"fake audio",
+                    sample_rate=44100,
+                    duration_ms=2000,
+                    word_alignments=[
+                        WordAlignment(word="Hắn", start=100, end=200),
+                        WordAlignment(word="bước", start=300, end=400),
+                    ]
+                )
 
             vm_instance.synthesize.side_effect = get_mock_alignments
 

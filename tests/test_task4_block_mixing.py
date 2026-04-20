@@ -7,6 +7,7 @@ import pytest
 from vvr_scraper.audio_drama import ScriptResult
 from vvr_scraper.exporter import tao_file_audiodrama
 from vvr_scraper.models import ContentItem
+from vvr_scraper.tts.base import VoiceSpec, SynthesisResult, WordAlignment
 
 
 class MockAudio:
@@ -101,10 +102,17 @@ async def test_tao_file_audiodrama_block_mixing(tmp_path):
         parser_instance.parse_chapter = AsyncMock(return_value=mock_script)
 
         voice_manager_instance = MockVoiceManager.return_value
-        voice_manager_instance.get_voice = AsyncMock(side_effect=lambda role, gender: f"voice_{role}")
-        # Ensure synthesize returns alignments in the correct format
+        voice_manager_instance.get_voice = AsyncMock(
+            side_effect=lambda role, gender: VoiceSpec(voice_id=f"voice_{role}")
+        )
+        # Ensure synthesize returns SynthesisResult in the correct format
         voice_manager_instance.synthesize = AsyncMock(
-            return_value=(b"fake_audio", [{"word": "test", "start": 0, "end": 100}])
+            return_value=SynthesisResult(
+                audio_bytes=b"fake_audio",
+                sample_rate=44100,
+                duration_ms=1000,
+                word_alignments=[WordAlignment(word="test", start=0, end=100)]
+            )
         )
         voice_manager_instance.close = AsyncMock()
 

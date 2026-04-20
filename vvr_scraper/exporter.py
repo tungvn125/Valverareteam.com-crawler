@@ -343,24 +343,31 @@ async def tao_file_txt(content_list: ContentList, filename: str, title: str = "C
     logger.info(f"Tạo file Text thành công: {filename}")
 
 
-async def tao_file_mp3(content_list: ContentList, filename: str, title: str = "Chương truyện") -> None:
-    """AI-Powered Audiobook generation using ElevenLabs with chunked processing."""
-    import os
+async def tao_file_mp3(content_list: ContentList, filename: str, title: str = "Chương truyện", tts_provider_name: str | None = None) -> None:
+    """AI-Powered Audiobook generation using TTS provider with chunked processing."""
+    from . import tts
+    from .tts.base import VoiceSpec
 
-    api_key = os.getenv("ELEVENLABS_API_KEY")
-    if not api_key:
-        logger.error("ELEVENLABS_API_KEY not found. Cannot generate MP3.")
-        return
+    # Instantiate provider with appropriate kwargs
+    provider_name = tts_provider_name or tts.auto_detect_provider()
+    provider_kwargs = {}
+    if provider_name == "elevenlabs":
+        provider_kwargs["api_key"] = os.getenv("ELEVENLABS_API_KEY")
+    elif provider_name == "openai_tts":
+        provider_kwargs["api_key"] = os.getenv("OPENAI_TTS_API_KEY")
+        provider_kwargs["base_url"] = os.getenv("OPENAI_TTS_BASE_URL")
+    provider = tts.get_provider(provider_name, **provider_kwargs)
+    logger.info(f"Using TTS provider: {provider_name}")
 
     try:
         import io
 
         import pydub
     except ImportError:
-        logger.error("elevenlabs or pydub not found. Please run 'uv pip install vvr-scraper[audio]'.")
+        logger.error("pydub not found. Please run 'uv pip install vvr-scraper[audio]'.")
         return
 
-    logger.info(f"Đang tạo file Audiobook: {filename} (Sử dụng ElevenLabs AI)")
+    logger.info(f"Đang tạo file Audiobook: {filename} (Sử dụng {provider_name} AI)")
 
     # 3. Prepare text chunks
     chunks = [title]
@@ -378,10 +385,6 @@ async def tao_file_mp3(content_list: ContentList, filename: str, title: str = "C
     try:
 
         def run_tts_chunked():
-            from elevenlabs import VoiceSettings
-            from elevenlabs.client import ElevenLabs
-
-            client = ElevenLabs(api_key=api_key)
             audio_segments = []
 
             total_chunks = len(chunks)
@@ -389,22 +392,14 @@ async def tao_file_mp3(content_list: ContentList, filename: str, title: str = "C
                 if not chunk.strip():
                     continue
                 logger.debug(f"Synthesizing chunk {i + 1}/{total_chunks}...")
-                # Generate speech using ElevenLabs API v3
+                # Generate speech using TTS provider
                 voice_id = os.getenv("ELEVENLABS_VOICE_ID", "EXAVITQu4vr4xnSDxMaL")
-                audio_stream = client.text_to_speech.convert(
+                voice_spec = VoiceSpec(
                     voice_id=voice_id,
-                    text=chunk,
-                    model_id="eleven_v3",
-                    voice_settings=VoiceSettings(
-                        stability=0.75,  # High stability for audiobook narration
-                        similarity_boost=0.75,
-                        style=0.0,
-                        use_speaker_boost=True,
-                    ),
+                    settings={"stability": 0.75, "similarity_boost": 0.75, "style": 0.0, "use_speaker_boost": True},
                 )
-                # Consume generator into bytes
-                audio_bytes = b"".join(list(audio_stream))
-                segment = pydub.AudioSegment.from_file(io.BytesIO(audio_bytes), format="mp3")
+                result = provider.synthesize(text=chunk, voice=voice_spec)
+                segment = pydub.AudioSegment.from_file(io.BytesIO(result.audio_bytes), format="mp3")
                 audio_segments.append(segment)
 
             if audio_segments:
@@ -428,14 +423,29 @@ async def tao_file_audiodrama(
     db_manager: Any,
     title: str = "Chương truyện",
     timeline_config: TimelineConfig | None = None,
+    tts_provider_name: str | None = None,
 ) -> None:
     """
     AI-Powered Audio Drama generation.
     1. Extracts text and parses into a script (dialogue/narrator) using OpenAI.
     2. Assigns voices to characters using VoiceManager.
-    3. Synthesizes each segment with ElevenLabs, mixes with BGM using AudioTimeline.
+    3. Synthesizes each segment with TTS provider, mixes with BGM using AudioTimeline.
     4. Caches the script to <filename>.script.json for persistence/debugging.
     """
+
+    from . import tts
+    from .tts.base import VoiceSpec, SynthesisResult, WordAlignment
+
+    # Instantiate provider with appropriate kwargs
+    provider_name = tts_provider_name or tts.auto_detect_provider()
+    provider_kwargs = {}
+    if provider_name == "elevenlabs":
+        provider_kwargs["api_key"] = os.getenv("ELEVENLABS_API_KEY")
+    elif provider_name == "openai_tts":
+        provider_kwargs["api_key"] = os.getenv("OPENAI_TTS_API_KEY")
+        provider_kwargs["base_url"] = os.getenv("OPENAI_TTS_BASE_URL")
+    provider = tts.get_provider(provider_name, **provider_kwargs)
+    logger.info(f"Using TTS provider: {provider_name}")
 
     # 0. Extract text from content_list (List[ContentItem])
     normalized_content = _normalize_content_list(content_list)
@@ -445,7 +455,7 @@ async def tao_file_audiodrama(
     script = []
 
     # 1. Initialize voice manager to get known characters for parsing context
-    voice_manager = VoiceManager(db_manager, story_id)
+    voice_manager = VoiceManager(db_manager, story_id, provider=provider)
     known_chars_raw = await _maybe_await(voice_manager.get_known_characters())
     known_chars = known_chars_raw if isinstance(known_chars_raw, list) else []
 
@@ -506,11 +516,6 @@ async def tao_file_audiodrama(
 
     logger.info(f"Synthesizing audio drama v2.5 (Parallel & Block-based): {filename}...")
 
-    api_key = os.getenv("ELEVENLABS_API_KEY")
-    if not api_key:
-        logger.error("ELEVENLABS_API_KEY environment variable is required")
-        return
-
     bgm_manager = BGMManager()
     bgm_manager.refresh()
     freesound_manager = FreesoundManager()
@@ -532,7 +537,7 @@ async def tao_file_audiodrama(
 
     async def synthesize_segment(item):
         async with semaphore:
-            voice_id = item["voice"]
+            voice_spec = item["voice"]  # VoiceSpec
             text = item["text"]
             role = item.get("role", "narrator")
 
@@ -540,12 +545,15 @@ async def tao_file_audiodrama(
             stability = 0.75 if role.lower() == "narrator" else 0.35
 
             try:
-                # Use VoiceManager's synthesis to get word-level timestamps
-                audio_bytes, word_alignments = await voice_manager.synthesize(
-                    voice_id=voice_id, text=text, stability=stability
+                # Update voice_spec settings with stability
+                voice_spec.settings["stability"] = stability
+                result = await voice_manager.synthesize(voice=voice_spec, text=text)
+                segment = AudioSegment.from_file(io.BytesIO(result.audio_bytes), format="mp3")
+                alignments = (
+                    [{"word": w.word, "start": w.start, "end": w.end} for w in result.word_alignments]
+                    if result.word_alignments else []
                 )
-                segment = AudioSegment.from_file(io.BytesIO(audio_bytes), format="mp3")
-                return segment, word_alignments
+                return segment, alignments
             except Exception as e:
                 logger.error(f"Error synthesizing segment: {e}")
                 return AudioSegment.silent(duration=500), []
@@ -732,21 +740,25 @@ async def tao_file_audiodrama(
                 logger.error(f"Error processing block {i + 1}: {e}")
                 raise
 
-        # Save cinematic manifest as manifest.json in the same folder as the MP3
-        manifest_file = os.path.join(os.path.dirname(filename), "manifest.json")
-        with open(manifest_file, "w", encoding="utf-8") as f:
-            json.dump(
-                {
-                    "title": title,
-                    "audio": os.path.basename(filename),
-                    "base_path": "",
-                    "events": sorted(all_events, key=lambda x: x["start"]),
-                },
-                f,
-                ensure_ascii=False,
-                indent=2,
-            )
-        logger.info(f"Saved cinematic manifest to {manifest_file}")
+        # Only generate manifest if we have alignment data
+        has_alignments = any(e.get("alignment") for e in all_events if e.get("type") == "dialogue")
+        if has_alignments:
+            manifest_file = os.path.join(os.path.dirname(filename), "manifest.json")
+            with open(manifest_file, "w", encoding="utf-8") as f:
+                json.dump(
+                    {
+                        "title": title,
+                        "audio": os.path.basename(filename),
+                        "base_path": "",
+                        "events": sorted(all_events, key=lambda x: x["start"]),
+                    },
+                    f,
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            logger.info(f"Saved cinematic manifest to {manifest_file}")
+        else:
+            logger.info("No alignment data — skipping manifest generation")
 
         if final_audio:
             logger.info(f"Exporting final Audio Drama to {filename}...")

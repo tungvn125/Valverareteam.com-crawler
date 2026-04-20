@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from vvr_scraper.audio_drama import VoiceManager
+from vvr_scraper.tts.base import VoiceSpec
 
 
 @pytest.mark.asyncio
@@ -12,7 +13,7 @@ async def test_voice_manager_synthesize_timestamps():
     db = MagicMock()
     vm = VoiceManager(db, "test_story")
 
-    voice_id = "test_voice"
+    voice_spec = VoiceSpec(voice_id="test_voice")
     text = "Hello world"
 
     # Mock data from ElevenLabs stream-with-timestamps
@@ -66,14 +67,16 @@ async def test_voice_manager_synthesize_timestamps():
 
     with patch("httpx.AsyncClient", return_value=mock_client):
         with patch.dict("os.environ", {"ELEVENLABS_API_KEY": "test_key"}):
-            vm = VoiceManager(db, "test_story")
-            audio, word_alignments = await vm.synthesize(voice_id, text)
+            from vvr_scraper.tts.elevenlabs_provider import ElevenLabsProvider
+            provider = ElevenLabsProvider(api_key="test_key")
+            vm = VoiceManager(db, "test_story", provider=provider)
+            result = await vm.synthesize(voice=voice_spec, text=text)
 
             # Verify the API call
             mock_client.stream.assert_called_once()
             method, url = mock_client.stream.call_args[0]
             assert method == "POST"
-            assert f"/{voice_id}/stream-with-timestamps" in url
+            assert f"/{voice_spec.voice_id}/stream-with-timestamps" in url
 
             # Verify payload
             payload = mock_client.stream.call_args[1]["json"]
@@ -81,17 +84,17 @@ async def test_voice_manager_synthesize_timestamps():
             assert payload["model_id"] == "eleven_v3"
 
             # Verify audio concatenation
-            assert audio == b"audio1audio2"
+            assert result.audio_bytes == b"audio1audio2"
 
             # Verify word-level processing
             # Chunk 1 ends with space, so it should finish "Hello"
             # Chunk 2 has "world" without space, but it's the last word
-            assert len(word_alignments) == 2
+            assert len(result.word_alignments) == 2
 
-            assert word_alignments[0]["word"] == "Hello"
-            assert word_alignments[0]["start"] == 0
-            assert word_alignments[0]["end"] == 500  # end of 'o' (character_end_times_seconds[4])
+            assert result.word_alignments[0].word == "Hello"
+            assert result.word_alignments[0].start == 0
+            assert result.word_alignments[0].end == 500  # end of 'o' (character_end_times_seconds[4])
 
-            assert word_alignments[1]["word"] == "world"
-            assert word_alignments[1]["start"] == 600
-            assert word_alignments[1]["end"] == 1100
+            assert result.word_alignments[1].word == "world"
+            assert result.word_alignments[1].start == 600
+            assert result.word_alignments[1].end == 1100

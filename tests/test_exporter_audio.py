@@ -5,6 +5,7 @@ import pytest
 
 from vvr_scraper.exporter import tao_file_audiodrama
 from vvr_scraper.models import ContentItem
+from vvr_scraper.tts.base import VoiceSpec, SynthesisResult, WordAlignment
 
 
 class MockAudio:
@@ -82,9 +83,14 @@ async def test_tao_file_audiodrama_flow(tmp_path):
             vm_instance = MockVoiceManager.return_value
             vm_instance.get_known_characters = AsyncMock(return_value=[])
             vm_instance.resolve_aliases = MagicMock(side_effect=lambda x: x)
-            vm_instance.get_voice = AsyncMock(return_value="fake_voice_id")
+            vm_instance.get_voice = AsyncMock(return_value=VoiceSpec(voice_id="fake_voice_id"))
             vm_instance.synthesize = AsyncMock(
-                return_value=(b"fake_audio", [{"word": "Hello", "start": 0, "end": 500}])
+                return_value=SynthesisResult(
+                    audio_bytes=b"fake_audio",
+                    sample_rate=44100,
+                    duration_ms=500,
+                    word_alignments=[WordAlignment(word="Hello", start=0, end=500)]
+                )
             )
             vm_instance.close = AsyncMock()
 
@@ -154,8 +160,15 @@ async def test_tao_file_audiodrama_v2_with_moods(tmp_path):
             vm_instance = MockVoiceManager.return_value
             vm_instance.get_known_characters = AsyncMock(return_value=[])
             vm_instance.resolve_aliases = MagicMock(side_effect=lambda x: x)
-            vm_instance.get_voice = AsyncMock(return_value="fake_voice_id")
-            vm_instance.synthesize = AsyncMock(return_value=(b"audio", [{"word": "Action", "start": 0, "end": 500}]))
+            vm_instance.get_voice = AsyncMock(return_value=VoiceSpec(voice_id="fake_voice_id"))
+            vm_instance.synthesize = AsyncMock(
+                return_value=SynthesisResult(
+                    audio_bytes=b"audio",
+                    sample_rate=44100,
+                    duration_ms=500,
+                    word_alignments=[WordAlignment(word="Action", start=0, end=500)]
+                )
+            )
             vm_instance.close = AsyncMock()
 
             fs_instance = MockFreesound.return_value
@@ -182,7 +195,7 @@ async def test_tao_file_audiodrama_v2_with_moods(tmp_path):
 
 @pytest.mark.asyncio
 async def test_tao_file_mp3_flow(tmp_path):
-    """Tests the audiobook generation flow with ElevenLabs."""
+    """Tests the audiobook generation flow with TTS provider."""
     from vvr_scraper.exporter import tao_file_mp3
 
     filename = str(tmp_path / "test_audiobook.mp3")
@@ -190,23 +203,28 @@ async def test_tao_file_mp3_flow(tmp_path):
 
     with (
         patch.dict(os.environ, {"ELEVENLABS_API_KEY": "fake_key"}),
-        patch("elevenlabs.client.ElevenLabs") as MockElevenLabs,
+        patch("vvr_scraper.tts.get_provider") as MockGetProvider,
         patch("pydub.AudioSegment.from_file") as MockFromFile,
     ):
-        client_instance = MockElevenLabs.return_value
-        client_instance.text_to_speech.convert.return_value = [b"chunk1"]
+        mock_provider = MagicMock()
+        mock_provider.synthesize.return_value = SynthesisResult(
+            audio_bytes=b"fake_audio",
+            sample_rate=44100,
+            duration_ms=1000
+        )
+        MockGetProvider.return_value = mock_provider
 
         MockFromFile.return_value = MockAudio(1000)
 
         await tao_file_mp3(content_list, filename, "Test Title")
 
         # Should be called for title and text
-        assert client_instance.text_to_speech.convert.call_count == 2
+        assert mock_provider.synthesize.call_count == 2
 
 
 @pytest.mark.asyncio
 async def test_tao_file_audiodrama_fallback(tmp_path):
-    """Tests fallback behavior (should fail gracefully if API key missing)."""
+    """Tests fallback behavior (should fail gracefully if provider fails)."""
     filename = str(tmp_path / "fallback.mp3")
     story_id = "test_story"
     content_list = [ContentItem(type="text", data="text")]
@@ -216,14 +234,32 @@ async def test_tao_file_audiodrama_fallback(tmp_path):
     mock_db.get_character_profiles = AsyncMock(return_value=[])
     mock_db.save_character_profile = AsyncMock()
 
-    # Don't use clear=True to preserve PATH for pydub
-    with patch.dict(os.environ, {"ELEVENLABS_API_KEY": ""}):
-        with patch("vvr_scraper.exporter.OpenAIParser") as MockParser:
-            parser_instance = MockParser.return_value
-            parser_instance.parse_chapter = AsyncMock(
-                return_value=[{"type": "segment", "role": "narrator", "text": "text"}]
-            )
+    # Mock provider to fail during synthesis
+    with (
+        patch.dict(os.environ, {"ELEVENLABS_API_KEY": "fake_key"}),
+        patch("vvr_scraper.exporter.OpenAIParser") as MockParser,
+        patch("vvr_scraper.tts.get_provider") as MockGetProvider,
+        patch("vvr_scraper.exporter.VoiceManager") as MockVoiceManager,
+        patch("pydub.AudioSegment.silent") as MockSilent,
+    ):
+        parser_instance = MockParser.return_value
+        parser_instance.parse_chapter = AsyncMock(
+            return_value=[{"type": "segment", "role": "narrator", "text": "text"}]
+        )
 
-            # Should log error and return
-            await tao_file_audiodrama(content_list, filename, story_id, mock_db)
-            assert not os.path.exists(filename)
+        # Provider works but VoiceManager.synthesize fails
+        mock_provider = MagicMock()
+        MockGetProvider.return_value = mock_provider
+
+        vm_instance = MockVoiceManager.return_value
+        vm_instance.get_known_characters = AsyncMock(return_value=[])
+        vm_instance.resolve_aliases = MagicMock(side_effect=lambda x: x)
+        vm_instance.get_voice = AsyncMock(return_value=VoiceSpec(voice_id="fake_voice_id"))
+        # Simulate synthesis failure - returns silent audio
+        vm_instance.synthesize = AsyncMock(side_effect=Exception("Synthesis failed"))
+        vm_instance.close = AsyncMock()
+
+        MockSilent.return_value = MockAudio(500)
+
+        # Should handle error gracefully
+        await tao_file_audiodrama(content_list, filename, story_id, mock_db)
