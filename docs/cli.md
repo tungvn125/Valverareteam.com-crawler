@@ -131,6 +131,24 @@ vvrt <slug> -f EPUB -g volume
 - `--refresh-session`: remove the old saved session before continuing
 - `--verbose`: enable more detailed logs
 
+## TTS Provider
+
+Use `--tts-provider` to override the auto-detected TTS backend:
+
+```bash
+vvrt <slug> -f AD-MP3 --tts-provider elevenlabs
+vvrt <slug> -f MP3 --tts-provider openai_tts
+vvrt <slug> -f AD-MP3 --tts-provider omnivoice
+```
+
+Built-in providers:
+
+- `elevenlabs` — cloud API, requires `ELEVENLABS_API_KEY`
+- `openai_tts` — OpenAI-compatible HTTP server, requires `OPENAI_TTS_API_KEY` or `OPENAI_TTS_BASE_URL`
+- `omnivoice` — local model, requires `omnivoice` package
+
+When `--tts-provider` is not set, the CLI auto-detects from environment variables. See [TTS Providers](tts-providers.md) for full configuration details.
+
 ## Playwright Modes
 
 The CLI exposes a mutually exclusive Playwright mode group:

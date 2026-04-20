@@ -85,9 +85,21 @@ Large chapters are split into chunks of about 30,000 characters before parsing.
 
 - stores and reuses character voice assignments per story
 - loads existing voice mappings from the database
+- discovers voices from the configured TTS provider for gender-aware matching
 - uses a narrator voice, overridable through `VVR_NARRATOR_VOICE_ID`
+- injects the TTS provider instance for synthesis operations
 
-The default narrator voice ID is currently hard-coded in `VoiceManager.DEFAULT_NARRATOR_VOICE_ID`.
+The TTS provider is configured via environment variables or the `--tts-provider` CLI flag. See [TTS Providers](tts-providers.md) for provider-specific configuration.
+
+### TTS Provider Integration
+
+The audio drama pipeline supports multiple TTS backends through the provider abstraction:
+
+- **ElevenLabs** — cloud API with word-level timing and performance tags
+- **OmniVoice** — local PyTorch model for voice cloning without cloud dependencies
+- **OpenAI-compatible HTTP** — generic endpoint for custom TTS servers
+
+Use `--tts-provider <name>` to select a specific backend, or let the system auto-detect from environment variables. The `tao_file_mp3` export also supports TTS provider selection for audiobook generation.
 
 ## Video Rendering (`MP4`)
 
@@ -145,11 +157,23 @@ Depending on which outputs you use, the current pipeline may require:
 - `ffmpeg`
 - OpenAI-compatible API credentials via `VVR_API_KEY` and `VVR_BASE_URL`
 - Freesound credentials for sound-effect or music workflows
+- TTS provider credentials (one of the following):
+  - `ELEVENLABS_API_KEY` for ElevenLabs cloud TTS
+  - `OPENAI_TTS_API_KEY` or `OPENAI_TTS_BASE_URL` for OpenAI-compatible TTS
+  - `OMNIVOICE_MODEL_PATH` and `omnivoice` package for local TTS
 
 For local development, install Playwright Chromium with:
 
 ```bash
 playwright install chromium
+```
+
+For OmniVoice local TTS, install the package and download model weights:
+
+```bash
+pip install omnivoice
+# Set OMNIVOICE_MODEL_PATH to your checkpoint directory
+export OMNIVOICE_MODEL_PATH=/path/to/omnivoice/checkpoints
 ```
 
 ## Operational Notes
