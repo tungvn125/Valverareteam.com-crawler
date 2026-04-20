@@ -211,3 +211,96 @@ class TestOpenAITTSProvider:
             provider = OpenAITTSProvider()
             await provider.close()
             mock_client.aclose.assert_called_once()
+
+
+class TestOmniVoiceProvider:
+    @pytest.mark.asyncio
+    async def test_synthesize_clone_mode(self):
+        # Create mock numpy module
+        mock_np = MagicMock()
+        mock_np.zeros = MagicMock(return_value=[0.0] * 24000)
+        mock_np.float32 = "float32"
+
+        mock_model = MagicMock()
+        mock_model.generate.return_value = [[0.0] * 24000]
+        mock_model.sampling_rate = 24000
+
+        mock_omnivoice = MagicMock()
+        mock_omnivoice.from_pretrained.return_value = mock_model
+
+        mock_modules = {
+            "omnivoice": mock_omnivoice,
+            "omnivoice.OmniVoice": mock_omnivoice,
+            "numpy": mock_np,
+            "soundfile": MagicMock(),
+        }
+
+        with patch.dict("sys.modules", mock_modules):
+            with patch("soundfile.write", side_effect=lambda buf, data, sr, **kw: buf.write(b"WAV_DATA")):
+                from vvr_scraper.tts.omnivoice_provider import OmniVoiceProvider
+
+                provider = OmniVoiceProvider.__new__(OmniVoiceProvider)
+                provider._model = mock_model
+                provider._sampling_rate = 24000
+
+                voice = VoiceSpec(ref_audio_path="voices/narrator/sample.wav", ref_text="Hello")
+                result = await provider.synthesize("Hello world", voice)
+
+                assert result.word_alignments is None
+                assert result.sample_rate == 24000
+                mock_model.generate.assert_called_once_with(
+                    text="Hello world",
+                    ref_audio="voices/narrator/sample.wav",
+                    ref_text="Hello",
+                )
+
+    @pytest.mark.asyncio
+    async def test_synthesize_design_mode(self):
+        mock_model = MagicMock()
+        mock_model.generate.return_value = [[0.0] * 12000]
+        mock_model.sampling_rate = 24000
+
+        mock_sf = MagicMock()
+        mock_sf.write = MagicMock(side_effect=lambda buf, data, sr, **kw: buf.write(b"WAV_DATA"))
+
+        with patch.dict("sys.modules", {"soundfile": mock_sf}):
+            from vvr_scraper.tts.omnivoice_provider import OmniVoiceProvider
+
+            provider = OmniVoiceProvider.__new__(OmniVoiceProvider)
+            provider._model = mock_model
+            provider._sampling_rate = 24000
+
+            voice = VoiceSpec(instruct="female, low pitch")
+            result = await provider.synthesize("Hello", voice)
+
+            mock_model.generate.assert_called_once_with(text="Hello", instruct="female, low pitch")
+            assert result.duration_ms == 500
+
+    @pytest.mark.asyncio
+    async def test_synthesize_auto_mode(self):
+        mock_model = MagicMock()
+        mock_model.generate.return_value = [[0.0] * 12000]
+        mock_model.sampling_rate = 24000
+
+        mock_sf = MagicMock()
+        mock_sf.write = MagicMock(side_effect=lambda buf, data, sr, **kw: buf.write(b"WAV_DATA"))
+
+        with patch.dict("sys.modules", {"soundfile": mock_sf}):
+            from vvr_scraper.tts.omnivoice_provider import OmniVoiceProvider
+
+            provider = OmniVoiceProvider.__new__(OmniVoiceProvider)
+            provider._model = mock_model
+            provider._sampling_rate = 24000
+
+            voice = VoiceSpec()
+            result = await provider.synthesize("Hello", voice)
+
+            mock_model.generate.assert_called_once_with(text="Hello")
+
+    @pytest.mark.asyncio
+    async def test_discover_voices_returns_empty(self):
+        from vvr_scraper.tts.omnivoice_provider import OmniVoiceProvider
+
+        provider = OmniVoiceProvider.__new__(OmniVoiceProvider)
+        voices = await provider.discover_voices()
+        assert voices == []
