@@ -391,12 +391,15 @@ async def tao_file_mp3(content_list: ContentList, filename: str, title: str = "C
             settings={"stability": 0.75, "similarity_boost": 0.75, "style": 0.0, "use_speaker_boost": True},
         )
 
+        def _load_segment(audio_bytes):
+            return pydub.AudioSegment.from_file(io.BytesIO(audio_bytes), format="mp3")
+
         for i, chunk in enumerate(chunks):
             if not chunk.strip():
                 continue
             logger.debug(f"Synthesizing chunk {i + 1}/{total_chunks}...")
             result = await provider.synthesize(text=chunk, voice=voice_spec)
-            segment = pydub.AudioSegment.from_file(io.BytesIO(result.audio_bytes), format="mp3")
+            segment = await asyncio.to_thread(_load_segment, result.audio_bytes)
             audio_segments.append(segment)
 
         # Merge + export (blocking) in thread
