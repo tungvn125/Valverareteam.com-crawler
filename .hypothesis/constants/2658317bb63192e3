@@ -1,0 +1,4 @@
+# file: /home/tung/Data/dev/backup/Valvrareteam.net-crawler/vvr_scraper/social/models.py
+# hypothesis_version: 6.152.1
+
+[100, 128, 1000, 2000, 'admin', 'angry', 'clap', 'content', 'cry', 'eyes', 'fire', 'heart', 'laugh', 'member', 'nerd', 'pray', 'skull', 'sparkles', 'think', 'wow']

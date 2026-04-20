@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sửa kịch bản — VVR Scraper</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .correction-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 20px;
+            background: var(--sidebar);
+            border-bottom: 1px solid var(--border);
+        }
+        .correction-header h2 {
+            margin: 0;
+            font-size: 1.2rem;
+            color: var(--text);
+        }
+        .back-btn {
+            background: none;
+            border: none;
+            color: var(--primary);
+            cursor: pointer;
+            font-size: 1rem;
+            padding: 6px 12px;
+            border-radius: 6px;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .back-btn:hover { background: rgba(0, 207, 213, 0.1); }
+
+        .chapter-nav {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            padding: 10px 20px;
+            background: var(--card);
+            border-bottom: 1px solid var(--border);
+        }
+        .chapter-btn {
+            padding: 4px 12px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            background: var(--bg);
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: all 0.2s;
+        }
+        .chapter-btn:hover { border-color: var(--primary); color: var(--text); }
+        .chapter-btn.active {
+            background: var(--primary);
+            color: #fff;
+            border-color: var(--primary);
+        }
+
+        .legend-section {
+            padding: 12px 20px;
+            background: var(--card);
+            border-bottom: 1px solid var(--border);
+        }
+        .legend-section h3 {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            margin: 0 0 8px 0;
+            cursor: pointer;
+        }
+        .legend-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 16px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            font-size: 0.85rem;
+        }
+        .legend-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .segment-list {
+            padding: 16px 20px;
+            max-height: calc(100vh - 280px);
+            overflow-y: auto;
+        }
+        .segment-item {
+            padding: 10px 14px;
+            margin-bottom: 8px;
+            border-radius: 10px;
+            background: var(--card);
+            border: 1px solid var(--border);
+            transition: border-color 0.2s;
+        }
+        .segment-item:hover { border-color: var(--primary); }
+        .segment-item.modified { border-left: 3px solid var(--primary); }
+
+        .segment-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+        .segment-role {
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+        .segment-idx {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .segment-text {
+            font-size: 0.88rem;
+            line-height: 1.5;
+            color: var(--text);
+            margin-bottom: 8px;
+            white-space: pre-wrap;
+        }
+
+        .segment-actions {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .segment-actions select {
+            padding: 4px 8px;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            background: var(--bg);
+            color: var(--text);
+            font-size: 0.82rem;
+        }
+        .apply-similar-btn {
+            padding: 4px 10px;
+            border-radius: 6px;
+            border: 1px solid var(--primary);
+            background: transparent;
+            color: var(--primary);
+            cursor: pointer;
+            font-size: 0.78rem;
+            transition: all 0.2s;
+        }
+        .apply-similar-btn:hover { background: var(--primary); color: #fff; }
+
+        .mood-shift-item {
+            padding: 8px 14px;
+            margin-bottom: 6px;
+            border-radius: 8px;
+            background: rgba(0, 207, 213, 0.08);
+            border: 1px dashed var(--primary);
+            font-size: 0.82rem;
+            color: var(--text-muted);
+        }
+        .mood-shift-item .mood-label {
+            font-weight: 600;
+            color: var(--primary);
+        }
+
+        .bottom-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 12px 20px;
+            background: var(--sidebar);
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            z-index: 100;
+        }
+        .save-btn {
+            padding: 8px 24px;
+            border-radius: 8px;
+            border: none;
+            background: var(--primary);
+            color: #fff;
+            cursor: pointer;
+            font-weight: 600;
+            transition: opacity 0.2s;
+        }
+        .save-btn:hover { opacity: 0.85; }
+        .save-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .discard-btn {
+            padding: 8px 24px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-weight: 500;
+        }
+
+        .voice-preview-btn {
+            background: none;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1rem;
+            padding: 2px 6px;
+            transition: all 0.2s;
+        }
+        .voice-preview-btn:hover { border-color: var(--primary); }
+        .voice-preview-btn.playing { border-color: var(--success); color: var(--success); }
+
+        .loading-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 200;
+            justify-content: center;
+            align-items: center;
+        }
+        .loading-overlay.active { display: flex; }
+        .loading-overlay .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid var(--border);
+            border-top: 4px solid var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .toast {
+            position: fixed;
+            bottom: 60px;
+            right: 20px;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            z-index: 300;
+            opacity: 0;
+            transform: translateY(10px);
+            transition: all 0.3s;
+        }
+        .toast.show { opacity: 1; transform: translateY(0); }
+        .toast.success { background: var(--success); color: #fff; }
+        .toast.error { background: var(--error); color: #fff; }
+    </style>
+</head>
+<body>
+    <div class="correction-header">
+        <a class="back-btn" href="/">← Thư viện</a>
+        <h2 id="novelTitle">Sửa kịch bản</h2>
+        <div id="voiceFilter" style="display:flex;align-items:center;gap:8px;">
+            <select id="genderFilter" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:0.82rem;">
+                <option value="all">Tất cả giọng</option>
+                <option value="male">Nam</option>
+                <option value="female">Nữ</option>
+                <option value="unknown">Không rõ</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="chapter-nav" id="chapterNav">
+        <span style="color:var(--text-muted);font-size:0.85rem;">Đang tải...</span>
+    </div>
+
+    <div class="legend-section" id="legendSection">
+        <h3>▸ Nhân vật</h3>
+        <div class="legend-grid" id="legendGrid"></div>
+    </div>
+
+    <div class="segment-list" id="segmentList">
+        <p style="color:var(--text-muted);text-align:center;">Chọn chương để bắt đầu sửa kịch bản</p>
+    </div>
+
+    <div class="bottom-bar" id="bottomBar" style="display:none;">
+        <button class="discard-btn" onclick="app.discardChanges()">Hủy thay đổi</button>
+        <button class="save-btn" id="saveBtn" onclick="app.saveCorrections()">💾 Lưu sửa đổi</button>
+    </div>
+
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner"></div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script type="module">
+        import * as api from '/static/js/api.js';
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const slug = urlParams.get('slug');
+
+        let chapters = [];
+        let currentChapterIdx = null;
+        let currentScript = [];
+        let roles = [];
+        let profiles = [];
+        let voices = [];
+        let modifications = new Map(); // segment_idx -> new_role
+
+        const ROLE_COLORS = [
+            '#4ade80', '#facc15', '#60a5fa', '#f87171', '#c084fc',
+            '#fb923c', '#2dd4bf', '#e879f9', '#a3e635', '#f472b6'
+        ];
+        let roleColorMap = {};
+
+        function getRoleColor(role) {
+            if (!roleColorMap[role]) {
+                roleColorMap[role] = ROLE_COLORS[Object.keys(roleColorMap).length % ROLE_COLORS.length];
+            }
+            return roleColorMap[role];
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+        }
+
+        function showLoading(show) {
+            document.getElementById('loadingOverlay').classList.toggle('active', show);
+        }
+
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = `toast ${type} show`;
+            setTimeout(() => toast.classList.remove('show'), 3000);
+        }
+
+        async function init() {
+            if (!slug) {
+                document.getElementById('segmentList').innerHTML = '<p style="color:var(--error);">Thiếu slug truyện. Vui lòng truy cập từ thư viện.</p>';
+                return;
+            }
+
+            showLoading(true);
+            try {
+                // Load chapters and voices in parallel
+                const [chaptersData, voicesData] = await Promise.all([
+                    api.fetchCorrectionChapters(slug),
+                    api.fetchVoices().catch(() => ({ voices: [] }))
+                ]);
+                chapters = chaptersData.chapters || [];
+                voices = voicesData.voices || [];
+
+                document.getElementById('novelTitle').textContent = `Sửa kịch bản — ${slug}`;
+
+                renderChapterNav();
+
+                // Load characters
+                const charData = await api.fetchCharacters(slug);
+                profiles = charData.characters || [];
+                renderLegend();
+
+                // Auto-select first chapter
+                if (chapters.length > 0) {
+                    await loadChapter(chapters[0].chapter_idx);
+                }
+            } catch (e) {
+                showToast(`Lỗi tải: ${e.message}`, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        function renderChapterNav() {
+            const nav = document.getElementById('chapterNav');
+            if (chapters.length === 0) {
+                nav.innerHTML = '<span style="color:var(--text-muted);font-size:0.85rem;">Không tìm thấy script nào. Hãy tạo Audio Drama trước.</span>';
+                return;
+            }
+            nav.innerHTML = chapters.map(ch =>
+                `<button class="chapter-btn${ch.chapter_idx === currentChapterIdx ? ' active' : ''}" data-idx="${ch.chapter_idx}" onclick="app.loadChapter(${ch.chapter_idx})">${escapeHtml(ch.display)}</button>`
+            ).join('');
+        }
+
+        function renderLegend() {
+            const grid = document.getElementById('legendGrid');
+            const allRoles = new Set(currentScript.filter(s => s.type === 'segment').map(s => s.role));
+
+            grid.innerHTML = profiles
+                .filter(p => allRoles.has(p.name) || true)
+                .map(p => {
+                    const color = escapeHtml(p.color || getRoleColor(p.name));
+                    return `<div class="legend-item">
+                        <span class="legend-dot" style="background:${color}"></span>
+                        <span>${escapeHtml(p.name)}</span>
+                        ${p.voice_id ? `<button class="voice-preview-btn" onclick="app.previewVoice('${escapeHtml(p.voice_id)}')" title="Nghe thử">🔊</button>` : ''}
+                    </div>`;
+                }).join('');
+
+            // Show unprofiled roles too
+            for (const role of allRoles) {
+                if (!profiles.find(p => p.name === role)) {
+                    grid.innerHTML += `<div class="legend-item">
+                        <span class="legend-dot" style="background:${escapeHtml(getRoleColor(role))}"></span>
+                        <span style="opacity:0.6">${escapeHtml(role)}</span>
+                    </div>`;
+                }
+            }
+
+            // Toggle legend visibility
+            const section = document.getElementById('legendSection');
+            const h3 = section.querySelector('h3');
+            h3.onclick = () => {
+                grid.style.display = grid.style.display === 'none' ? 'flex' : 'none';
+                h3.textContent = grid.style.display === 'none' ? '▸ Nhân vật' : '▾ Nhân vật';
+            };
+        }
+
+        async function loadChapter(chapterIdx) {
+            showLoading(true);
+            modifications.clear();
+
+            try {
+                const data = await api.fetchChapterScript(slug, chapterIdx);
+                currentChapterIdx = chapterIdx;
+                currentScript = data.script || [];
+                roles = data.roles || [];
+                profiles = data.profiles || profiles;
+
+                renderChapterNav();
+                renderLegend();
+                renderSegmentList();
+                document.getElementById('bottomBar').style.display = 'flex';
+            } catch (e) {
+                showToast(`Lỗi tải chương: ${e.message}`, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        function renderSegmentList() {
+            const list = document.getElementById('segmentList');
+
+            if (currentScript.length === 0) {
+                list.innerHTML = '<p style="color:var(--text-muted);text-align:center;">Chương trống</p>';
+                return;
+            }
+
+            const genderFilter = document.getElementById('genderFilter').value;
+            let html = '';
+            let segIdx = 0;
+
+            for (let i = 0; i < currentScript.length; i++) {
+                const item = currentScript[i];
+
+                if (item.type === 'mood_shift') {
+                    html += `<div class="mood-shift-item">
+                        <span class="mood-label">🎭 ${escapeHtml(item.mood || 'unknown')}</span>
+                        ${item.tags ? `<span style="opacity:0.6">[${escapeHtml(item.tags.join(', '))}]</span>` : ''}
+                        ${item.transition ? `<span style="opacity:0.4;margin-left:6px">→ ${escapeHtml(item.transition)}</span>` : ''}
+                    </div>`;
+                    segIdx = 0;
+                    continue;
+                }
+
+                if (item.type === 'segment') {
+                    const role = modifications.has(i) ? modifications.get(i) : (item.role || 'narrator');
+                    const color = getRoleColor(role);
+                    const text = (item.text || '').substring(0, 200) + ((item.text || '').length > 200 ? '...' : '');
+                    const isModified = modifications.has(i);
+                    const filteredVoices = genderFilter === 'all'
+                        ? voices
+                        : voices.filter(v => v.gender === genderFilter);
+
+                    const voiceOptions = filteredVoices.map(v =>
+                        `<option value="${v.voice_id}" ${item.voice === v.voice_id ? 'selected' : ''}>${v.name} (${v.gender})</option>`
+                    ).join('');
+
+                    html += `<div class="segment-item${isModified ? ' modified' : ''}">
+                        <div class="segment-header">
+                            <span class="segment-role" style="color:${color}">${escapeHtml(role)}</span>
+                            <span class="segment-idx">#${i}</span>
+                        </div>
+                        <div class="segment-text">${escapeHtml(text)}</div>
+                        <div class="segment-actions">
+                            <select onchange="app.changeRole(${i}, this.value)" data-idx="${i}">
+                                <option value="${escapeHtml(item.role)}" ${!modifications.has(i) ? 'selected' : ''}>${escapeHtml(item.role || 'narrator')}</option>
+                                ${roles.filter(r => r !== (item.role || 'narrator')).map(r =>
+                                    `<option value="${escapeHtml(r)}" ${modifications.get(i) === r ? 'selected' : ''}>${escapeHtml(r)}</option>`
+                                ).join('')}
+                                <option value="__custom__">Khác...</option>
+                            </select>
+                            ${modifications.has(i) ? `<button class="apply-similar-btn" data-seg="${i}" data-role="${escapeHtml(modifications.get(i))}">⚡ Áp dụng tương tự</button>` : ''}
+                        </div>
+                    </div>`;
+                    segIdx++;
+                }
+            }
+
+            list.innerHTML = html;
+            document.getElementById('saveBtn').disabled = modifications.size === 0;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function changeRole(segmentIdx, newRole) {
+            if (newRole === '__custom__') {
+                const customRole = prompt('Nhập tên nhân vật mới:');
+                if (customRole) {
+                    modifications.set(segmentIdx, customRole);
+                    if (!roles.includes(customRole)) {
+                        roles.push(customRole);
+                    }
+                }
+                renderSegmentList();
+                return;
+            }
+            if (newRole === currentScript[segmentIdx]?.role) {
+                modifications.delete(segmentIdx);
+            } else {
+                modifications.set(segmentIdx, newRole);
+            }
+            renderSegmentList();
+        }
+
+        async function applySimilar(segmentIdx, newRole) {
+            if (!confirm(`Áp dụng role "${newRole}" cho tất cả segments có cùng role cũ?`)) return;
+
+            showLoading(true);
+            try {
+                const result = await api.applySimilar(slug, segmentIdx, newRole, currentChapterIdx);
+                showToast(`Đã thay đổi ${result.changed_count} segments`);
+                await loadChapter(currentChapterIdx); // Reload
+            } catch (e) {
+                showToast(`Lỗi: ${e.message}`, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function saveCorrections() {
+            if (modifications.size === 0) {
+                showToast('Không có thay đổi để lưu', 'error');
+                return;
+            }
+
+            showLoading(true);
+            try {
+                const corrections = Array.from(modifications.entries()).map(([idx, role]) => ({
+                    segment_idx: idx,
+                    new_role: role
+                }));
+
+                const result = await api.saveCorrections(slug, currentChapterIdx, corrections);
+                modifications.clear();
+                showToast(`Đã lưu ${result.applied} thay đổi!`);
+                await loadChapter(currentChapterIdx); // Reload
+            } catch (e) {
+                showToast(`Lỗi lưu: ${e.message}`, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        function discardChanges() {
+            modifications.clear();
+            renderSegmentList();
+            showToast('Đã hủy thay đổi');
+        }
+
+        let currentAudio = null;
+
+        async function previewVoice(voiceId) {
+            if (currentAudio) {
+                currentAudio.pause();
+                currentAudio = null;
+            }
+
+            try {
+                const blob = await api.previewVoice(voiceId);
+                const url = URL.createObjectURL(blob);
+                currentAudio = new Audio(url);
+                currentAudio.play();
+            } catch (e) {
+                showToast(`Lỗi nghe thử: ${e.message}`, 'error');
+            }
+        }
+
+        // Gender filter
+        document.getElementById('genderFilter').addEventListener('change', () => {
+            if (currentScript.length > 0) renderSegmentList();
+        });
+
+        // Event delegation for apply-similar buttons
+        document.getElementById('segmentList').addEventListener('click', (e) => {
+            const btn = e.target.closest('.apply-similar-btn');
+            if (btn) {
+                const segIdx = parseInt(btn.dataset.seg);
+                const newRole = btn.dataset.role;
+                if (!isNaN(segIdx) && newRole) {
+                    applySimilar(segIdx, newRole);
+                }
+            }
+        });
+
+        const app = {
+            loadChapter,
+            changeRole,
+            applySimilar,
+            saveCorrections,
+            discardChanges,
+            previewVoice,
+        };
+
+        init();
+    </script>
+</body>
+</html>

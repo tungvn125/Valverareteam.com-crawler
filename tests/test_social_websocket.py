@@ -99,3 +99,16 @@ def test_comment_broadcast_is_scoped_to_same_chapter(client, member_token):
         msg = ws.receive_json()
         assert msg["type"] == "comment"
         assert msg["data"]["content"] == "Hello!"
+
+
+def test_new_reaction_type_broadcasts_over_websocket(client, member_token):
+    with client.websocket_connect("/ws/social/book-1/ch-1") as ws:
+        response = client.post(
+            "/api/social/books/book-1/chapters/ch-1/reactions",
+            headers={"Authorization": f"Bearer {member_token}"},
+            json={"anchor": "epubcfi(/6/4)", "reaction_type": "sparkles"},
+        )
+        assert response.status_code == 200
+        msg = ws.receive_json()
+        assert msg["type"] == "reaction"
+        assert msg["data"]["reaction_type"] == "sparkles"

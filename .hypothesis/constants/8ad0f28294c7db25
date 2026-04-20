@@ -1,0 +1,4 @@
+# file: /home/tung/Data/dev/backup/Valvrareteam.net-crawler/vvr_scraper/web/routes/api.py
+# hypothesis_version: 6.152.1
+
+[10.0, 30.0, 403, 404, 500, '-', '--directory', '--file-selection', '--title', '-topmost', '.', '..', '.vvr_session.json', '/', '/api/browse', '/api/chapters', '/api/download', '/api/freesound/auth', '/api/novels/manifest', '/api/search', '/api/settings', '/api/story_info', '/health', '/ws/tasks', 'API', 'Accept', 'Chọn thư mục đầu ra', 'Get Server Settings', 'Manifest not found', 'Origin', 'Referer', 'Tkinter not found.', 'User-Agent', '_id', 'author', 'cookies', 'cover_path', 'cover_url', 'description', 'genres', 'index.html', 'kdialog', 'manifest.json', 'message', 'name', 'novels', 'ok', 'path', 'slug', 'static', 'status', 'success', 'task_id', 'title', 'total_chapters', 'truyen/', 'url', 'utf-8', 'value', 'views', 'word_count', 'zenity']

@@ -1,0 +1,5 @@
+Total messages: 3 (Errors: 0, Warnings: 2)
+
+[LOG] [SW] Service worker has been registered @ https://ln.hako.vn/scripts/service-manager.js?r=6:49
+[WARNING] The resource https://ln.hako.vn/fonts/OpenSans-SemiBold.ttf was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally. @ https://ln.hako.vn/truyen/25998-toi-nhap-xac-vao-nu-chinh-chet-trong-chuong-mo-dau/c368126-ep0-em-thich-anh:0
+[WARNING] The resource https://ln.hako.vn/fonts/OpenSans-Regular.ttf was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally. @ https://ln.hako.vn/truyen/25998-toi-nhap-xac-vao-nu-chinh-chet-trong-chuong-mo-dau/c368126-ep0-em-thich-anh:0

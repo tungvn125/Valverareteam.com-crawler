@@ -1,0 +1,50 @@
+<h2>Bản thiết kế Section 2: Task Management & Error Handling</h2>
+<p class="subtitle">Đảm bảo mọi tác vụ đều được ghi vết và lỗi được báo cáo chi tiết.</p>
+
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">SQLite: Table `jobs`</div>
+    <div class="mockup-body" style="font-size: 0.8rem;">
+      <table style="width: 100%; border-collapse: collapse; color: #fff;">
+        <tr style="border-bottom: 1px solid #444;">
+          <th style="text-align: left; padding: 5px;">ID</th>
+          <th style="text-align: left; padding: 5px;">Task</th>
+          <th style="text-align: left; padding: 5px;">Status</th>
+        </tr>
+        <tr>
+          <td style="padding: 5px;">job_8f2a</td>
+          <td style="padding: 5px;">render</td>
+          <td style="padding: 5px; color: #00ff00;">SUCCESS</td>
+        </tr>
+        <tr>
+          <td style="padding: 5px;">job_1c4d</td>
+          <td style="padding: 5px;">crawl</td>
+          <td style="padding: 5px; color: #ff0000;">FAILED</td>
+        </tr>
+      </table>
+      <p style="margin-top: 10px; color: #aaa;">// Giúp WebUI hiển thị lịch sử tác vụ chuyên nghiệp.</p>
+    </div>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header">File: error-logs/job_1c4d.log</div>
+    <div class="mockup-body" style="background: #1a0000; color: #ff6666; padding: 15px; font-family: monospace; font-size: 0.75rem;">
+      [MANIFEST USED]<br>
+      { "task": "crawl", "slug": "abc", ... }<br><br>
+      [STACK TRACE]<br>
+      Traceback (most recent call last):<br>
+      &nbsp;&nbsp;File "scraper_core.py", line 45...<br>
+      &nbsp;&nbsp;httpx.ConnectTimeout: Error connecting to...
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Quy trình Xử lý lỗi (Error Pipeline):</h3>
+  <ol>
+    <li><b>Catch:</b> Worker bắt Exception.</li>
+    <li><b>Log:</b> Viết Stack Trace + Manifest vào <code>error-logs/</code>.</li>
+    <li><b>Update:</b> Đánh dấu Job = <code>failed</code> trong DB.</li>
+    <li><b>Notify:</b> Gửi log ra hệ thống (Loguru).</li>
+  </ol>
+</div>

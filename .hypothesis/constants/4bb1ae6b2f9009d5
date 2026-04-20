@@ -1,0 +1,4 @@
+# file: /home/tung/Data/dev/backup/Valvrareteam.net-crawler/vvr_scraper/social/db.py
+# hypothesis_version: 6.152.1
+
+['PRAGMA journal_mode', 'VVR_ADMIN_CODE', 'admin', 'anchor', 'angry', 'clap', 'code', 'created_by', 'cry', 'displayName', 'display_name', 'eyes', 'fire', 'hashed', 'heart', 'id', 'invalid invite code', 'laugh', 'max_uses', 'member', 'nerd', 'parent_id', 'pray', 'replies', 'role', 'skull', 'sparkles', 'think', 'use_count', 'user', 'user_id', 'username', 'wow']

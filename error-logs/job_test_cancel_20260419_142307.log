@@ -1,0 +1,29 @@
+=== JOB MANIFEST ===
+{
+  "alias_id": null,
+  "batch_id": null,
+  "depends_on": null,
+  "priority": 0,
+  "task": "crawl",
+  "payload": {
+    "slug": "x",
+    "chapters": null,
+    "from_chapter": null,
+    "to_chapter": null,
+    "grouping": null,
+    "skip_illustrations": false,
+    "output_folder": null,
+    "formats": [
+      "EPUB"
+    ],
+    "playwright_mode": null
+  }
+}
+
+=== STACK TRACE ===
+Traceback (most recent call last):
+  File "/home/tung/Data/dev/backup/Valvrareteam.net-crawler/vvr_scraper/job_worker.py", line 188, in execute_job
+    await execute_crawl_job(job.payload, job_id, self.db)
+  File "/usr/lib64/python3.13/unittest/mock.py", line 2321, in _execute_mock_call
+    raise effect
+Exception: Artificial failure

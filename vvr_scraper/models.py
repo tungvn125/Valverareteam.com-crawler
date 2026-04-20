@@ -56,6 +56,8 @@ class CharacterProfile:
     aliases: list[str] = field(default_factory=list)
     gender: str = "unknown"
     voice_id: str | None = None
+    ref_audio_path: str | None = None
+    ref_text: str | None = None
     personality: str | None = None
     speaking_style: str | None = None
     emotion_range: float = 0.5

@@ -1,0 +1,4 @@
+# file: /home/tung/Data/dev/backup/Valvrareteam.net-crawler/vvr_scraper/web/routes/download.py
+# hypothesis_version: 6.152.1
+
+[0.3, 30.0, 100, ',', '.vvr_checkpoint.json', '.vvr_session.json', 'AD-MP3', 'EPUB', 'Exporting files...', 'HTML', 'MD', 'MP3', 'Minh họa', 'PDF', 'Paused', 'Resolving story...', 'TXT', 'VVR_API_KEY', 'VVR_BASE_URL', '__dataclass_fields__', 'ad-mp3', 'ad.mp3', 'author', 'chapters', 'complete', 'content', 'cookies', 'cover_path', 'cover_url', 'error', 'formats', 'has_updates', 'http', 'info', 'last_chapter_count', 'last_downloaded_at', 'last_synced_count', 'msg', 'name', 'novels', 'output_folder', 'path', 'percent', 'progress', 'scraped', 'slug', 'status', 'story_info', 'task_id', 'title', 'type', 'url', 'utf-8', 'value', 'volume', 'w']

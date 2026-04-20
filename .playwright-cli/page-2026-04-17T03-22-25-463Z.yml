@@ -1,0 +1,32 @@
+- generic [ref=e1]:
+  - banner [ref=e2]:
+    - generic [ref=e3]:
+      - heading "VVRT Web Dashboard" [level=1] [ref=e4]
+      - generic [ref=e5]:
+        - button "Kiểm tra cập nhật" [ref=e6] [cursor=pointer]
+        - button "Chuyển chế độ sáng/tối" [ref=e7] [cursor=pointer]:
+          - img [ref=e8]
+        - button "Cài đặt" [ref=e10] [cursor=pointer]:
+          - img [ref=e11]
+  - main [ref=e14]:
+    - complementary [ref=e15]:
+      - navigation [ref=e16]:
+        - button "Tìm truyện" [ref=e17] [cursor=pointer]:
+          - img [ref=e18]
+          - text: Tìm truyện
+        - button "Thư viện" [ref=e20] [cursor=pointer]:
+          - img [ref=e21]
+          - text: Thư viện
+      - generic [ref=e24]:
+        - heading "Tiến trình tải" [level=2] [ref=e25]
+        - paragraph [ref=e27]: Chưa có nhiệm vụ nào.
+        - heading "Hoàn thành gần đây" [level=3] [ref=e29]
+    - generic [ref=e30]:
+      - generic [ref=e31]:
+        - generic [ref=e33]:
+          - 'textbox "Tìm truyện (ví dụ: ''Toàn Chức Pháp Sư'')..." [active] [ref=e34]': mahouka
+          - generic [ref=e41] [cursor=pointer]: Không tìm thấy kết quả.
+        - generic [ref=e35]:
+          - heading "Nhật ký hoạt động" [level=2] [ref=e37]
+          - generic [ref=e39]: Sẵn sàng. Đang chờ nhiệm vụ...
+      - text: ⚠️

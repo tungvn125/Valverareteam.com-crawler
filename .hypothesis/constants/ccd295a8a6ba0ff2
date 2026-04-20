@@ -1,0 +1,4 @@
+# file: /home/tung/Data/dev/backup/Valvrareteam.net-crawler/vvr_scraper/sources/__init__.py
+# hypothesis_version: 6.152.1
+
+['browser', 'client', 'ln.hako.vn', 'truyenfull.vision']

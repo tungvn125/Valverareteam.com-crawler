@@ -1,15 +1,16 @@
 import base64
 import os
 
+import pytest
 from fastapi.testclient import TestClient
 
 from vvr_scraper.web import app
 
-# Mock environment variables for testing
-os.environ["VVR_OPDS_USER"] = "admin"
-os.environ["VVR_OPDS_PASS"] = "password"
 
-client = TestClient(app)
+@pytest.fixture(autouse=True)
+def _opds_auth_env(monkeypatch):
+    monkeypatch.setenv("VVR_OPDS_USER", "admin")
+    monkeypatch.setenv("VVR_OPDS_PASS", "password")
 
 
 def get_auth_headers(user="admin", password="password"):

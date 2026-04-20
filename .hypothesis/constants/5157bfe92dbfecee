@@ -1,0 +1,4 @@
+# file: /home/tung/Data/dev/backup/Valvrareteam.net-crawler/vvr_scraper/freesound_manager.py
+# hypothesis_version: 6.151.12
+
+[30.0, 200, '-ar', '44100', 'FREESOUND_CLIENT_ID', 'access_token', 'authorization_code', 'client_id', 'client_secret', 'code', 'grant_type', 'oauth', 'type:(wav OR flac)', 'w', 'wav']

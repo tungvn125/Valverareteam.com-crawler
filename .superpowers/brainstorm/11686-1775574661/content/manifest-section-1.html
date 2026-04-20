@@ -1,0 +1,38 @@
+<h2>Bản thiết kế Section 1: Universal Manifest Structure</h2>
+<p class="subtitle">Định nghĩa ngôn ngữ chung cho mọi tác vụ trong hệ thống.</p>
+
+<div class="mockup">
+  <div class="mockup-header">Ví dụ: server_with_automation.json</div>
+  <div class="mockup-body" style="background: #1e1e1e; padding: 20px; border-radius: 8px;">
+    <pre style="color: #dcdcdc; font-family: 'Consolas', monospace; font-size: 0.85rem;">
+{
+  <span style="color: #569cd6;">"version"</span>: <span style="color: #ce9178;">"1.1"</span>,
+  <span style="color: #569cd6;">"task"</span>: <span style="color: #ce9178;">"server"</span>,
+  <span style="color: #569cd6;">"payload"</span>: {
+    <span style="color: #569cd6;">"host"</span>: <span style="color: #ce9178;">"0.0.0.0"</span>,
+    <span style="color: #569cd6;">"port"</span>: <span style="color: #b5cea8;">8000</span>,
+    <span style="color: #569cd6;">"opds_password"</span>: <span style="color: #ce9178;">"admin123"</span>
+  },
+  <span style="color: #569cd6;">"automation"</span>: {
+    <span style="color: #569cd6;">"enabled"</span>: <span style="color: #569cd6;">true</span>,
+    <span style="color: #569cd6;">"schedules"</span>: [
+      {
+        <span style="color: #569cd6;">"id"</span>: <span style="color: #ce9178;">"daily-sync"</span>,
+        <span style="color: #569cd6;">"action"</span>: <span style="color: #ce9178;">"scrape-updates"</span>,
+        <span style="color: #569cd6;">"cron"</span>: <span style="color: #ce9178;">"0 2 * * *"</span>,
+        <span style="color: #569cd6;">"params"</span>: { <span style="color: #569cd6;">"format"</span>: [<span style="color: #ce9178;">"MP3"</span>] }
+      }
+    ]
+  }
+}</pre>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Quy tắc hàng đợi (Queuing Rules):</h3>
+  <ul>
+    <li><b>Tối đa 1 Worker:</b> Tại một thời điểm chỉ có 1 tác vụ nặng (scrape/render) được thực thi.</li>
+    <li><b>Ưu tiên:</b> Các tác vụ CLI trực tiếp (nếu có) sẽ được đẩy lên đầu hàng đợi, các tác vụ lập lịch chạy sau.</li>
+    <li><b>Trạng thái:</b> Server cung cấp một API <code>/api/jobs/status</code> để theo dõi hàng đợi hiện tại.</li>
+  </ul>
+</div>

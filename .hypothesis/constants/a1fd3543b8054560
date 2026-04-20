@@ -1,0 +1,4 @@
+# file: /home/tung/Data/dev/backup/Valvrareteam.net-crawler/vvr_scraper/job_models.py
+# hypothesis_version: 6.152.1
+
+[100, 8000, '0.0.0.0', 'cinema', 'crawl', 'epub', 'head', 'headless', 'landscape', 'pdf', 'render', 'server', 'task']

@@ -1,0 +1,4 @@
+# file: /home/tung/Data/dev/backup/Valvrareteam.net-crawler/vvr_scraper/social/router.py
+# hypothesis_version: 6.152.1
+
+[204, 400, 401, 403, 404, 429, 503, '/invites', '/login', '/me', '/register', 'Comment not found', 'Rate limit exceeded', 'Reaction not found', 'anchors', 'book_slug', 'chapter_id', 'comment', 'comment_deleted', 'data', 'hashed_password', 'id', 'reaction', 'reaction_deleted', 'role', 'social_db', 'token', 'type', 'user', 'user_id', 'username']

@@ -1,0 +1,4 @@
+# file: /home/tung/Data/dev/backup/Valvrareteam.net-crawler/vvr_scraper/job_worker.py
+# hypothesis_version: 6.152.1
+
+[0.0, 100.0, 100, '%Y%m%d_%H%M%S', ',', 'JobWorker started.', 'JobWorker stopped.', 'ad-mp3', 'alias_id', 'batch_id', 'cinema', 'crawl', 'depends_on', 'error-logs', 'formats', 'id', 'keys', 'mp4', 'payload', 'pending', 'priority', 'render', 'root', 'server', 'status', 'task', 'utf-8', 'w', 'waiting']

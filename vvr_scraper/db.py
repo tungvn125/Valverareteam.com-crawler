@@ -106,6 +106,19 @@ class DatabaseManager:
         # Create index for fast lookup
         await db.execute("CREATE INDEX IF NOT EXISTS idx_char_profiles_story ON character_profiles(story_id)")
 
+        # Migration: Add ref_audio_path and ref_text to character_profiles
+        cursor = await db.execute("PRAGMA table_info(character_profiles)")
+        existing_profile_columns = [row[1] for row in await cursor.fetchall()]
+
+        for col_name, col_def in [("ref_audio_path", "TEXT"), ("ref_text", "TEXT")]:
+            if col_name not in existing_profile_columns:
+                try:
+                    await db.execute(f"ALTER TABLE character_profiles ADD COLUMN {col_name} {col_def}")
+                    await db.commit()
+                    logger.info(f"Added column {col_name} to character_profiles.")
+                except Exception as e:
+                    logger.warning(f"Could not add column {col_name} to character_profiles: {e}")
+
         # Migration: Migrate data from character_voices to character_profiles
         await db.execute("""
             INSERT OR IGNORE INTO character_profiles (story_id, canonical_name, voice_id, gender)
@@ -281,6 +294,8 @@ class DatabaseManager:
                         aliases=json.loads(profile_dict["aliases"]) if profile_dict["aliases"] else [],
                         gender=profile_dict["gender"],
                         voice_id=profile_dict["voice_id"],
+                        ref_audio_path=profile_dict.get("ref_audio_path"),
+                        ref_text=profile_dict.get("ref_text"),
                         personality=profile_dict["personality"],
                         speaking_style=profile_dict["speaking_style"],
                         emotion_range=profile_dict["emotion_range"],
@@ -296,12 +311,15 @@ class DatabaseManager:
         await db.execute(
             """INSERT INTO character_profiles (
                 story_id, canonical_name, aliases, gender, voice_id,
+                ref_audio_path, ref_text,
                 personality, speaking_style, emotion_range, color, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(story_id, canonical_name) DO UPDATE SET
                 aliases=excluded.aliases,
                 gender=excluded.gender,
                 voice_id=excluded.voice_id,
+                ref_audio_path=excluded.ref_audio_path,
+                ref_text=excluded.ref_text,
                 personality=excluded.personality,
                 speaking_style=excluded.speaking_style,
                 emotion_range=excluded.emotion_range,
@@ -313,6 +331,8 @@ class DatabaseManager:
                 aliases_json,
                 profile.gender,
                 profile.voice_id,
+                profile.ref_audio_path,
+                profile.ref_text,
                 profile.personality,
                 profile.speaking_style,
                 profile.emotion_range,

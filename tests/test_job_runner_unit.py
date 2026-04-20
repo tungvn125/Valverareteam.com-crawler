@@ -397,10 +397,10 @@ class TestStartServerFromJob:
 
         with patch("vvr_scraper.job_runner.run_web_server", new_callable=AsyncMock):
             await start_server_from_job(payload)
-            assert os.environ.get("VVR_OPDS_PASSWORD") == "secret123"
+            assert os.environ.get("VVR_OPDS_PASS") == "secret123"
 
         # Cleanup
-        os.environ.pop("VVR_OPDS_PASSWORD", None)
+        os.environ.pop("VVR_OPDS_PASS", None)
 
 
 # =============================================================================

@@ -326,6 +326,16 @@ class TestReactionRoutes:
         )
         assert response.status_code == 404
 
+    def test_create_reaction_accepts_new_emoji_type(self, client, member_token):
+        RATE_BUCKETS.clear()
+        response = client.post(
+            "/api/social/books/book-1/chapters/ch-1/reactions",
+            headers={"Authorization": f"Bearer {member_token}"},
+            json={"anchor": "epubcfi(/6/2)", "reaction_type": "nerd"},
+        )
+        assert response.status_code == 200
+        assert response.json()["reaction_type"] == "nerd"
+
 
 class TestCommentRoutes:
     def test_create_comment_supports_chapter_level_anchor(self, client, member_token):
@@ -422,3 +432,4 @@ class TestRateLimiting:
             json={"content": "second"},
         )
         assert resp.status_code == 429
+

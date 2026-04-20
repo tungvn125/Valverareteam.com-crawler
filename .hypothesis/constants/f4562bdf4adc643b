@@ -1,0 +1,4 @@
+# file: /home/tung/Data/dev/backup/Valvrareteam.net-crawler/vvr_scraper/web/routes/jobs.py
+# hypothesis_version: 6.152.1
+
+[400, 404, 500, 503, ',', '/api', '/jobs', '/jobs/{job_id}', 'Jobs', 'batch_id', 'cancelled', 'error', 'from_chapter', 'job_ids', 'not_running', 'pausing', 'queued', 'resuming', 'status', 'task_not_found', 'to_chapter']

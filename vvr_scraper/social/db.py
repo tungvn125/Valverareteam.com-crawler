@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 import aiosqlite
 from loguru import logger
 
-REACTION_TYPES = {"heart", "cry", "wow", "angry", "fire", "skull", "think", "clap"}
+REACTION_TYPES = {"heart", "cry", "wow", "angry", "fire", "skull", "think", "clap", "nerd", "laugh", "eyes", "pray", "sparkles"}
 
 
 def group_reactions_by_anchor(reactions: list[dict]) -> dict[str, list[dict]]:

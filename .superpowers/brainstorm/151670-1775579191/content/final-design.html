@@ -1,0 +1,47 @@
+<h2>Bản thiết kế Tổng thể: Universal Task Runner</h2>
+<p class="subtitle">Hệ thống điều phối tác vụ tập trung cho VVR-Scraper.</p>
+
+<div class="cards">
+  <div class="card">
+    <div class="card-body">
+      <h3 style="color: #00ff88;">1. Entry Point</h3>
+      <p>Lệnh <code>vvrt run job.json</code> sẽ parse JSON và chuyển hướng luồng xử lý tới các module tương ứng.</p>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-body">
+      <h3 style="color: #00ccff;">2. Unified Server</h3>
+      <p>Khởi chạy FastAPI phục vụ cả WebUI và OPDS. Đồng thời kích hoạt Background Worker.</p>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-body">
+      <h3 style="color: #ffcc00;">3. Smart Queue</h3>
+      <p>Worker lấy Job từ hàng đợi, thực thi tuần tự (FIFO) để bảo vệ tài nguyên hệ thống.</p>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Cơ chế Báo cáo lỗi (Error Reporting):</h3>
+  <div class="mockup">
+    <div class="mockup-header">error-logs/job_xyz.log</div>
+    <div class="mockup-body" style="background: #1a0000; color: #ff6666; padding: 15px; font-family: monospace; font-size: 0.8rem;">
+      <span style="color: #00ff00;">--- JOB MANIFEST ---</span><br>
+      { "task": "server", "automation": { "schedules": [...] } }<br><br>
+      <span style="color: #00ff00;">--- STACK TRACE ---</span><br>
+      Exception: Database is locked...
+    </div>
+  </div>
+</div>
+
+<div class="pros-cons">
+  <div class="pros">
+    <h4>Ưu điểm cuối cùng</h4>
+    <ul>
+      <li>Chuẩn hóa mọi thao tác vào file JSON.</li>
+      <li>Quản lý lịch sử tác vụ như một ứng dụng Enterprise.</li>
+      <li>Khả năng tự động hóa không giới hạn.</li>
+    </ul>
+  </div>
+</div>

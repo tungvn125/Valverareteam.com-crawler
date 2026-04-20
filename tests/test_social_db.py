@@ -90,3 +90,27 @@ async def test_get_comment_returns_none_for_missing(tmp_path):
 
     result = await db.get_comment("nonexistent")
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_create_reaction_accepts_new_emoji_types(tmp_path):
+    db = SocialDatabaseManager(db_path=str(tmp_path / "social.db"))
+    await db.init_db()
+    user_id = await db.create_user_for_test("alice")
+
+    new_types = ["nerd", "laugh", "eyes", "pray", "sparkles"]
+    for rt in new_types:
+        rid = await db.create_reaction(user_id, "book-1", "chapter-1", f"anchor-{rt}", rt)
+        reaction = await db.get_reaction(rid)
+        assert reaction is not None
+        assert reaction["reaction_type"] == rt
+
+
+@pytest.mark.asyncio
+async def test_create_reaction_still_rejects_unknown_emoji_type(tmp_path):
+    db = SocialDatabaseManager(db_path=str(tmp_path / "social.db"))
+    await db.init_db()
+    user_id = await db.create_user_for_test("alice")
+
+    with pytest.raises(ValueError, match="invalid reaction type"):
+        await db.create_reaction(user_id, "book-1", "chapter-1", "anchor", "tableflip")

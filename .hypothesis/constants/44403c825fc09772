@@ -1,0 +1,4 @@
+# file: /home/tung/Data/dev/backup/Valvrareteam.net-crawler/vvr_scraper/sources/lnhako.py
+# hypothesis_version: 6.152.1
+
+[30.0, 30000, 60000, '#chapter-content', '#chapter-content img', '#chapter-content p', '-', '/', '/ai-dich/', '/tac-gia/', 'Lượt xem', 'No description', 'Số từ', 'Unknown', 'Volume', 'Volume 1', 'a', 'content', 'div', 'div.series-gernes a', 'div.summary-content', 'h1', 'header', 'href', 'html.parser', 'https://ln.hako.vn', 'image', 'li', 'list-chapters', 'ln.hako.vn', 'networkidle', 'sect-header', 'sect-title', 'section', 'series-cover', 'series-name', 'span', 'src', 'statistic-item', 'statistic-name', 'statistic-value', 'style', 'text', 'title', 'ul', 'volume-list']

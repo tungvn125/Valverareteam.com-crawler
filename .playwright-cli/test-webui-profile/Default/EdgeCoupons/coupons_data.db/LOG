@@ -1,0 +1,5 @@
+2026/04/17-10:40:11.940 8ebf Creating DB /home/tung/Data/dev/backup/Valvrareteam.net-crawler/.playwright-cli/test-webui-profile/Default/EdgeCoupons/coupons_data.db since it was missing.
+2026/04/17-10:40:12.196 8ebf Reusing MANIFEST /home/tung/Data/dev/backup/Valvrareteam.net-crawler/.playwright-cli/test-webui-profile/Default/EdgeCoupons/coupons_data.db/MANIFEST-000001
+2026/04/17-10:40:13.381 8ec0 Level-0 table #5: started
+2026/04/17-10:40:13.554 8ec0 Level-0 table #5: 682105 bytes OK
+2026/04/17-10:40:13.677 8ec0 Delete type=0 #3
