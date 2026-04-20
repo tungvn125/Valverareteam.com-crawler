@@ -57,7 +57,7 @@ def _get_tts_provider():
     if provider_name == "elevenlabs":
         return tts_module.get_provider("elevenlabs", api_key=os.getenv("ELEVENLABS_API_KEY"))
     elif provider_name == "openai_tts":
-        return tts_module.get_provider("openai_tts")
+        return tts_module.get_provider("openai_tts", base_url=os.getenv("OPENAI_TTS_BASE_URL"))
     else:
         return tts_module.get_provider(provider_name)
 

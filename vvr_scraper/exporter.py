@@ -385,11 +385,18 @@ async def tao_file_mp3(content_list: ContentList, filename: str, title: str = "C
     try:
         audio_segments = []
         total_chunks = len(chunks)
-        voice_id = os.getenv("ELEVENLABS_VOICE_ID", "EXAVITQu4vr4xnSDxMaL")
-        voice_spec = VoiceSpec(
-            voice_id=voice_id,
-            settings={"stability": 0.75, "similarity_boost": 0.75, "style": 0.0, "use_speaker_boost": True},
-        )
+        # Provider-appropriate default voice
+        if provider_name == "openai_tts":
+            voice_spec = VoiceSpec(voice_id="alloy", settings={})
+        elif provider_name == "omnivoice":
+            voice_spec = VoiceSpec(voice_id=None, settings={})
+        else:
+            # ElevenLabs or unknown
+            voice_id = os.getenv("ELEVENLABS_VOICE_ID", "EXAVITQu4vr4xnSDxMaL")
+            voice_spec = VoiceSpec(
+                voice_id=voice_id,
+                settings={"stability": 0.75, "similarity_boost": 0.75, "style": 0.0, "use_speaker_boost": True},
+            )
 
         def _load_segment(audio_bytes):
             return pydub.AudioSegment.from_file(io.BytesIO(audio_bytes), format="mp3")

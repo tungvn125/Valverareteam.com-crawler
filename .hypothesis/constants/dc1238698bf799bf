@@ -1,0 +1,4 @@
+# file: /home/tung/Data/dev/backup/Valvrareteam.net-crawler/vvr_scraper/models.py
+# hypothesis_version: 6.152.1
+
+[0.5, '-', 'No Description', 'Unknown', 'Unknown Author', 'Unknown Title', 'author', 'cover_path', 'cover_url', 'description', 'genres', 'image', 'slug', 'text', 'title', 'total_chapters', 'unknown', 'views', 'word_count']

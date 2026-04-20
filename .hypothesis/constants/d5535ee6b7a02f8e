@@ -1,0 +1,4 @@
+# file: /home/tung/Data/dev/backup/Valvrareteam.net-crawler/vvr_scraper/web/routes/correction.py
+# hypothesis_version: 6.152.1
+
+[150, 404, 500, '*.mp3', '*.script.json', '*.wav', '.ad.mp3', '.bak', '.mp3', '.tmp', '/', '/api/correction', '/voices/list', '/voices/preview', 'Corrections', 'ELEVENLABS_API_KEY', 'OPENAI_TTS_BASE_URL', 'aliases', 'applied', 'audio/mpeg', 'changed_count', 'changed_indices', 'chapter_idx', 'chapters', 'chapters[/\\\\](\\d+)', 'character', 'characters', 'color', 'data', 'display', 'elevenlabs', 'emotion_range', 'gender', 'invalidated', 'labels', 'mtime', 'name', 'novels', 'ok', 'openai_tts', 'output_dir', 'output_folder', 'path', 'personality', 'profiles', 'role', 'roles', 'script', 'segment', 'segment_idx', 'size', 'slug', 'speaking_style', 'status', 'type', 'unknown', 'utf-8', 'voice_id', 'voices', 'w']

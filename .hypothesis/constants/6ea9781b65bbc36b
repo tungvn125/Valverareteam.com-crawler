@@ -1,0 +1,4 @@
+# file: /home/tung/Data/dev/backup/Valvrareteam.net-crawler/vvr_scraper/tts/__init__.py
+# hypothesis_version: 6.152.1
+
+['ELEVENLABS_API_KEY', 'OPENAI_TTS_API_KEY', 'OPENAI_TTS_BASE_URL', 'VVR_TTS_PROVIDER', 'elevenlabs', 'omnivoice', 'openai_tts']
