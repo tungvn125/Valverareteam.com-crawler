@@ -112,3 +112,102 @@ class TestElevenLabsProvider:
             provider = ElevenLabsProvider(api_key="test_key")
             await provider.close()
             mock_client.aclose.assert_called_once()
+
+
+class TestOpenAITTSProvider:
+    @pytest.mark.asyncio
+    async def test_synthesize(self):
+        from vvr_scraper.tts.openai_tts_provider import OpenAITTSProvider
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.content = b"fake_mp3_audio_bytes"
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=mock_response)
+        mock_client.get = AsyncMock(side_effect=Exception("no /voices endpoint"))
+        mock_client.aclose = AsyncMock()
+
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            provider = OpenAITTSProvider(
+                base_url="https://api.openai.com/v1",
+                api_key="sk-test",
+                model="tts-1",
+                default_voice="alloy",
+            )
+            voice = VoiceSpec(voice_id="echo")
+            result = await provider.synthesize("Hello world", voice)
+
+            assert result.audio_bytes == b"fake_mp3_audio_bytes"
+            assert result.word_alignments is None
+
+            call_kwargs = mock_client.post.call_args[1]["json"]
+            assert call_kwargs["voice"] == "echo"
+            assert call_kwargs["model"] == "tts-1"
+
+    @pytest.mark.asyncio
+    async def test_synthesize_uses_default_voice_when_no_voice_id(self):
+        from vvr_scraper.tts.openai_tts_provider import OpenAITTSProvider
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.content = b"audio"
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=mock_response)
+        mock_client.get = AsyncMock(side_effect=Exception("no /voices"))
+        mock_client.aclose = AsyncMock()
+
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            provider = OpenAITTSProvider(default_voice="nova")
+            voice = VoiceSpec()
+            result = await provider.synthesize("Hello", voice)
+
+            call_kwargs = mock_client.post.call_args[1]["json"]
+            assert call_kwargs["voice"] == "nova"
+
+    @pytest.mark.asyncio
+    async def test_discover_voices_fallback(self):
+        from vvr_scraper.tts.openai_tts_provider import OpenAITTSProvider
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=Exception("no endpoint"))
+        mock_client.aclose = AsyncMock()
+
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            provider = OpenAITTSProvider()
+            voices = await provider.discover_voices()
+            names = [v.voice_id for v in voices]
+            assert "alloy" in names
+            assert "echo" in names
+            assert len(voices) == 6
+
+    @pytest.mark.asyncio
+    async def test_discover_voices_from_api(self):
+        from vvr_scraper.tts.openai_tts_provider import OpenAITTSProvider
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"voices": [{"id": "custom1", "name": "Custom Voice 1"}]}
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.aclose = AsyncMock()
+
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            provider = OpenAITTSProvider()
+            voices = await provider.discover_voices()
+            assert len(voices) == 1
+            assert voices[0].voice_id == "custom1"
+
+    @pytest.mark.asyncio
+    async def test_close(self):
+        from vvr_scraper.tts.openai_tts_provider import OpenAITTSProvider
+
+        mock_client = AsyncMock()
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            provider = OpenAITTSProvider()
+            await provider.close()
+            mock_client.aclose.assert_called_once()
