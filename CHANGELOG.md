@@ -1,13 +1,26 @@
 # CHANGELOG
 
 
+## v0.3.0 (2026-04-19)
+
+### Unknown
+
+* Merge branch 'master' of https://github.com/tungvn125/Valvrareteam.net-crawler ([`f42349c`](https://github.com/tungvn125/Valvrareteam.net-crawler/commit/f42349c7c1a03b1ffefd9a4573edc5511485b98a))
+
+
 ## v0.2.1 (2026-04-18)
 
 ### Bug Fixes
 
+* fix: some error ([`940693e`](https://github.com/tungvn125/Valvrareteam.net-crawler/commit/940693e60d9490f4296869fcc049c88cf4b3b2a6))
+
 * fix: serveral code issue ([`343d064`](https://github.com/tungvn125/Valvrareteam.net-crawler/commit/343d064a7fffcf18aafc0ebae85bac6347c95b1f))
 
 ### Chores
+
+* chore(release): 0.2.1 [skip ci] ([`4018261`](https://github.com/tungvn125/Valvrareteam.net-crawler/commit/4018261a26d775d545b4505392a7fd79ffa0222a))
+
+* chore: verify social backend integration ([`b397c9f`](https://github.com/tungvn125/Valvrareteam.net-crawler/commit/b397c9f86a3df958b6171d1026ab6b06820d6023))
 
 * chore: edit docker files for recent updates ([`2f337bd`](https://github.com/tungvn125/Valvrareteam.net-crawler/commit/2f337bdd675c8218251f7703351959484e9691d4))
 
@@ -19,7 +32,34 @@
 
 ### Documentation
 
+* docs: write some docs about the readest client/server ([`ae219c3`](https://github.com/tungvn125/Valvrareteam.net-crawler/commit/ae219c36b678e61051368e28f87a1ae310f92438))
+
 * docs: rewrite/add more docs ([`788ca99`](https://github.com/tungvn125/Valvrareteam.net-crawler/commit/788ca990d039b91c00932c8b31e8013921e4f409))
+
+### Features
+
+* feat: add social reactions, realtime broadcasts, and websocket manager
+
+- Create SocialConnectionManager with chapter-scoped rooms
+- Add reaction CRUD routes with owner-only delete
+- Add websocket endpoint for chapter-scoped broadcasts
+- Add get_reaction, delete_reaction, group_reactions_by_anchor to db
+- Add in-process rate limiting (5/1s reactions, 1/3s comments)
+- Add comment CRUD routes with owner-only edit/delete
+- Add nested replies in list_comments
+- Add update_comment, delete_comment to db ([`a20568a`](https://github.com/tungvn125/Valvrareteam.net-crawler/commit/a20568a6c354e7549dbae3871cd3c21c088996bd))
+
+* feat: add social auth and admin API routes ([`eae87ec`](https://github.com/tungvn125/Valvrareteam.net-crawler/commit/eae87ec817f62a24bd7475c583f715996f3cf3cb))
+
+* feat: add social auth and admin bootstrap ([`6c3612b`](https://github.com/tungvn125/Valvrareteam.net-crawler/commit/6c3612bb205e3c88d3a2ee3119348204af452d45))
+
+* feat: add social data models and queries ([`2759207`](https://github.com/tungvn125/Valvrareteam.net-crawler/commit/275920742aee07857654b4b13994ca33ff8ed449))
+
+* feat: add social database foundation ([`9f2223e`](https://github.com/tungvn125/Valvrareteam.net-crawler/commit/9f2223e9872c22e0e271363a7558c8b8cd44e02a))
+
+### Testing
+
+* test: add reaction, comment, rate limit, and websocket broadcast tests ([`5cc7836`](https://github.com/tungvn125/Valvrareteam.net-crawler/commit/5cc783636cac5cff71b201b860e0d255110207a0))
 
 ### Unknown
 
