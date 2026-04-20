@@ -1,5 +1,6 @@
 """OmniVoice TTS provider — local model with voice cloning and design."""
 
+import asyncio
 import io
 import os
 
@@ -31,16 +32,21 @@ class OmniVoiceProvider:
 
     async def synthesize(self, text: str, voice: VoiceSpec) -> SynthesisResult:
         """Synthesize using OmniVoice local model."""
+        import functools
+
         if voice.ref_audio_path:
-            audio_np = self._model.generate(
+            gen_fn = functools.partial(
+                self._model.generate,
                 text=text,
                 ref_audio=voice.ref_audio_path,
                 ref_text=voice.ref_text,
             )
         elif voice.instruct:
-            audio_np = self._model.generate(text=text, instruct=voice.instruct)
+            gen_fn = functools.partial(self._model.generate, text=text, instruct=voice.instruct)
         else:
-            audio_np = self._model.generate(text=text)
+            gen_fn = functools.partial(self._model.generate, text=text)
+
+        audio_np = await asyncio.to_thread(gen_fn)
 
         import soundfile as sf
 
