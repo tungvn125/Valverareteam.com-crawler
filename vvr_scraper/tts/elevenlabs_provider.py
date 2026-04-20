@@ -9,7 +9,7 @@ import os
 import httpx
 from loguru import logger
 
-from .base import VoiceInfo, VoiceSpec, WordAlignment, SynthesisResult, DEFAULT_ELEVENLABS_VOICE_ID
+from .base import DEFAULT_ELEVENLABS_VOICE_ID, SynthesisResult, VoiceInfo, VoiceSpec, WordAlignment
 
 
 class ElevenLabsProvider:

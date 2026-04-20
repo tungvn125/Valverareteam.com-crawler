@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from vvr_scraper.tts.base import VoiceSpec, SynthesisResult
+from vvr_scraper.tts.base import SynthesisResult, VoiceSpec
 
 
 class TestElevenLabsProvider:
@@ -163,7 +163,7 @@ class TestOpenAITTSProvider:
         with patch("httpx.AsyncClient", return_value=mock_client):
             provider = OpenAITTSProvider(default_voice="nova")
             voice = VoiceSpec()
-            result = await provider.synthesize("Hello", voice)
+            await provider.synthesize("Hello", voice)
 
             call_kwargs = mock_client.post.call_args[1]["json"]
             assert call_kwargs["voice"] == "nova"
@@ -293,7 +293,7 @@ class TestOmniVoiceProvider:
             provider._sampling_rate = 24000
 
             voice = VoiceSpec()
-            result = await provider.synthesize("Hello", voice)
+            await provider.synthesize("Hello", voice)
 
             mock_model.generate.assert_called_once_with(text="Hello")
 

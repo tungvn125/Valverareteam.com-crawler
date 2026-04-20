@@ -4,14 +4,14 @@ import io
 import json
 import os
 import random
+from typing import Any
 
 import httpx
 from loguru import logger
 from openai import AsyncOpenAI
 
 from .models import CharacterProfile
-from .tts.base import TTSProvider, VoiceSpec, SynthesisResult
-from typing import Any
+from .tts.base import SynthesisResult, TTSProvider, VoiceSpec
 
 
 class ScriptResult(list):

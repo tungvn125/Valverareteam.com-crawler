@@ -6,7 +6,7 @@ import os
 import httpx
 from loguru import logger
 
-from .base import VoiceInfo, VoiceSpec, SynthesisResult
+from .base import SynthesisResult, VoiceInfo, VoiceSpec
 
 
 class OpenAITTSProvider:

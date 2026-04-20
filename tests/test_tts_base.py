@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import pytest
 
-from vvr_scraper.tts.base import VoiceSpec, WordAlignment, SynthesisResult, VoiceInfo, map_tags
+from vvr_scraper.tts.base import SynthesisResult, VoiceSpec, WordAlignment, map_tags
 
 
 class TestVoiceSpec:
@@ -76,7 +76,7 @@ class TestMapTags:
 
 class TestRegistry:
     def test_register_and_get(self):
-        from vvr_scraper.tts import register, get_provider
+        from vvr_scraper.tts import get_provider, register
 
         class FakeProvider:
             def __init__(self, **kw): pass

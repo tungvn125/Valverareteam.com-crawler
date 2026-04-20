@@ -155,7 +155,7 @@ async def test_voice_manager_assignment_and_persistence():
     # Save original global state
     orig_voices = VoiceManager._global_available_voices
     orig_metadata = VoiceManager._global_voice_metadata
-    
+
     try:
         # Reset global state for testing and mock no available voices
         VoiceManager._global_available_voices = []
@@ -201,7 +201,7 @@ async def test_voice_manager_gender_aware():
     # Save original global state
     orig_voices = VoiceManager._global_available_voices
     orig_metadata = VoiceManager._global_voice_metadata
-    
+
     try:
         # Reset and mock global state
         VoiceManager._global_available_voices = ["voice_m1", "voice_f1", "voice_n1"]

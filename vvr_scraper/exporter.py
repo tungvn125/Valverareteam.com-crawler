@@ -346,7 +346,7 @@ async def tao_file_txt(content_list: ContentList, filename: str, title: str = "C
 async def tao_file_mp3(content_list: ContentList, filename: str, title: str = "Chương truyện", tts_provider_name: str | None = None) -> None:
     """AI-Powered Audiobook generation using TTS provider with chunked processing."""
     from . import tts
-    from .tts.base import VoiceSpec, DEFAULT_ELEVENLABS_VOICE_ID
+    from .tts.base import DEFAULT_ELEVENLABS_VOICE_ID, VoiceSpec
 
     # Instantiate provider with appropriate kwargs
     provider_name = tts_provider_name or tts.auto_detect_provider()
@@ -443,7 +443,7 @@ async def tao_file_audiodrama(
     """
 
     from . import tts
-    from .tts.base import VoiceSpec, SynthesisResult, WordAlignment, DEFAULT_ELEVENLABS_VOICE_ID
+    from .tts.base import VoiceSpec
 
     # Instantiate provider with appropriate kwargs
     provider_name = tts_provider_name or tts.auto_detect_provider()

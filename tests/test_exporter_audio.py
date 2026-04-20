@@ -5,7 +5,7 @@ import pytest
 
 from vvr_scraper.exporter import tao_file_audiodrama
 from vvr_scraper.models import ContentItem
-from vvr_scraper.tts.base import VoiceSpec, SynthesisResult, WordAlignment
+from vvr_scraper.tts.base import SynthesisResult, VoiceSpec, WordAlignment
 
 
 class MockAudio:
