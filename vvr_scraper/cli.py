@@ -214,6 +214,11 @@ class ValvrareScraperCLI:
             choices=["landscape", "portrait"],
             help="Định dạng render video (landscape/portrait).",
         )
+        parser.add_argument(
+            "--tts-provider",
+            default=None,
+            help="TTS backend. Built-in: elevenlabs, omnivoice, openai_tts. Custom providers also supported. Default: auto-detect.",
+        )
         parser.add_argument("--login", action="store_true", help="Đăng nhập thủ công.")
         parser.add_argument("--refresh-session", action="store_true", help="Xóa session cũ.")
         parser.add_argument("--verbose", action="store_true", help="Hiển thị log chi tiết.")
@@ -701,7 +706,12 @@ class ValvrareScraperCLI:
                     )
 
                 await tao_file_audiodrama(
-                    content_list=content, filename=fpath, story_id=info.slug, db_manager=self.db_manager, title=title
+                    content_list=content,
+                    filename=fpath,
+                    story_id=info.slug,
+                    db_manager=self.db_manager,
+                    title=title,
+                    tts_provider_name=self.args.tts_provider,
                 )
             elif fmt == "MP4":
                 # Check for API Key as video needs Audio Drama
