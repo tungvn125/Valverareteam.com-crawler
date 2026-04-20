@@ -49,6 +49,19 @@ class CharacterUpdateRequest(BaseModel):
 # --- Helpers ---
 
 
+def _get_tts_provider():
+    """Get the configured TTS provider instance."""
+    from vvr_scraper import tts as tts_module
+
+    provider_name = tts_module.auto_detect_provider()
+    if provider_name == "elevenlabs":
+        return tts_module.get_provider("elevenlabs", api_key=os.getenv("ELEVENLABS_API_KEY"))
+    elif provider_name == "openai_tts":
+        return tts_module.get_provider("openai_tts")
+    else:
+        return tts_module.get_provider(provider_name)
+
+
 def _find_script_files(output_dir: Path, slug: str) -> list[dict]:
     """Find all .script.json files in the novel's output directory."""
     scripts = []
@@ -449,69 +462,34 @@ async def update_character(slug: str, character_name: str, body: CharacterUpdate
 
 @router.get("/voices/list")
 async def list_voices():
-    """List available ElevenLabs voices."""
-    api_key = os.getenv("ELEVENLABS_API_KEY")
-    if not api_key:
-        raise HTTPException(status_code=500, detail="ELEVENLABS_API_KEY not configured")
-
+    """List available voices from the configured TTS provider."""
     try:
-        from elevenlabs.client import ElevenLabs
-
-        client = ElevenLabs(api_key=api_key)
-        voices = await _async_get_voices(client)
-        return {"voices": voices}
+        provider = _get_tts_provider()
+        voices = await provider.discover_voices()
+        await provider.close()
+        return {"voices": [{"voice_id": v.voice_id, "name": v.name, "gender": v.gender, "labels": v.labels} for v in voices]}
     except Exception as e:
         logger.error(f"Error listing voices: {e}")
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
-async def _async_get_voices(client):
-    """Fetch voices from ElevenLabs in a thread."""
-    import asyncio
-
-    def fetch():
-        return client.voices.get_all().voices
-
-    voices_list = await asyncio.to_thread(fetch)
-    return [
-        {
-            "voice_id": v.voice_id,
-            "name": v.name,
-            "gender": v.labels.get("gender", "unknown") if v.labels else "unknown",
-            "labels": v.labels or {},
-        }
-        for v in voices_list
-    ]
-
-
 @router.get("/voices/preview")
-async def preview_voice(voice_id: str = Query(...), text: str = Query(default="Xin chào, tôi là người kể chuyện.")):
-    """Generate a short audio sample for voice preview using ElevenLabs."""
+async def preview_voice(
+    voice_id: str | None = None,
+    ref_audio_path: str | None = None,
+    text: str = Query(default="Xin chào, tôi là người kể chuyện."),
+):
+    """Generate a short audio preview using the configured TTS provider."""
     if len(text) > 150:
         text = text[:150]
 
-    api_key = os.getenv("ELEVENLABS_API_KEY")
-    if not api_key:
-        raise HTTPException(status_code=500, detail="ELEVENLABS_API_KEY not configured")
-
     try:
-        from elevenlabs.client import ElevenLabs
-
-        client = ElevenLabs(api_key=api_key)
-
-        def generate():
-            return client.generate(text=text, voice=voice_id, model="eleven_v3")
-
-        import asyncio
-
-        audio_chunks = await asyncio.to_thread(generate)
-        audio_bytes = b"".join(audio_chunks)
-
-        if not audio_bytes:
-            raise HTTPException(status_code=500, detail="No audio generated")
-
-        return Response(content=audio_bytes, media_type="audio/mpeg")
-
+        provider = _get_tts_provider()
+        from vvr_scraper.tts.base import VoiceSpec
+        voice = VoiceSpec(voice_id=voice_id, ref_audio_path=ref_audio_path)
+        audio = await provider.preview_voice(voice, text)
+        await provider.close()
+        return Response(content=audio, media_type="audio/mpeg")
     except Exception as e:
         logger.error(f"Error generating voice preview: {e}")
         raise HTTPException(status_code=500, detail=str(e)) from e
