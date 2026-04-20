@@ -9,7 +9,7 @@ import os
 import httpx
 from loguru import logger
 
-from .base import VoiceInfo, VoiceSpec, WordAlignment, SynthesisResult
+from .base import VoiceInfo, VoiceSpec, WordAlignment, SynthesisResult, DEFAULT_ELEVENLABS_VOICE_ID
 
 
 class ElevenLabsProvider:
@@ -21,7 +21,7 @@ class ElevenLabsProvider:
 
     async def synthesize(self, text: str, voice: VoiceSpec) -> SynthesisResult:
         """Synthesize using ElevenLabs stream-with-timestamps endpoint."""
-        voice_id = voice.voice_id or os.getenv("ELEVENLABS_VOICE_ID", "EXAVITQu4vr4xnSDxMaL")
+        voice_id = voice.voice_id or os.getenv("ELEVENLABS_VOICE_ID", DEFAULT_ELEVENLABS_VOICE_ID)
         stability = voice.settings.get("stability", 0.35)
 
         url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream-with-timestamps"
@@ -98,7 +98,7 @@ class ElevenLabsProvider:
         from elevenlabs.client import ElevenLabs
 
         client = ElevenLabs(api_key=self._api_key)
-        voice_id = voice.voice_id or "EXAVITQu4vr4xnSDxMaL"
+        voice_id = voice.voice_id or DEFAULT_ELEVENLABS_VOICE_ID
 
         def generate():
             return client.generate(text=text, voice=voice_id, model="eleven_v3")

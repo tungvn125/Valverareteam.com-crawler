@@ -346,7 +346,7 @@ async def tao_file_txt(content_list: ContentList, filename: str, title: str = "C
 async def tao_file_mp3(content_list: ContentList, filename: str, title: str = "Chương truyện", tts_provider_name: str | None = None) -> None:
     """AI-Powered Audiobook generation using TTS provider with chunked processing."""
     from . import tts
-    from .tts.base import VoiceSpec
+    from .tts.base import VoiceSpec, DEFAULT_ELEVENLABS_VOICE_ID
 
     # Instantiate provider with appropriate kwargs
     provider_name = tts_provider_name or tts.auto_detect_provider()
@@ -392,7 +392,7 @@ async def tao_file_mp3(content_list: ContentList, filename: str, title: str = "C
             voice_spec = VoiceSpec(voice_id=None, settings={})
         else:
             # ElevenLabs or unknown
-            voice_id = os.getenv("ELEVENLABS_VOICE_ID", "EXAVITQu4vr4xnSDxMaL")
+            voice_id = os.getenv("ELEVENLABS_VOICE_ID", DEFAULT_ELEVENLABS_VOICE_ID)
             voice_spec = VoiceSpec(
                 voice_id=voice_id,
                 settings={"stability": 0.75, "similarity_boost": 0.75, "style": 0.0, "use_speaker_boost": True},
@@ -443,7 +443,7 @@ async def tao_file_audiodrama(
     """
 
     from . import tts
-    from .tts.base import VoiceSpec, SynthesisResult, WordAlignment
+    from .tts.base import VoiceSpec, SynthesisResult, WordAlignment, DEFAULT_ELEVENLABS_VOICE_ID
 
     # Instantiate provider with appropriate kwargs
     provider_name = tts_provider_name or tts.auto_detect_provider()
@@ -554,8 +554,15 @@ async def tao_file_audiodrama(
             stability = 0.75 if role.lower() == "narrator" else 0.35
 
             try:
-                # Update voice_spec settings with stability
-                voice_spec.settings["stability"] = stability
+                # Create new settings dict to avoid mutating shared VoiceSpec
+                merged_settings = {**voice_spec.settings, "stability": stability}
+                voice_spec = VoiceSpec(
+                    voice_id=voice_spec.voice_id,
+                    ref_audio_path=voice_spec.ref_audio_path,
+                    ref_text=voice_spec.ref_text,
+                    instruct=voice_spec.instruct,
+                    settings=merged_settings,
+                )
                 result = await voice_manager.synthesize(voice=voice_spec, text=text)
                 segment = AudioSegment.from_file(io.BytesIO(result.audio_bytes), format="mp3")
                 alignments = (

@@ -1,6 +1,9 @@
 from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
+# Default ElevenLabs voice ID (Bella - professional female voice)
+DEFAULT_ELEVENLABS_VOICE_ID = "EXAVITQu4vr4xnSDxMaL"
+
 
 @dataclass
 class VoiceSpec:

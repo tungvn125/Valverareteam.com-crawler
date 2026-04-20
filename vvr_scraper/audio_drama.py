@@ -280,10 +280,29 @@ class VoiceManager:
                 elif p.voice_id:
                     self._voice_cache[p.name.lower()] = VoiceSpec(voice_id=p.voice_id)
 
-        # 2. Fetch ElevenLabs voices (using global cache) — only if no provider
-        if self._provider is None:
-            async with self._global_init_lock:
-                if VoiceManager._global_available_voices is None:
+        # 2. Fetch voices (using global cache) — from provider or ElevenLabs legacy
+        async with self._global_init_lock:
+            if VoiceManager._global_available_voices is None:
+                if self._provider is not None:
+                    # Use the provider's voice discovery
+                    try:
+                        voices = await self._provider.discover_voices()
+                        VoiceManager._global_available_voices = [v.voice_id for v in voices if v.voice_id]
+                        VoiceManager._global_voice_metadata = {
+                            v.voice_id: {
+                                "name": v.name,
+                                "gender": v.gender.lower() if v.gender else "unknown",
+                                "labels": v.labels,
+                            }
+                            for v in voices if v.voice_id
+                        }
+                        logger.info(f"Fetched {len(voices)} voices from provider.")
+                    except Exception as e:
+                        logger.warning(f"Failed to discover voices from provider: {e}")
+                        VoiceManager._global_available_voices = []
+                        VoiceManager._global_voice_metadata = {}
+                else:
+                    # Legacy ElevenLabs path
                     api_key = os.getenv("ELEVENLABS_API_KEY")
                     if not api_key:
                         logger.warning("ELEVENLABS_API_KEY missing, using fallback empty voice list")
@@ -303,6 +322,7 @@ class VoiceManager:
                                 v.voice_id: {
                                     "name": v.name,
                                     "gender": v.labels.get("gender", "unknown").lower() if v.labels else "unknown",
+                                    "labels": v.labels if v.labels else {},
                                 }
                                 for v in voices
                             }
@@ -311,8 +331,8 @@ class VoiceManager:
                             logger.error(f"Failed to fetch ElevenLabs voices: {e}")
                             VoiceManager._global_available_voices = []
 
-                self._cached_available_voices = VoiceManager._global_available_voices
-                self._cached_voice_metadata = VoiceManager._global_voice_metadata
+            self._cached_available_voices = VoiceManager._global_available_voices
+            self._cached_voice_metadata = VoiceManager._global_voice_metadata
 
         self._initialized = True
 
