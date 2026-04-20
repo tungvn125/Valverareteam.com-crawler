@@ -10,6 +10,7 @@ from loguru import logger
 from openai import AsyncOpenAI
 
 from .models import CharacterProfile
+from .tts.base import VoiceSpec, SynthesisResult
 
 
 class ScriptResult(list):
@@ -220,33 +221,41 @@ class OpenAIParser:
 
 
 class VoiceManager:
-    # Default narrator voice: "Anh" (Vietnamese Female)
+    """Manages voice assignment for characters. Delegates synthesis to TTSProvider."""
+
     DEFAULT_NARRATOR_VOICE_ID = "ywBZEqUhld86Jeajq94o"
 
-    # Global cache to avoid redundant API calls across chapters
     _global_available_voices = None
-    _global_voice_metadata = {}  # {voice_id: {'gender': str, 'name': str}}
+    _global_voice_metadata = {}
     _global_init_lock = asyncio.Lock()
 
-    def __init__(self, db, story_id: str):
+    def __init__(self, db, story_id: str, provider=None):
+        self._provider = provider
         self.db = db
         self.story_id = story_id
-        self._voice_cache = {}  # char_name -> voice_id
-        self._profile_cache = {}  # char_name -> CharacterProfile
+        self._voice_cache = {}  # char_name -> VoiceSpec
+        self._profile_cache = {}
         self._initialized = False
         self._instance_lock = asyncio.Lock()
 
-        # Override narrator ID from env if provided
-        self.narrator_voice_id = os.getenv("VVR_NARRATOR_VOICE_ID", self.DEFAULT_NARRATOR_VOICE_ID)
-        self._client = httpx.AsyncClient(timeout=300.0)  # 5 minutes for generation
-        # Instance-level snapshots captured under the global lock
-        self._cached_available_voices: list[str] = []
-        self._cached_voice_metadata: dict[str, dict] = {}
+        # Build narrator voice from env config
+        narrator_ref = os.getenv("VVR_NARRATOR_REF_AUDIO")
+        if narrator_ref:
+            self.narrator_voice = VoiceSpec(ref_audio_path=narrator_ref)
+        else:
+            narrator_id = os.getenv("VVR_NARRATOR_VOICE_ID", self.DEFAULT_NARRATOR_VOICE_ID)
+            self.narrator_voice = VoiceSpec(voice_id=narrator_id)
+
+        self._client = httpx.AsyncClient(timeout=300.0)
+        self._cached_available_voices = []
+        self._cached_voice_metadata = {}
 
     async def close(self):
-        """Closes the internal httpx client."""
+        """Closes resources."""
         await self._client.aclose()
-        logger.debug("VoiceManager HTTP client closed.")
+        if self._provider and hasattr(self._provider, "close"):
+            await self._provider.close()
+        logger.debug("VoiceManager closed.")
 
     async def _init_cache(self):
         if self._initialized:
@@ -255,54 +264,54 @@ class VoiceManager:
         # 1. Load existing assignments and profiles from DB
         if hasattr(self.db, "get_all_story_voices"):
             db_voices = await self.db.get_all_story_voices(self.story_id)
-            self._voice_cache.update({k.lower(): v for k, v in db_voices.items()})
+            for k, v in db_voices.items():
+                self._voice_cache[k.lower()] = VoiceSpec(voice_id=v)
 
         if hasattr(self.db, "get_character_profiles"):
             profiles = await self.db.get_character_profiles(self.story_id)
             for p in profiles:
                 self._profile_cache[p.name.lower()] = p
-                # Ensure voice cache is in sync
-                if p.voice_id:
-                    self._voice_cache[p.name.lower()] = p.voice_id
+                # Build VoiceSpec from profile
+                if p.ref_audio_path:
+                    self._voice_cache[p.name.lower()] = VoiceSpec(
+                        ref_audio_path=p.ref_audio_path, ref_text=p.ref_text
+                    )
+                elif p.voice_id:
+                    self._voice_cache[p.name.lower()] = VoiceSpec(voice_id=p.voice_id)
 
-        # 2. Fetch ElevenLabs voices (using global cache)
-        # All reads AND writes to _global_available_voices / _global_voice_metadata
-        # happen inside the lock to prevent race conditions.
-        async with self._global_init_lock:
-            # Re-check after acquiring lock (another instance may have initialized)
-            if VoiceManager._global_available_voices is None:
-                api_key = os.getenv("ELEVENLABS_API_KEY")
-                if not api_key:
-                    logger.warning("ELEVENLABS_API_KEY missing, using fallback empty voice list")
-                    VoiceManager._global_available_voices = []
-                else:
-                    try:
-                        from elevenlabs.client import ElevenLabs
-
-                        client = ElevenLabs(api_key=api_key)
-
-                        def fetch_voices():
-                            return client.voices.get_all().voices
-
-                        voices = await asyncio.to_thread(fetch_voices)
-                        VoiceManager._global_available_voices = [v.voice_id for v in voices]
-                        VoiceManager._global_voice_metadata = {
-                            v.voice_id: {
-                                "name": v.name,
-                                "gender": v.labels.get("gender", "unknown").lower() if v.labels else "unknown",
-                            }
-                            for v in voices
-                        }
-                        logger.info(f"Fetched {len(voices)} voices from ElevenLabs.")
-                    except Exception as e:
-                        logger.error(f"Failed to fetch ElevenLabs voices: {e}")
+        # 2. Fetch ElevenLabs voices (using global cache) — only if no provider
+        if self._provider is None:
+            async with self._global_init_lock:
+                if VoiceManager._global_available_voices is None:
+                    api_key = os.getenv("ELEVENLABS_API_KEY")
+                    if not api_key:
+                        logger.warning("ELEVENLABS_API_KEY missing, using fallback empty voice list")
                         VoiceManager._global_available_voices = []
+                    else:
+                        try:
+                            from elevenlabs.client import ElevenLabs
 
-            # Capture a local reference while still inside the lock to ensure
-            # consistency — avoids a potential race where we read partially-written
-            # class variables from a concurrent writer.
-            self._cached_available_voices = VoiceManager._global_available_voices
-            self._cached_voice_metadata = VoiceManager._global_voice_metadata
+                            client = ElevenLabs(api_key=api_key)
+
+                            def fetch_voices():
+                                return client.voices.get_all().voices
+
+                            voices = await asyncio.to_thread(fetch_voices)
+                            VoiceManager._global_available_voices = [v.voice_id for v in voices]
+                            VoiceManager._global_voice_metadata = {
+                                v.voice_id: {
+                                    "name": v.name,
+                                    "gender": v.labels.get("gender", "unknown").lower() if v.labels else "unknown",
+                                }
+                                for v in voices
+                            }
+                            logger.info(f"Fetched {len(voices)} voices from ElevenLabs.")
+                        except Exception as e:
+                            logger.error(f"Failed to fetch ElevenLabs voices: {e}")
+                            VoiceManager._global_available_voices = []
+
+                self._cached_available_voices = VoiceManager._global_available_voices
+                self._cached_voice_metadata = VoiceManager._global_voice_metadata
 
         self._initialized = True
 
@@ -311,90 +320,79 @@ class VoiceManager:
         await self._init_cache()
         return list(self._profile_cache.values())
 
-    async def get_voice(self, character_name: str, gender: str = "unknown") -> str:
-        """
-        Retrieves the voice ID for a character. Narrator is always the default.
-        Assigns a new voice if not already cached, respecting gender if possible.
-        """
+    async def get_voice(self, character_name: str, gender: str = "unknown") -> VoiceSpec:
+        """Resolve character -> VoiceSpec."""
         if not character_name:
-            return self.narrator_voice_id
+            return self.narrator_voice
 
         char_normalized = character_name.lower().strip()
         if char_normalized == "narrator":
-            return self.narrator_voice_id
+            return self.narrator_voice
 
         async with self._instance_lock:
             await self._init_cache()
 
-            # Check profile cache
-            if char_normalized in self._profile_cache:
-                profile = self._profile_cache[char_normalized]
-                if profile.voice_id:
-                    return profile.voice_id
-
-            # Check legacy voice cache
+            # Check cache
             if char_normalized in self._voice_cache:
                 return self._voice_cache[char_normalized]
 
-            # Filter available voices — use instance-local captured references
-            # to avoid reading potentially-inconsistent class variables.
+            # Check profile cache
+            if char_normalized in self._profile_cache:
+                profile = self._profile_cache[char_normalized]
+                if profile.ref_audio_path:
+                    spec = VoiceSpec(ref_audio_path=profile.ref_audio_path, ref_text=profile.ref_text)
+                    self._voice_cache[char_normalized] = spec
+                    return spec
+                if profile.voice_id:
+                    spec = VoiceSpec(voice_id=profile.voice_id)
+                    self._voice_cache[char_normalized] = spec
+                    return spec
+
+            # Auto-assign from available voices (ElevenLabs legacy path)
             gender = gender.lower()
-            available_ids = getattr(self, "_cached_available_voices", None) or []
+            available_ids = self._cached_available_voices
+            assigned_ids = {v.voice_id for v in self._voice_cache.values() if v.voice_id}
+            candidate_ids = [vid for vid in available_ids if vid != self.narrator_voice.voice_id and vid not in assigned_ids]
 
-            # Exclude narrator and already assigned voices to maximize variety
-            assigned_ids = set(self._voice_cache.values())
-            candidate_ids = [vid for vid in available_ids if vid != self.narrator_voice_id and vid not in assigned_ids]
-
-            # If no unassigned voices, allow reuse of non-narrator voices
             if not candidate_ids:
-                candidate_ids = [vid for vid in available_ids if vid != self.narrator_voice_id]
+                candidate_ids = [vid for vid in available_ids if vid != self.narrator_voice.voice_id]
 
-            # If STILL no candidates (pool is empty or only narrator exists), use narrator
             if not candidate_ids:
-                assigned_voice = self.narrator_voice_id
+                assigned_voice = self.narrator_voice
             else:
-                # Filter by gender if specified
                 gender_candidates = [
-                    vid for vid in candidate_ids if self._cached_voice_metadata.get(vid, {}).get("gender") == gender
+                    vid
+                    for vid in candidate_ids
+                    if self._cached_voice_metadata.get(vid, {}).get("gender") == gender
                 ]
-
-                # If no matching gender, fallback to all candidates
                 final_pool = gender_candidates if gender_candidates else candidate_ids
+                chosen_id = random.choice(final_pool)  # noqa: S311
+                assigned_voice = VoiceSpec(voice_id=chosen_id)
 
-                # Pick a random voice from the pool
-                assigned_voice = random.choice(final_pool)  # noqa: S311  — non-cryptographic random choice is fine
-
-            # Save to profile cache and DB
+            # Save to profile and DB
             profile = self._profile_cache.get(char_normalized)
             if not profile:
                 profile = CharacterProfile(
                     name=character_name.strip(),
                     story_id=self.story_id,
                     gender=gender,
-                    voice_id=assigned_voice,
                 )
                 self._profile_cache[char_normalized] = profile
-            else:
-                profile.voice_id = assigned_voice
-                if gender != "unknown" and profile.gender == "unknown":
-                    profile.gender = gender
+
+            if assigned_voice.voice_id:
+                profile.voice_id = assigned_voice.voice_id
+            if gender != "unknown" and profile.gender == "unknown":
+                profile.gender = gender
 
             self._voice_cache[char_normalized] = assigned_voice
 
             if hasattr(self.db, "save_character_profile"):
                 await self.db.save_character_profile(profile)
 
-            logger.debug(
-                f"Assigned voice '{assigned_voice}' ({VoiceManager._global_voice_metadata.get(assigned_voice, {}).get('name', 'Unknown')}) to character '{character_name}' (gender: {gender})"
-            )
             return assigned_voice
 
     def resolve_aliases(self, script_segments: list[dict]) -> list[dict]:
-        """
-        NLP-based alias resolution for script segments.
-        Updates 'role' in segments if it matches a known alias.
-        """
-        # Create mapping from alias to canonical name
+        """NLP-based alias resolution for script segments."""
         alias_map = {}
         for p in self._profile_cache.values():
             for alias in p.aliases:
@@ -404,32 +402,46 @@ class VoiceManager:
             role = seg.get("role")
             if not role or role.lower() == "narrator":
                 continue
-
             role_normalized = role.lower().strip()
             if role_normalized in alias_map:
-                logger.debug(f"Resolved alias '{role}' to '{alias_map[role_normalized]}'")
                 seg["role"] = alias_map[role_normalized]
-
-        # TODO: Implement "nearest mention" heuristic for ambiguous cases
-        # (e.g. if role is 'hắn', look back for the nearest male character)
 
         return script_segments
 
-    async def synthesize(self, voice_id: str, text: str, stability: float = 0.35) -> tuple[bytes, list[dict]]:
-        """
-        Synthesizes text using ElevenLabs stream-with-timestamps endpoint.
-        Returns a tuple of (audio_bytes, word_alignments).
-        """
+    async def synthesize(self, voice: VoiceSpec, text: str, **kwargs) -> SynthesisResult:
+        """Delegate synthesis to provider, or fall back to legacy ElevenLabs."""
+        if self._provider:
+            return await self._provider.synthesize(text, voice)
+
+        # Legacy path: direct ElevenLabs call (backward compat when no provider)
+        from .tts.base import WordAlignment
+
+        voice_id = voice.voice_id or self.narrator_voice.voice_id
+        stability = kwargs.get("stability", 0.35)
+        audio_bytes, word_alignments_raw = await self._synthesize_elevenlabs_legacy(voice_id, text, stability)
+
+        word_alignments = (
+            [WordAlignment(word=w["word"], start=w["start"], end=w["end"]) for w in word_alignments_raw]
+            if word_alignments_raw
+            else None
+        )
+
+        duration_ms = _estimate_duration_ms_legacy(audio_bytes)
+        return SynthesisResult(
+            audio_bytes=audio_bytes,
+            sample_rate=44100,
+            duration_ms=duration_ms,
+            word_alignments=word_alignments,
+        )
+
+    async def _synthesize_elevenlabs_legacy(self, voice_id, text, stability):
+        """Legacy ElevenLabs synthesis (backward compat when no provider)."""
         api_key = os.getenv("ELEVENLABS_API_KEY")
         if not api_key:
-            logger.error("ELEVENLABS_API_KEY not found in environment")
             raise ValueError("ELEVENLABS_API_KEY required")
 
         url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream-with-timestamps"
-        headers = {
-            "xi-api-key": api_key,
-            "Content-Type": "application/json",
-        }
+        headers = {"xi-api-key": api_key, "Content-Type": "application/json"}
         data = {
             "text": text,
             "model_id": "eleven_v3",
@@ -444,37 +456,26 @@ class VoiceManager:
         audio_buffer = io.BytesIO()
         all_alignments = []
 
-        try:
-            async with self._client.stream("POST", url, headers=headers, json=data) as response:
-                if response.status_code != 200:
-                    error_msg = await response.aread()
-                    logger.error(f"ElevenLabs error ({response.status_code}): {error_msg}")
-                    raise Exception(f"ElevenLabs API error: {response.status_code}")
+        async with self._client.stream("POST", url, headers=headers, json=data) as response:
+            if response.status_code != 200:
+                error_msg = await response.aread()
+                raise Exception(f"ElevenLabs API error ({response.status_code}): {error_msg}")
+            async for line in response.aiter_lines():
+                if not line:
+                    continue
+                try:
+                    chunk = json.loads(line)
+                    if "audio_base64" in chunk:
+                        audio_buffer.write(base64.b64decode(chunk["audio_base64"]))
+                    if "alignment" in chunk:
+                        all_alignments.append(chunk["alignment"])
+                except Exception as e:
+                    logger.warning(f"Error parsing alignment chunk: {e}")
 
-                async for line in response.aiter_lines():
-                    if not line:
-                        continue
-                    try:
-                        chunk = json.loads(line)
-                        if "audio_base64" in chunk:
-                            audio_buffer.write(base64.b64decode(chunk["audio_base64"]))
-                        if "alignment" in chunk:
-                            all_alignments.append(chunk["alignment"])
-                    except Exception as e:
-                        logger.warning(f"Error parsing alignment chunk: {e}")
-                        continue
-        except Exception as e:
-            logger.error(f"Network error during synthesis: {e}")
-            raise
-
-        # Get full audio bytes
         full_audio = audio_buffer.getvalue()
         audio_buffer.close()
 
-        # Process alignments into word-level timestamps as requested
-        # alignment contains: characters, character_start_times_seconds, character_end_times_seconds
         word_alignments = []
-
         current_word_chars = []
         current_word_start = None
         last_end = 0
@@ -483,29 +484,31 @@ class VoiceManager:
             chars = alignment.get("characters", [])
             starts = alignment.get("character_start_times_seconds", [])
             ends = alignment.get("character_end_times_seconds", [])
-
             for char, start, end in zip(chars, starts, ends, strict=False):
                 if char.isspace():
                     if current_word_chars:
-                        # Finish current word
                         word_text = "".join(current_word_chars)
-                        word_alignments.append(
-                            {"word": word_text, "start": int(current_word_start * 1000), "end": int(last_end * 1000)}
-                        )
+                        word_alignments.append({"word": word_text, "start": int(current_word_start * 1000), "end": int(last_end * 1000)})
                         current_word_chars = []
                         current_word_start = None
                     continue
-
                 if not current_word_chars:
                     current_word_start = start
                 current_word_chars.append(char)
                 last_end = end
 
-        # Handle last word if any
         if current_word_chars:
             word_text = "".join(current_word_chars)
-            word_alignments.append(
-                {"word": word_text, "start": int(current_word_start * 1000), "end": int(last_end * 1000)}
-            )
+            word_alignments.append({"word": word_text, "start": int(current_word_start * 1000), "end": int(last_end * 1000)})
 
         return full_audio, word_alignments
+
+
+def _estimate_duration_ms_legacy(audio_bytes: bytes) -> int:
+    """Estimate audio duration from MP3 bytes."""
+    try:
+        from pydub import AudioSegment
+        seg = AudioSegment.from_file(io.BytesIO(audio_bytes), format="mp3")
+        return len(seg)
+    except Exception:
+        return int(len(audio_bytes) * 8 / 128)
