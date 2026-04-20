@@ -73,16 +73,17 @@ async def test_cinematic_manifest_integration(tmp_path, monkeypatch):
 
         # Configure Mock VoiceManager - ensure awaited methods are AsyncMock
         vm_instance = MockVoiceManager.return_value
-        vm_instance.get_voice = AsyncMock(side_effect=[
-            VoiceSpec(voice_id="narrator_id"),
-            VoiceSpec(voice_id="warrior_id")
-        ])
-        vm_instance.synthesize = AsyncMock(return_value=SynthesisResult(
-            audio_bytes=b"fake_audio",
-            sample_rate=44100,
-            duration_ms=1000,
-            word_alignments=[WordAlignment(word=w["word"], start=w["start"], end=w["end"]) for w in mock_alignment]
-        ))
+        vm_instance.get_voice = AsyncMock(
+            side_effect=[VoiceSpec(voice_id="narrator_id"), VoiceSpec(voice_id="warrior_id")]
+        )
+        vm_instance.synthesize = AsyncMock(
+            return_value=SynthesisResult(
+                audio_bytes=b"fake_audio",
+                sample_rate=44100,
+                duration_ms=1000,
+                word_alignments=[WordAlignment(word=w["word"], start=w["start"], end=w["end"]) for w in mock_alignment],
+            )
+        )
         vm_instance.close = AsyncMock()
 
         # Configure Mock ImageGenerator - ensure generate is AsyncMock

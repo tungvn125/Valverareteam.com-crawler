@@ -467,7 +467,9 @@ async def list_voices():
         provider = _get_tts_provider()
         voices = await provider.discover_voices()
         await provider.close()
-        return {"voices": [{"voice_id": v.voice_id, "name": v.name, "gender": v.gender, "labels": v.labels} for v in voices]}
+        return {
+            "voices": [{"voice_id": v.voice_id, "name": v.name, "gender": v.gender, "labels": v.labels} for v in voices]
+        }
     except Exception as e:
         logger.error(f"Error listing voices: {e}")
         raise HTTPException(status_code=500, detail=str(e)) from e
@@ -486,6 +488,7 @@ async def preview_voice(
     try:
         provider = _get_tts_provider()
         from vvr_scraper.tts.base import VoiceSpec
+
         voice = VoiceSpec(voice_id=voice_id, ref_audio_path=ref_audio_path)
         audio = await provider.preview_voice(voice, text)
         await provider.close()

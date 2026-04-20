@@ -7,7 +7,21 @@ from datetime import UTC, datetime
 import aiosqlite
 from loguru import logger
 
-REACTION_TYPES = {"heart", "cry", "wow", "angry", "fire", "skull", "think", "clap", "nerd", "laugh", "eyes", "pray", "sparkles"}
+REACTION_TYPES = {
+    "heart",
+    "cry",
+    "wow",
+    "angry",
+    "fire",
+    "skull",
+    "think",
+    "clap",
+    "nerd",
+    "laugh",
+    "eyes",
+    "pray",
+    "sparkles",
+}
 
 
 def group_reactions_by_anchor(reactions: list[dict]) -> dict[str, list[dict]]:
@@ -18,15 +32,17 @@ def group_reactions_by_anchor(reactions: list[dict]) -> dict[str, list[dict]]:
 
 
 class SocialDatabaseManager:
-
     async def _enrich_user(self, db, payload: dict) -> dict:
         user_id = payload.get("user_id")
         if user_id and "user" not in payload:
-            cursor = await db.execute("SELECT id, username, display_name, role, created_at FROM users WHERE id = ?", (user_id,))
+            cursor = await db.execute(
+                "SELECT id, username, display_name, role, created_at FROM users WHERE id = ?", (user_id,)
+            )
             row = await cursor.fetchone()
             if row:
                 payload["user"] = {"id": row[0], "username": row[1], "displayName": row[2], "role": row[3]}
         return payload
+
     def __init__(self, db_path: str):
         self.db_path = db_path
         self._db = None
@@ -84,7 +100,9 @@ class SocialDatabaseManager:
         await db.commit()
         return user_id
 
-    async def create_reaction(self, user_id: str, book_slug: str, chapter_id: str, anchor: str, reaction_type: str) -> str:
+    async def create_reaction(
+        self, user_id: str, book_slug: str, chapter_id: str, anchor: str, reaction_type: str
+    ) -> str:
         if reaction_type not in REACTION_TYPES:
             raise ValueError("invalid reaction type")
         reaction_id = str(uuid.uuid4())

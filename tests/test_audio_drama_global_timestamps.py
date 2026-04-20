@@ -82,7 +82,7 @@ async def test_global_timestamp_calculation(tmp_path):
                     word_alignments=[
                         WordAlignment(word="Hắn", start=100, end=200),
                         WordAlignment(word="bước", start=300, end=400),
-                    ]
+                    ],
                 )
 
             vm_instance.synthesize.side_effect = get_mock_alignments

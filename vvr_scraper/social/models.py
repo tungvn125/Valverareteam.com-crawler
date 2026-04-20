@@ -3,7 +3,9 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-ReactionType = Literal["heart", "cry", "wow", "angry", "fire", "skull", "think", "clap", "nerd", "laugh", "eyes", "pray", "sparkles"]
+ReactionType = Literal[
+    "heart", "cry", "wow", "angry", "fire", "skull", "think", "clap", "nerd", "laugh", "eyes", "pray", "sparkles"
+]
 UserRole = Literal["admin", "member"]
 
 

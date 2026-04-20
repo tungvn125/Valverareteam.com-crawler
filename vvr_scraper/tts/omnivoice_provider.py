@@ -16,10 +16,7 @@ class OmniVoiceProvider:
         try:
             from omnivoice import OmniVoice
         except ImportError as e:
-            raise ImportError(
-                "OmniVoice is required for OmniVoiceProvider. "
-                "Install with: pip install omnivoice"
-            ) from e
+            raise ImportError("OmniVoice is required for OmniVoiceProvider. Install with: pip install omnivoice") from e
 
         device = device or os.getenv("VVR_OMNIVOICE_DEVICE", "cuda:0")
         self._model = OmniVoice.from_pretrained(model_name, device_map=device, dtype="float16")
@@ -69,6 +66,7 @@ class OmniVoiceProvider:
     async def close(self) -> None:
         try:
             import torch
+
             del self._model
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()

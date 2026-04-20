@@ -405,7 +405,9 @@ class TestRunCommandDispatch:
 
 class TestSocialCreateAdminCommand:
     def test_social_create_admin_command_parses(self):
-        with patch.object(sys, "argv", ["vvrt", "social", "create-admin", "--username", "alice", "--password", "secret123"]):
+        with patch.object(
+            sys, "argv", ["vvrt", "social", "create-admin", "--username", "alice", "--password", "secret123"]
+        ):
             with patch("vvr_scraper.cli.configure_logger"):
                 with patch("vvr_scraper.cli.get_config_path", return_value="/tmp/fake.db"):
                     with patch("vvr_scraper.cli.DatabaseManager"):
@@ -417,7 +419,9 @@ class TestSocialCreateAdminCommand:
                         assert cli.args.password == "secret123"
 
     def test_social_create_admin_defaults_display_name(self):
-        with patch.object(sys, "argv", ["vvrt", "social", "create-admin", "--username", "bob", "--password", "pass1234"]):
+        with patch.object(
+            sys, "argv", ["vvrt", "social", "create-admin", "--username", "bob", "--password", "pass1234"]
+        ):
             with patch("vvr_scraper.cli.configure_logger"):
                 with patch("vvr_scraper.cli.get_config_path", return_value="/tmp/fake.db"):
                     with patch("vvr_scraper.cli.DatabaseManager"):
@@ -428,7 +432,9 @@ class TestSocialCreateAdminCommand:
 
     @pytest.mark.asyncio
     async def test_social_create_admin_dispatches(self):
-        with patch.object(sys, "argv", ["vvrt", "social", "create-admin", "--username", "alice", "--password", "secret123"]):
+        with patch.object(
+            sys, "argv", ["vvrt", "social", "create-admin", "--username", "alice", "--password", "secret123"]
+        ):
             with patch("vvr_scraper.cli.configure_logger"):
                 with patch("vvr_scraper.cli.get_config_path", return_value="/tmp/fake.db"):
                     with patch("vvr_scraper.cli.DatabaseManager"):

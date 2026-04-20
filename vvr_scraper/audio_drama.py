@@ -274,9 +274,7 @@ class VoiceManager:
                 self._profile_cache[p.name.lower()] = p
                 # Build VoiceSpec from profile
                 if p.ref_audio_path:
-                    self._voice_cache[p.name.lower()] = VoiceSpec(
-                        ref_audio_path=p.ref_audio_path, ref_text=p.ref_text
-                    )
+                    self._voice_cache[p.name.lower()] = VoiceSpec(ref_audio_path=p.ref_audio_path, ref_text=p.ref_text)
                 elif p.voice_id:
                     self._voice_cache[p.name.lower()] = VoiceSpec(voice_id=p.voice_id)
 
@@ -294,7 +292,8 @@ class VoiceManager:
                                 "gender": v.gender.lower() if v.gender else "unknown",
                                 "labels": v.labels,
                             }
-                            for v in voices if v.voice_id
+                            for v in voices
+                            if v.voice_id
                         }
                         logger.info(f"Fetched {len(voices)} voices from provider.")
                     except Exception as e:
@@ -373,7 +372,9 @@ class VoiceManager:
             gender = gender.lower()
             available_ids = self._cached_available_voices
             assigned_ids = {v.voice_id for v in self._voice_cache.values() if v.voice_id}
-            candidate_ids = [vid for vid in available_ids if vid != self.narrator_voice.voice_id and vid not in assigned_ids]
+            candidate_ids = [
+                vid for vid in available_ids if vid != self.narrator_voice.voice_id and vid not in assigned_ids
+            ]
 
             if not candidate_ids:
                 candidate_ids = [vid for vid in available_ids if vid != self.narrator_voice.voice_id]
@@ -382,9 +383,7 @@ class VoiceManager:
                 assigned_voice = self.narrator_voice
             else:
                 gender_candidates = [
-                    vid
-                    for vid in candidate_ids
-                    if self._cached_voice_metadata.get(vid, {}).get("gender") == gender
+                    vid for vid in candidate_ids if self._cached_voice_metadata.get(vid, {}).get("gender") == gender
                 ]
                 final_pool = gender_candidates if gender_candidates else candidate_ids
                 chosen_id = random.choice(final_pool)  # noqa: S311
@@ -509,7 +508,9 @@ class VoiceManager:
                 if char.isspace():
                     if current_word_chars:
                         word_text = "".join(current_word_chars)
-                        word_alignments.append({"word": word_text, "start": int(current_word_start * 1000), "end": int(last_end * 1000)})
+                        word_alignments.append(
+                            {"word": word_text, "start": int(current_word_start * 1000), "end": int(last_end * 1000)}
+                        )
                         current_word_chars = []
                         current_word_start = None
                     continue
@@ -520,7 +521,9 @@ class VoiceManager:
 
         if current_word_chars:
             word_text = "".join(current_word_chars)
-            word_alignments.append({"word": word_text, "start": int(current_word_start * 1000), "end": int(last_end * 1000)})
+            word_alignments.append(
+                {"word": word_text, "start": int(current_word_start * 1000), "end": int(last_end * 1000)}
+            )
 
         return full_audio, word_alignments
 
@@ -529,6 +532,7 @@ def _estimate_duration_ms_legacy(audio_bytes: bytes) -> int:
     """Estimate audio duration from MP3 bytes."""
     try:
         from pydub import AudioSegment
+
         seg = AudioSegment.from_file(io.BytesIO(audio_bytes), format="mp3")
         return len(seg)
     except Exception:

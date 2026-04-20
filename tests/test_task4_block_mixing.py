@@ -111,7 +111,7 @@ async def test_tao_file_audiodrama_block_mixing(tmp_path):
                 audio_bytes=b"fake_audio",
                 sample_rate=44100,
                 duration_ms=1000,
-                word_alignments=[WordAlignment(word="test", start=0, end=100)]
+                word_alignments=[WordAlignment(word="test", start=0, end=100)],
             )
         )
         voice_manager_instance.close = AsyncMock()

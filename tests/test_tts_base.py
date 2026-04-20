@@ -35,7 +35,9 @@ class TestVoiceSpec:
 class TestSynthesisResult:
     def test_with_alignments(self):
         result = SynthesisResult(
-            audio_bytes=b"fake", sample_rate=24000, duration_ms=1000,
+            audio_bytes=b"fake",
+            sample_rate=24000,
+            duration_ms=1000,
             word_alignments=[WordAlignment(word="Hello", start=0, end=500)],
         )
         assert result.word_alignments is not None
@@ -79,11 +81,20 @@ class TestRegistry:
         from vvr_scraper.tts import get_provider, register
 
         class FakeProvider:
-            def __init__(self, **kw): pass
-            async def synthesize(self, text, voice): pass
-            async def discover_voices(self): return []
-            async def preview_voice(self, voice, text): return b""
-            async def close(self): pass
+            def __init__(self, **kw):
+                pass
+
+            async def synthesize(self, text, voice):
+                pass
+
+            async def discover_voices(self):
+                return []
+
+            async def preview_voice(self, voice, text):
+                return b""
+
+            async def close(self):
+                pass
 
         register("fake_test", FakeProvider)
         provider = get_provider("fake_test")
@@ -91,22 +102,26 @@ class TestRegistry:
 
     def test_get_unknown_raises(self):
         from vvr_scraper.tts import get_provider
+
         with pytest.raises(ValueError, match="Unknown TTS provider"):
             get_provider("nonexistent_provider_xyz")
 
     def test_auto_detect_elevenlabs(self):
         from vvr_scraper.tts import auto_detect_provider
+
         with patch.dict(os.environ, {"ELEVENLABS_API_KEY": "test_key"}, clear=False):
             assert auto_detect_provider() == "elevenlabs"
 
     def test_auto_detect_openai_tts(self, monkeypatch):
         from vvr_scraper.tts import auto_detect_provider
+
         monkeypatch.delenv("ELEVENLABS_API_KEY", raising=False)
         monkeypatch.setenv("OPENAI_TTS_API_KEY", "sk-test")
         assert auto_detect_provider() == "openai_tts"
 
     def test_auto_detect_explicit_override(self, monkeypatch):
         from vvr_scraper.tts import auto_detect_provider
+
         monkeypatch.delenv("ELEVENLABS_API_KEY", raising=False)
         monkeypatch.delenv("OPENAI_TTS_API_KEY", raising=False)
         monkeypatch.setenv("VVR_TTS_PROVIDER", "omnivoice")
@@ -114,6 +129,7 @@ class TestRegistry:
 
     def test_auto_detect_none_raises(self, monkeypatch):
         from vvr_scraper.tts import auto_detect_provider
+
         monkeypatch.delenv("VVR_TTS_PROVIDER", raising=False)
         monkeypatch.delenv("ELEVENLABS_API_KEY", raising=False)
         monkeypatch.delenv("OPENAI_TTS_API_KEY", raising=False)

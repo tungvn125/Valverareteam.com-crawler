@@ -68,6 +68,7 @@ async def test_voice_manager_synthesize_timestamps():
     with patch("httpx.AsyncClient", return_value=mock_client):
         with patch.dict("os.environ", {"ELEVENLABS_API_KEY": "test_key"}):
             from vvr_scraper.tts.elevenlabs_provider import ElevenLabsProvider
+
             provider = ElevenLabsProvider(api_key="test_key")
             vm = VoiceManager(db, "test_story", provider=provider)
             result = await vm.synthesize(voice=voice_spec, text=text)

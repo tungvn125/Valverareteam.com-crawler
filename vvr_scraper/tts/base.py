@@ -37,7 +37,7 @@ class VoiceSpec:
 class WordAlignment:
     word: str
     start: int  # milliseconds
-    end: int    # milliseconds
+    end: int  # milliseconds
 
 
 @dataclass

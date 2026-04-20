@@ -432,4 +432,3 @@ class TestRateLimiting:
             json={"content": "second"},
         )
         assert resp.status_code == 429
-

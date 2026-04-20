@@ -343,7 +343,9 @@ async def tao_file_txt(content_list: ContentList, filename: str, title: str = "C
     logger.info(f"Tạo file Text thành công: {filename}")
 
 
-async def tao_file_mp3(content_list: ContentList, filename: str, title: str = "Chương truyện", tts_provider_name: str | None = None) -> None:
+async def tao_file_mp3(
+    content_list: ContentList, filename: str, title: str = "Chương truyện", tts_provider_name: str | None = None
+) -> None:
     """AI-Powered Audiobook generation using TTS provider with chunked processing."""
     from . import tts
     from .tts.base import DEFAULT_ELEVENLABS_VOICE_ID, VoiceSpec
@@ -567,7 +569,8 @@ async def tao_file_audiodrama(
                 segment = AudioSegment.from_file(io.BytesIO(result.audio_bytes), format="mp3")
                 alignments = (
                     [{"word": w.word, "start": w.start, "end": w.end} for w in result.word_alignments]
-                    if result.word_alignments else []
+                    if result.word_alignments
+                    else []
                 )
                 return segment, alignments
             except Exception as e:

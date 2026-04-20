@@ -353,7 +353,11 @@ class ValvrareScraperCLI:
     async def run(self):
         """Main execution flow."""
         # Handle 'social create-admin' command
-        if self.args.ten_truyen and len(self.args.ten_truyen) >= 2 and self.args.ten_truyen[:2] == ["social", "create-admin"]:
+        if (
+            self.args.ten_truyen
+            and len(self.args.ten_truyen) >= 2
+            and self.args.ten_truyen[:2] == ["social", "create-admin"]
+        ):
             from .social.auth import hash_password
             from .social.db import SocialDatabaseManager
 

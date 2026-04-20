@@ -48,18 +48,21 @@ def _register_builtins() -> None:
     """Auto-register built-in providers (lazy — only if deps available)."""
     try:
         from vvr_scraper.tts.elevenlabs_provider import ElevenLabsProvider
+
         register("elevenlabs", ElevenLabsProvider)
     except ImportError:
         pass
 
     try:
         from vvr_scraper.tts.omnivoice_provider import OmniVoiceProvider
+
         register("omnivoice", OmniVoiceProvider)
     except ImportError:
         pass
 
     try:
         from vvr_scraper.tts.openai_tts_provider import OpenAITTSProvider
+
         register("openai_tts", OpenAITTSProvider)
     except ImportError:
         pass

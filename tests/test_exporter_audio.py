@@ -89,7 +89,7 @@ async def test_tao_file_audiodrama_flow(tmp_path):
                     audio_bytes=b"fake_audio",
                     sample_rate=44100,
                     duration_ms=500,
-                    word_alignments=[WordAlignment(word="Hello", start=0, end=500)]
+                    word_alignments=[WordAlignment(word="Hello", start=0, end=500)],
                 )
             )
             vm_instance.close = AsyncMock()
@@ -166,7 +166,7 @@ async def test_tao_file_audiodrama_v2_with_moods(tmp_path):
                     audio_bytes=b"audio",
                     sample_rate=44100,
                     duration_ms=500,
-                    word_alignments=[WordAlignment(word="Action", start=0, end=500)]
+                    word_alignments=[WordAlignment(word="Action", start=0, end=500)],
                 )
             )
             vm_instance.close = AsyncMock()
@@ -207,11 +207,9 @@ async def test_tao_file_mp3_flow(tmp_path):
         patch("pydub.AudioSegment.from_file") as MockFromFile,
     ):
         mock_provider = MagicMock()
-        mock_provider.synthesize = AsyncMock(return_value=SynthesisResult(
-            audio_bytes=b"fake_audio",
-            sample_rate=44100,
-            duration_ms=1000
-        ))
+        mock_provider.synthesize = AsyncMock(
+            return_value=SynthesisResult(audio_bytes=b"fake_audio", sample_rate=44100, duration_ms=1000)
+        )
         MockGetProvider.return_value = mock_provider
 
         MockFromFile.return_value = MockAudio(1000)
