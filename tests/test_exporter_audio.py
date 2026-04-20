@@ -207,11 +207,11 @@ async def test_tao_file_mp3_flow(tmp_path):
         patch("pydub.AudioSegment.from_file") as MockFromFile,
     ):
         mock_provider = MagicMock()
-        mock_provider.synthesize.return_value = SynthesisResult(
+        mock_provider.synthesize = AsyncMock(return_value=SynthesisResult(
             audio_bytes=b"fake_audio",
             sample_rate=44100,
             duration_ms=1000
-        )
+        ))
         MockGetProvider.return_value = mock_provider
 
         MockFromFile.return_value = MockAudio(1000)

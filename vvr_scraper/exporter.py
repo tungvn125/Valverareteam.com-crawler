@@ -383,25 +383,24 @@ async def tao_file_mp3(content_list: ContentList, filename: str, title: str = "C
 
     # 4. Synthesize each chunk
     try:
+        audio_segments = []
+        total_chunks = len(chunks)
+        voice_id = os.getenv("ELEVENLABS_VOICE_ID", "EXAVITQu4vr4xnSDxMaL")
+        voice_spec = VoiceSpec(
+            voice_id=voice_id,
+            settings={"stability": 0.75, "similarity_boost": 0.75, "style": 0.0, "use_speaker_boost": True},
+        )
 
-        def run_tts_chunked():
-            audio_segments = []
+        for i, chunk in enumerate(chunks):
+            if not chunk.strip():
+                continue
+            logger.debug(f"Synthesizing chunk {i + 1}/{total_chunks}...")
+            result = await provider.synthesize(text=chunk, voice=voice_spec)
+            segment = pydub.AudioSegment.from_file(io.BytesIO(result.audio_bytes), format="mp3")
+            audio_segments.append(segment)
 
-            total_chunks = len(chunks)
-            for i, chunk in enumerate(chunks):
-                if not chunk.strip():
-                    continue
-                logger.debug(f"Synthesizing chunk {i + 1}/{total_chunks}...")
-                # Generate speech using TTS provider
-                voice_id = os.getenv("ELEVENLABS_VOICE_ID", "EXAVITQu4vr4xnSDxMaL")
-                voice_spec = VoiceSpec(
-                    voice_id=voice_id,
-                    settings={"stability": 0.75, "similarity_boost": 0.75, "style": 0.0, "use_speaker_boost": True},
-                )
-                result = provider.synthesize(text=chunk, voice=voice_spec)
-                segment = pydub.AudioSegment.from_file(io.BytesIO(result.audio_bytes), format="mp3")
-                audio_segments.append(segment)
-
+        # Merge + export (blocking) in thread
+        def _merge_and_export():
             if audio_segments:
                 logger.debug("Merging audio segments...")
                 merged_audio = audio_segments[0]
@@ -409,7 +408,7 @@ async def tao_file_mp3(content_list: ContentList, filename: str, title: str = "C
                     merged_audio += seg
                 merged_audio.export(filename, format="mp3")
 
-        await asyncio.to_thread(run_tts_chunked)
+        await asyncio.to_thread(_merge_and_export)
         logger.info(f"Tạo file Audiobook thành công: {filename}")
     except Exception as e:
         logger.error(f"Lỗi khi tạo Audiobook: {e}")
