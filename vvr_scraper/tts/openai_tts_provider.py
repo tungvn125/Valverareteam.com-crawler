@@ -10,10 +10,7 @@ from .base import VoiceInfo, VoiceSpec, SynthesisResult
 
 
 class OpenAITTSProvider:
-    """TTSProvider for OpenAI-compatible /v1/audio/speech endpoint.
-
-    Compatible with: OpenAI TTS, omnivoice-server, Azure OpenAI, LocalAI, etc.
-    """
+    """OpenAI-compatible HTTP TTS provider for /v1/audio/speech endpoints."""
 
     def __init__(
         self,
@@ -73,8 +70,8 @@ class OpenAITTSProvider:
                     VoiceInfo(voice_id=v.get("id", v.get("voice_id", "")), name=v.get("name", v.get("id", "")))
                     for v in voice_list
                 ]
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to discover voices from API: {e}")
 
         return [
             VoiceInfo(voice_id=name, name=name.title())
@@ -96,5 +93,6 @@ def _estimate_duration_ms(audio_bytes: bytes) -> int:
 
         seg = AudioSegment.from_file(io.BytesIO(audio_bytes), format="mp3")
         return len(seg)
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Failed to estimate audio duration: {e}")
         return int(len(audio_bytes) * 8 / 128)

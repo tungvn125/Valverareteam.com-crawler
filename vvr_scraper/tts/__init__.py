@@ -5,7 +5,7 @@ from typing import Any
 
 from .base import TTSProvider
 
-_registry: dict[str, type] = {}
+_registry: dict[str, type[TTSProvider]] = {}
 
 
 def register(name: str, provider_cls: type) -> None:

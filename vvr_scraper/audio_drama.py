@@ -10,7 +10,8 @@ from loguru import logger
 from openai import AsyncOpenAI
 
 from .models import CharacterProfile
-from .tts.base import VoiceSpec, SynthesisResult
+from .tts.base import TTSProvider, VoiceSpec, SynthesisResult
+from typing import Any
 
 
 class ScriptResult(list):
@@ -229,7 +230,7 @@ class VoiceManager:
     _global_voice_metadata = {}
     _global_init_lock = asyncio.Lock()
 
-    def __init__(self, db, story_id: str, provider=None):
+    def __init__(self, db, story_id: str, provider: TTSProvider | None = None):
         self._provider = provider
         self.db = db
         self.story_id = story_id
@@ -408,7 +409,7 @@ class VoiceManager:
 
         return script_segments
 
-    async def synthesize(self, voice: VoiceSpec, text: str, **kwargs) -> SynthesisResult:
+    async def synthesize(self, voice: VoiceSpec, text: str, **kwargs: Any) -> SynthesisResult:
         """Delegate synthesis to provider, or fall back to legacy ElevenLabs."""
         if self._provider:
             return await self._provider.synthesize(text, voice)
@@ -434,7 +435,7 @@ class VoiceManager:
             word_alignments=word_alignments,
         )
 
-    async def _synthesize_elevenlabs_legacy(self, voice_id, text, stability):
+    async def _synthesize_elevenlabs_legacy(self, voice_id: str, text: str, stability: float):
         """Legacy ElevenLabs synthesis (backward compat when no provider)."""
         api_key = os.getenv("ELEVENLABS_API_KEY")
         if not api_key:

@@ -10,11 +10,7 @@ from .base import VoiceInfo, VoiceSpec, SynthesisResult
 
 
 class OmniVoiceProvider:
-    """TTSProvider for OmniVoice local model.
-
-    Supports voice cloning (ref_audio), voice design (instruct), and auto.
-    Requires GPU with PyTorch + OmniVoice installed.
-    """
+    """OmniVoice local TTS provider with voice cloning and design support."""
 
     def __init__(self, model_name: str = "k2-fsa/OmniVoice", device: str | None = None):
         try:
@@ -76,5 +72,5 @@ class OmniVoiceProvider:
             del self._model
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to close OmniVoice model: {e}")

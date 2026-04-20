@@ -99,19 +99,24 @@ class TestRegistry:
         with patch.dict(os.environ, {"ELEVENLABS_API_KEY": "test_key"}, clear=False):
             assert auto_detect_provider() == "elevenlabs"
 
-    def test_auto_detect_openai_tts(self):
+    def test_auto_detect_openai_tts(self, monkeypatch):
         from vvr_scraper.tts import auto_detect_provider
-        env = {"OPENAI_TTS_API_KEY": "sk-test", "ELEVENLABS_API_KEY": ""}
-        with patch.dict(os.environ, env, clear=True):
-            assert auto_detect_provider() == "openai_tts"
+        monkeypatch.delenv("ELEVENLABS_API_KEY", raising=False)
+        monkeypatch.setenv("OPENAI_TTS_API_KEY", "sk-test")
+        assert auto_detect_provider() == "openai_tts"
 
-    def test_auto_detect_explicit_override(self):
+    def test_auto_detect_explicit_override(self, monkeypatch):
         from vvr_scraper.tts import auto_detect_provider
-        with patch.dict(os.environ, {"VVR_TTS_PROVIDER": "omnivoice"}, clear=True):
-            assert auto_detect_provider() == "omnivoice"
+        monkeypatch.delenv("ELEVENLABS_API_KEY", raising=False)
+        monkeypatch.delenv("OPENAI_TTS_API_KEY", raising=False)
+        monkeypatch.setenv("VVR_TTS_PROVIDER", "omnivoice")
+        assert auto_detect_provider() == "omnivoice"
 
-    def test_auto_detect_none_raises(self):
+    def test_auto_detect_none_raises(self, monkeypatch):
         from vvr_scraper.tts import auto_detect_provider
-        with patch.dict(os.environ, {}, clear=True):
-            with pytest.raises(ValueError, match="No TTS provider configured"):
-                auto_detect_provider()
+        monkeypatch.delenv("VVR_TTS_PROVIDER", raising=False)
+        monkeypatch.delenv("ELEVENLABS_API_KEY", raising=False)
+        monkeypatch.delenv("OPENAI_TTS_API_KEY", raising=False)
+        monkeypatch.delenv("OPENAI_TTS_BASE_URL", raising=False)
+        with pytest.raises(ValueError, match="No TTS provider configured"):
+            auto_detect_provider()

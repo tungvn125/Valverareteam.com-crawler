@@ -13,7 +13,7 @@ from .base import VoiceInfo, VoiceSpec, WordAlignment, SynthesisResult
 
 
 class ElevenLabsProvider:
-    """TTSProvider implementation for ElevenLabs cloud API."""
+    """ElevenLabs cloud TTS provider with stream-with-timestamps support."""
 
     def __init__(self, api_key: str):
         self._api_key = api_key
