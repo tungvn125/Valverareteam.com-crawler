@@ -45,6 +45,7 @@ dependencies = [
 
 [project.scripts]
 vvrt = "vvr_scraper.cli:main"
+vvrt-client = "vvr_scraper.cli_client.main:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
