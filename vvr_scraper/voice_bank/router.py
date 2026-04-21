@@ -214,6 +214,7 @@ async def publish_voice_endpoint(request: Request, voice_id: str, user=Depends(g
     except ValueError as e:
         raise HTTPException(status_code=403, detail=str(e)) from None
 
+
 @router.patch("/{voice_id}/delist")
 async def delist_voice_endpoint(request: Request, voice_id: str, user=Depends(get_auth_user)):
     db = await _get_voice_bank_db(request)
@@ -222,6 +223,7 @@ async def delist_voice_endpoint(request: Request, voice_id: str, user=Depends(ge
         return await delist_voice(db, voice_id, user.id, is_admin=is_admin)
     except ValueError as e:
         raise HTTPException(status_code=403, detail=str(e)) from None
+
 
 # --- Delete ---
 
