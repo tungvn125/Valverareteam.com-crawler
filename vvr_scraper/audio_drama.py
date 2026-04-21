@@ -1,13 +1,10 @@
 import asyncio
-import base64
-import io
 import json
 import os
 import random
 import re
 from typing import Any
 
-import httpx
 from loguru import logger
 from openai import AsyncOpenAI
 

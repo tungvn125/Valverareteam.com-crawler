@@ -1,7 +1,7 @@
 ---
 description: Implement/general coding task
 mode: subagent
-model: opencode-go/kimi-k2.5
+model: opencode-go/minimax-m2.7
 temperature: 0.1
 tools:
   write: true

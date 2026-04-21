@@ -5,11 +5,11 @@ File export functions for the web novel scraper.
 import asyncio
 import html
 import inspect
+import io
 import json
 import os
 import urllib.parse
 import uuid
-import io
 from typing import Any, cast
 
 import httpx
@@ -426,7 +426,7 @@ async def tao_file_mp3(
         logger.error(f"Lỗi khi tạo Audiobook: {e}")
         raise e
     finally:
-        if hasattr(provider, 'close') and asyncio.iscoroutinefunction(provider.close):
+        if hasattr(provider, "close") and asyncio.iscoroutinefunction(provider.close):
             await provider.close()
 
 

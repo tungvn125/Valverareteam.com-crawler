@@ -213,8 +213,8 @@ class DatabaseManager:
                 # aiosqlite connections handle this gracefully
                 try:
                     self._db.close()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"Could not close database: {e}")
             self._db = None
 
     async def get_all_novels(

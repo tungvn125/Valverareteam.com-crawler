@@ -1,7 +1,7 @@
 ---
 description: Reviews code for quality and best practices
 mode: subagent
-model: opencode-go/minimax-m2.7
+model: opencode-go/kimi-k2.6
 temperature: 0.3
 tools:
   write: false

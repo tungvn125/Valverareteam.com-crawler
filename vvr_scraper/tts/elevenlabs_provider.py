@@ -23,6 +23,7 @@ class ElevenLabsProvider:
     def _get_sync_client(self):
         if self._sync_client is None:
             from elevenlabs.client import ElevenLabs
+
             self._sync_client = ElevenLabs(api_key=self._api_key)
         return self._sync_client
 

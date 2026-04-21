@@ -1,6 +1,5 @@
 """OpenAI-compatible HTTP TTS provider — works with any /v1/audio/speech server."""
 
-import io
 import os
 
 import httpx
