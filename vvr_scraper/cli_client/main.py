@@ -40,29 +40,27 @@ def build_parser() -> argparse.ArgumentParser:
 
     # login
     login_parser = subparsers.add_parser("login", help="Authenticate with the server")
-    login_parser.add_argument("--username", "-u", required=True, help="Username")
-    login_parser.add_argument("--password", "-p", required=True, help="Password")
+    login_parser.add_argument("--username", "-u", help="Username (will prompt if omitted)")
+    login_parser.add_argument("--password", "-p", help="Password (will prompt if omitted)")
 
     # logout
     subparsers.add_parser("logout", help="Remove stored authentication token")
 
     # upload
     upload_parser = subparsers.add_parser("upload", help="Upload a new voice sample")
-    upload_parser.add_argument("--audio", "-a", required=True, help="Path to audio file")
-    upload_parser.add_argument("--name", "-n", required=True, help="Voice name")
-    upload_parser.add_argument("--ref-text", "-t", required=True, help="Reference text")
+    upload_parser.add_argument("--audio", "-a", help="Path to audio file (will prompt if omitted)")
+    upload_parser.add_argument("--name", "-n", help="Voice name (will prompt if omitted)")
+    upload_parser.add_argument("--ref-text", "-t", help="Reference text (will prompt if omitted)")
     upload_parser.add_argument(
         "--gender",
         "-g",
         choices=["male", "female", "other"],
-        required=True,
-        help="Speaker gender",
+        help="Speaker gender (will prompt if omitted)",
     )
     upload_parser.add_argument(
         "--age-group",
         choices=["child", "teen", "young_adult", "adult", "elder"],
-        required=True,
-        help="Speaker age group",
+        help="Speaker age group (will prompt if omitted)",
     )
     upload_parser.add_argument("--description", default="", help="Voice description")
     upload_parser.add_argument("--language", default="vi", help="Language code (default: vi)")
@@ -137,7 +135,7 @@ def build_parser() -> argparse.ArgumentParser:
     # preview
     preview_parser = subparsers.add_parser("preview", help="Generate preview audio")
     preview_parser.add_argument("voice_id", help="Voice ID")
-    preview_parser.add_argument("--text", "-t", required=True, help="Text to synthesize")
+    preview_parser.add_argument("--text", "-t", help="Text to synthesize (will prompt if omitted)")
 
     return parser
 
