@@ -63,14 +63,15 @@ async def upload_voice_endpoint(
     # Stream uploaded file to temp with size limit (30MB)
     max_size = 30 * 1024 * 1024
     read = 0
+    tmp_path = None
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        tmp_path = tmp.name
         while chunk := await audio.read(8192):
             read += len(chunk)
             if read > max_size:
-                os.unlink(tmp.name)
+                os.unlink(tmp_path)
                 raise HTTPException(status_code=413, detail="File too large (max 30MB)")
             tmp.write(chunk)
-        tmp_path = tmp.name
 
     try:
         result = await upload_voice(
@@ -86,10 +87,14 @@ async def upload_voice_endpoint(
             mood=mood,
             tags=tag_list,
         )
-    except (ValueError, subprocess.SubprocessError) as e:
+    except (ValueError, subprocess.SubprocessError, FileNotFoundError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     finally:
-        os.unlink(tmp_path)
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
 
     return result
 
@@ -152,9 +157,9 @@ async def get_voice_audio(request: Request, voice_id: str, user=Depends(get_auth
     if voice["visibility"] == "private" and voice["user_id"] != user.id:
         raise HTTPException(status_code=404, detail="Voice sample not found")
 
-    abs_path = os.path.abspath(get_voice_file_path(voice["ref_audio_path"]))
+    abs_path = os.path.realpath(get_voice_file_path(voice["ref_audio_path"]))
     # Path traversal protection: ensure resolved path is inside voice bank directory
-    bank_dir = os.path.abspath(get_voice_bank_dir())
+    bank_dir = os.path.realpath(get_voice_bank_dir())
     if not abs_path.startswith(bank_dir + os.sep):
         raise HTTPException(status_code=400, detail="Invalid path")
     if not os.path.exists(abs_path):
@@ -244,9 +249,9 @@ async def preview_voice(request: Request, voice_id: str, body: VoicePreviewReque
     if voice["visibility"] == "private" and voice["user_id"] != user.id:
         raise HTTPException(status_code=404, detail="Voice sample not found")
 
-    abs_path = os.path.abspath(get_voice_file_path(voice["ref_audio_path"]))
+    abs_path = os.path.realpath(get_voice_file_path(voice["ref_audio_path"]))
     # Path traversal protection: ensure resolved path is inside voice bank directory
-    bank_dir = os.path.abspath(get_voice_bank_dir())
+    bank_dir = os.path.realpath(get_voice_bank_dir())
     if not abs_path.startswith(bank_dir + os.sep):
         raise HTTPException(status_code=400, detail="Invalid path")
     if not os.path.exists(abs_path):
@@ -262,8 +267,11 @@ async def preview_voice(request: Request, voice_id: str, body: VoicePreviewReque
     spec = VoiceSpec(ref_audio_path=abs_path, ref_text=voice["ref_text"])
     try:
         result = await provider.synthesize(text=body.text, voice=spec)
-        return Response(content=result.audio_bytes, media_type="audio/wav")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Preview generation failed: {e}")
     finally:
-        await provider.close()
+        try:
+            await provider.close()
+        except Exception:
+            pass
+    return Response(content=result.audio_bytes, media_type="audio/wav")

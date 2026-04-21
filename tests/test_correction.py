@@ -114,8 +114,16 @@ class TestCorrectionAPI:
         from fastapi.testclient import TestClient
 
         from vvr_scraper.db import DatabaseManager
+        from vvr_scraper.social.auth import get_auth_user
         from vvr_scraper.utils import get_config_path
         from vvr_scraper.web import app
+
+        # Mock auth for testing
+        def _fake_auth_user():
+            from vvr_scraper.social.auth import AuthUser
+            return AuthUser(id="test-user-id", username="testuser", role="admin")
+
+        app.dependency_overrides[get_auth_user] = _fake_auth_user
 
         loop = asyncio.new_event_loop()
         db = DatabaseManager(db_path=get_config_path("test_vvr_library.db"))
@@ -126,6 +134,8 @@ class TestCorrectionAPI:
         loop.run_until_complete(db.close())
         loop.close()
         os.remove(get_config_path("test_vvr_library.db"))
+        # Clean up dependency overrides
+        app.dependency_overrides.pop(get_auth_user, None)
 
     def test_list_chapters_not_found(self, client):
         response = client.get("/api/correction/nonexistent-novel/chapters")

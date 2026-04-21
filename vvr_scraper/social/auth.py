@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 
 import bcrypt
 import jwt
-from fastapi import Depends, Header, HTTPException
+from fastapi import Depends, Header, HTTPException, Request
 from pydantic import BaseModel
 
 
@@ -40,7 +40,10 @@ class AuthUser(BaseModel):
     role: str
 
 
-async def get_auth_user(authorization: str | None = Header(default=None)) -> AuthUser:
+async def get_auth_user(
+    request: Request,
+    authorization: str | None = Header(default=None)
+) -> AuthUser:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing bearer token")
     token = authorization[7:]
@@ -55,14 +58,21 @@ async def get_auth_user(authorization: str | None = Header(default=None)) -> Aut
     from .db import SocialDatabaseManager
     from ..utils import get_config_path
 
-    db = SocialDatabaseManager(db_path=get_config_path("social.db"))
-    await db.init_db()
+    # Use existing db connection from app state if available, otherwise create new
+    db = getattr(request.app.state, "social_db", None)
+    should_close = False
+    if db is None:
+        db = SocialDatabaseManager(db_path=get_config_path("social.db"))
+        await db.init_db()
+        should_close = True
+
     try:
         user = await db.get_user_by_id(payload["sub"])
         if not user:
             raise HTTPException(status_code=401, detail="User no longer exists")
     finally:
-        await db.close()
+        if should_close:
+            await db.close()
 
     return AuthUser(id=payload["sub"], username=payload["username"], role=payload["role"])
 

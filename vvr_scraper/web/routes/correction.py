@@ -8,7 +8,7 @@ import re
 import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
 from loguru import logger
 from pydantic import BaseModel
@@ -62,7 +62,9 @@ def _get_tts_provider():
     if provider_name == "elevenlabs":
         return tts_module.get_provider("elevenlabs", api_key=os.getenv("ELEVENLABS_API_KEY"))
     elif provider_name == "openai_tts":
-        return tts_module.get_provider("openai_tts", base_url=os.getenv("OPENAI_TTS_BASE_URL"))
+        return tts_module.get_provider("openai_tts", 
+            api_key=os.getenv("OPENAI_TTS_API_KEY"),
+            base_url=os.getenv("OPENAI_TTS_BASE_URL"))
     else:
         return tts_module.get_provider(provider_name)
 
@@ -425,13 +427,20 @@ async def get_characters(slug: str, user: AuthUser = Depends(get_auth_user)):
 
 
 @router.put("/{slug:path}/characters/{character_name}")
-async def update_character(slug: str, character_name: str, body: CharacterUpdateRequest, user: AuthUser = Depends(get_auth_user)):
+async def update_character(
+    slug: str, 
+    character_name: str, 
+    body: CharacterUpdateRequest, 
+    request: Request,
+    user: AuthUser = Depends(get_auth_user)
+):
     """Update a character profile (voice, color, aliases, etc.)."""
     db = get_db()
     profiles = await db.get_character_profiles(slug)
     existing = next((p for p in profiles if p.name.lower() == character_name.lower()), None)
 
     from ...models import CharacterProfile
+    from vvr_scraper.voice_bank.storage import get_voice_file_path
 
     if existing:
         # Update existing profile
@@ -454,40 +463,32 @@ async def update_character(slug: str, character_name: str, body: CharacterUpdate
         if body.emotion_range is not None:
             existing.emotion_range = body.emotion_range
         if body.voice_bank_id is not None:
-            from vvr_scraper.voice_bank.db import VoiceBankDatabaseManager
-            from vvr_scraper.voice_bank.storage import get_voice_file_path
-            from vvr_scraper.utils import get_config_path
-
-            vb_db = VoiceBankDatabaseManager(db_path=get_config_path("voice_bank.db"))
-            await vb_db.init_db()
-            try:
-                voice = await vb_db.get_voice_sample(body.voice_bank_id)
-                if voice and (voice["visibility"] == "public" or
-                              (voice["visibility"] == "private" and voice["user_id"] == user.id)):
-                    existing.ref_audio_path = get_voice_file_path(voice["ref_audio_path"])
-                    existing.ref_text = voice["ref_text"]
-            finally:
-                await vb_db.close()
+            vb_db = request.app.state.voice_bank_db
+            voice = await vb_db.get_voice_sample(body.voice_bank_id)
+            if not voice:
+                raise HTTPException(status_code=404, detail="Voice sample not found")
+            if voice["visibility"] == "delisted":
+                raise HTTPException(status_code=403, detail="Voice is delisted")
+            if voice["visibility"] == "private" and voice["user_id"] != user.id:
+                raise HTTPException(status_code=403, detail="You do not own this voice sample")
+            existing.ref_audio_path = get_voice_file_path(voice["ref_audio_path"])
+            existing.ref_text = voice["ref_text"]
         await db.save_character_profile(existing)
     else:
         # Resolve ref_audio_path and ref_text from voice_bank_id if provided
         resolved_ref_audio_path = body.ref_audio_path
         resolved_ref_text = body.ref_text
         if body.voice_bank_id is not None:
-            from vvr_scraper.voice_bank.db import VoiceBankDatabaseManager
-            from vvr_scraper.voice_bank.storage import get_voice_file_path
-            from vvr_scraper.utils import get_config_path
-
-            vb_db = VoiceBankDatabaseManager(db_path=get_config_path("voice_bank.db"))
-            await vb_db.init_db()
-            try:
-                voice = await vb_db.get_voice_sample(body.voice_bank_id)
-                if voice and (voice["visibility"] == "public" or
-                              (voice["visibility"] == "private" and voice["user_id"] == user.id)):
-                    resolved_ref_audio_path = get_voice_file_path(voice["ref_audio_path"])
-                    resolved_ref_text = voice["ref_text"]
-            finally:
-                await vb_db.close()
+            vb_db = request.app.state.voice_bank_db
+            voice = await vb_db.get_voice_sample(body.voice_bank_id)
+            if not voice:
+                raise HTTPException(status_code=404, detail="Voice sample not found")
+            if voice["visibility"] == "delisted":
+                raise HTTPException(status_code=403, detail="Voice is delisted")
+            if voice["visibility"] == "private" and voice["user_id"] != user.id:
+                raise HTTPException(status_code=403, detail="You do not own this voice sample")
+            resolved_ref_audio_path = get_voice_file_path(voice["ref_audio_path"])
+            resolved_ref_text = voice["ref_text"]
 
         profile = CharacterProfile(
             name=character_name,
@@ -500,7 +501,7 @@ async def update_character(slug: str, character_name: str, body: CharacterUpdate
             personality=body.personality,
             speaking_style=body.speaking_style,
             color=body.color,
-            emotion_range=body.emotion_range,
+            emotion_range=body.emotion_range if body.emotion_range is not None else 0.5,
         )
         await db.save_character_profile(profile)
 

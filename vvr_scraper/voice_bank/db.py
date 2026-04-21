@@ -184,20 +184,29 @@ class VoiceBankDatabaseManager:
         row = await cursor.fetchone()
         total = row[0]
 
-        # Get items
+        # Get items with JOINs for tags and vote_score
         cursor = await db.execute(
-            """SELECT * FROM voice_samples
-               WHERE user_id = ?
-               ORDER BY created_at DESC
-               LIMIT ? OFFSET ?""",
+            """SELECT 
+                v.*,
+                GROUP_CONCAT(vt.tag) as tags,
+                COALESCE(SUM(vv.vote), 0) as vote_score
+            FROM voice_samples v
+            LEFT JOIN voice_tags vt ON v.id = vt.voice_id
+            LEFT JOIN voice_votes vv ON v.id = vv.voice_id
+            WHERE v.user_id = ?
+            GROUP BY v.id
+            ORDER BY v.created_at DESC
+            LIMIT ? OFFSET ?""",
             (user_id, limit, offset),
         )
         rows = await cursor.fetchall()
         items = []
         for row in rows:
             item = dict(row)
-            item["tags"] = await self.get_tags(item["id"])
-            item["vote_score"] = await self.get_vote_score(item["id"])
+            # Parse GROUP_CONCAT result into list of tags
+            tags_str = item.get("tags")
+            item["tags"] = tags_str.split(",") if tags_str else []
+            item["vote_score"] = item.get("vote_score", 0)
             items.append(item)
 
         return {"items": items, "total": total}

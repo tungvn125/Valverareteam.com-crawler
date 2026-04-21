@@ -129,5 +129,7 @@ async def vote_voice(db: VoiceBankDatabaseManager, voice_id: str, user_id: str, 
     voice = await db.get_voice_sample(voice_id)
     if not voice:
         raise ValueError("Voice sample not found")
+    if voice["visibility"] != "public":
+        raise ValueError("Voice is not available for voting")
     await db.vote_voice(voice_id, user_id, vote)
     return await db.get_vote_score(voice_id)
