@@ -184,17 +184,15 @@ class VoiceBankDatabaseManager:
         row = await cursor.fetchone()
         total = row[0]
 
-        # Get items with JOINs for tags and vote_score
+        # Get items with correlated subqueries for tags and vote_score
+        # to avoid Cartesian product when voice has both tags AND votes
         cursor = await db.execute(
             """SELECT 
                 v.*,
-                GROUP_CONCAT(vt.tag) as tags,
-                COALESCE(SUM(vv.vote), 0) as vote_score
+                (SELECT GROUP_CONCAT(tag) FROM voice_tags WHERE voice_id = v.id) as tags,
+                COALESCE((SELECT SUM(vote) FROM voice_votes WHERE voice_id = v.id), 0) as vote_score
             FROM voice_samples v
-            LEFT JOIN voice_tags vt ON v.id = vt.voice_id
-            LEFT JOIN voice_votes vv ON v.id = vv.voice_id
             WHERE v.user_id = ?
-            GROUP BY v.id
             ORDER BY v.created_at DESC
             LIMIT ? OFFSET ?""",
             (user_id, limit, offset),
@@ -267,16 +265,14 @@ class VoiceBankDatabaseManager:
         else:
             order_sql = "ORDER BY created_at DESC"
 
-        # Get items with JOINs for tags and vote_score
+        # Get items with correlated subqueries for tags and vote_score
+        # to avoid Cartesian product when voice has both tags AND votes
         sql = f"""SELECT 
             v.*,
-            GROUP_CONCAT(vt.tag) as tags,
-            COALESCE(SUM(vv.vote), 0) as vote_score
+            (SELECT GROUP_CONCAT(tag) FROM voice_tags WHERE voice_id = v.id) as tags,
+            COALESCE((SELECT SUM(vote) FROM voice_votes WHERE voice_id = v.id), 0) as vote_score
         FROM voice_samples v
-        LEFT JOIN voice_tags vt ON v.id = vt.voice_id
-        LEFT JOIN voice_votes vv ON v.id = vv.voice_id
         WHERE {where_clause}
-        GROUP BY v.id
         {order_sql}
         LIMIT ? OFFSET ?"""
         
@@ -318,15 +314,14 @@ class VoiceBankDatabaseManager:
     async def delete_voice_sample(self, voice_id: str, user_id: str) -> None:
         """Delete a voice sample and its associated tags and votes. Owner only."""
         db = await self.get_db()
-        # Explicitly delete tags and votes first as a safety measure.
-        # Tables have ON DELETE CASCADE, but explicit deletes ensure cleanup
-        # even if foreign_keys pragma was not properly set on this connection.
-        await db.execute("DELETE FROM voice_tags WHERE voice_id = ?", (voice_id,))
-        await db.execute("DELETE FROM voice_votes WHERE voice_id = ?", (voice_id,))
-        await db.execute(
+        # Delete voice_samples first and check if it succeeded
+        # Tags and votes will be cleaned up by CASCADE since foreign_keys is ON
+        result = await db.execute(
             "DELETE FROM voice_samples WHERE id = ? AND user_id = ?",
             (voice_id, user_id),
         )
+        if result.rowcount == 0:
+            raise ValueError("Voice sample not found or not owned")
         await db.commit()
 
     async def vote_voice(self, voice_id: str, user_id: str, vote: int) -> None:
@@ -380,7 +375,7 @@ class VoiceBankDatabaseManager:
 
         Score = (tag_matches * 10) + vote_score.
         Sort by score DESC, usage_count DESC, created_at DESC. LIMIT 1.
-        Uses a single query with JOINs to avoid N+1 queries.
+        Uses correlated subqueries to avoid Cartesian product when voice has both tags AND votes.
         """
         db = await self.get_db()
 
@@ -392,18 +387,15 @@ class VoiceBankDatabaseManager:
             tag_placeholders = "?"
             tag_params = [""]
 
-        # Single query with JOINs to get voice, tags, vote_score, and tag_matches
+        # Use correlated subqueries to avoid Cartesian product
         cursor = await db.execute(
             f"""SELECT 
                 v.*,
-                GROUP_CONCAT(vt.tag) as tags,
-                COALESCE(SUM(vv.vote), 0) as vote_score,
-                COUNT(CASE WHEN vt.tag IN ({tag_placeholders}) THEN 1 END) as matching_tags
+                (SELECT GROUP_CONCAT(tag) FROM voice_tags WHERE voice_id = v.id) as tags,
+                COALESCE((SELECT SUM(vote) FROM voice_votes WHERE voice_id = v.id), 0) as vote_score,
+                COALESCE((SELECT COUNT(*) FROM voice_tags WHERE voice_id = v.id AND tag IN ({tag_placeholders})), 0) as matching_tags
             FROM voice_samples v
-            LEFT JOIN voice_tags vt ON v.id = vt.voice_id
-            LEFT JOIN voice_votes vv ON v.id = vv.voice_id
             WHERE v.visibility = 'public' AND (v.gender = ? OR v.gender = 'other')
-            GROUP BY v.id
             ORDER BY matching_tags DESC, vote_score DESC, v.usage_count DESC, v.created_at DESC
             LIMIT 1""",
             tag_params + [gender],

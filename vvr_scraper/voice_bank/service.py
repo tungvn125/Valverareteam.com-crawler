@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from loguru import logger
 
 from .db import VoiceBankDatabaseManager
-from .storage import delete_voice_files, get_voice_file_path, save_voice_file
+from .storage import get_voice_file_path, save_voice_file
 from .validator import AudioValidationResult, compute_file_hash, convert_to_canonical, validate_audio
 
 
@@ -110,8 +110,13 @@ async def delete_voice(db: VoiceBankDatabaseManager, voice_id: str, user_id: str
 
     # Store file path before deleting DB record
     from .storage import get_voice_bank_dir
-    abs_path = os.path.join(get_voice_bank_dir(), voice["ref_audio_path"])
-    user_dir = os.path.join(get_voice_bank_dir(), voice["user_id"])
+    abs_path = os.path.realpath(os.path.join(get_voice_bank_dir(), voice["ref_audio_path"]))
+    user_dir = os.path.realpath(os.path.join(get_voice_bank_dir(), voice["user_id"]))
+    bank_dir = os.path.realpath(get_voice_bank_dir())
+
+    # Path traversal protection: ensure resolved path is inside voice bank directory
+    if not abs_path.startswith(bank_dir + os.sep):
+        raise ValueError("Invalid path")
 
     # Delete DB record first (cascades tags and votes)
     await db.delete_voice_sample(voice_id, user_id)

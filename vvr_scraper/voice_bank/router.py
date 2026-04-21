@@ -51,6 +51,9 @@ async def upload_voice_endpoint(
     tag_list = [t.strip().lower() for t in tags.split(",") if t.strip()] if tags else []
     if len(tag_list) > 5:
         raise HTTPException(status_code=400, detail="Maximum 5 tags allowed")
+    for tag in tag_list:
+        if len(tag) > 15:
+            raise HTTPException(status_code=400, detail=f"Tag '{tag}' exceeds 15 characters")
 
     # Validate audio file extension
     suffix = os.path.splitext(audio.filename or "")[1].lower()
@@ -64,16 +67,17 @@ async def upload_voice_endpoint(
     max_size = 30 * 1024 * 1024
     read = 0
     tmp_path = None
-    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-        tmp_path = tmp.name
-        while chunk := await audio.read(8192):
-            read += len(chunk)
-            if read > max_size:
-                os.unlink(tmp_path)
-                raise HTTPException(status_code=413, detail="File too large (max 30MB)")
-            tmp.write(chunk)
 
     try:
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            tmp_path = tmp.name
+            while chunk := await audio.read(8192):
+                read += len(chunk)
+                if read > max_size:
+                    os.unlink(tmp_path)
+                    raise HTTPException(status_code=413, detail="File too large (max 30MB)")
+                tmp.write(chunk)
+
         result = await upload_voice(
             db=db,
             user_id=user.id,
