@@ -50,6 +50,20 @@ async def get_auth_user(authorization: str | None = Header(default=None)) -> Aut
         raise HTTPException(status_code=401, detail="Token expired") from exc
     except jwt.InvalidTokenError as exc:
         raise HTTPException(status_code=401, detail="Invalid token") from exc
+
+    # Check if user still exists in the database
+    from .db import SocialDatabaseManager
+    from ..utils import get_config_path
+
+    db = SocialDatabaseManager(db_path=get_config_path("social.db"))
+    await db.init_db()
+    try:
+        user = await db.get_user_by_id(payload["sub"])
+        if not user:
+            raise HTTPException(status_code=401, detail="User no longer exists")
+    finally:
+        await db.close()
+
     return AuthUser(id=payload["sub"], username=payload["username"], role=payload["role"])
 
 

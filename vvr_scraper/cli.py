@@ -822,12 +822,9 @@ class ValvrareScraperCLI:
     async def _handle_voice_upload(self, args):
         """Handle the `vvrt voice upload` subcommand."""
         from vvr_scraper.voice_bank.db import VoiceBankDatabaseManager
-        from vvr_scraper.voice_bank.storage import get_voice_bank_dir, save_voice_file
-        from vvr_scraper.voice_bank.validator import (
-            compute_file_hash,
-            convert_to_canonical,
-            validate_audio,
-        )
+        from vvr_scraper.voice_bank.service import upload_voice
+        from vvr_scraper.voice_bank.storage import get_voice_bank_dir
+        from vvr_scraper.voice_bank.validator import validate_audio
 
         session = PromptSession()
 
@@ -917,76 +914,46 @@ class ValvrareScraperCLI:
             console.print("[yellow]Upload cancelled.[/yellow]")
             return
 
-        # Convert to canonical WAV
-        import tempfile
-        import uuid
-
-        voice_id = str(uuid.uuid4())
-        with tempfile.TemporaryDirectory() as tmpdir:
-            canonical_path = os.path.join(tmpdir, f"{voice_id}.wav")
-            convert_to_canonical(audio_path, canonical_path)
-
-            # Re-validate duration on canonical file
-            canonical_validation = validate_audio(canonical_path)
-            if not canonical_validation.valid:
-                console.print(f"[bold red]Error:[/bold red] Canonical file invalid: {canonical_validation.error}")
-                return
-
-            # Compute hash for dedup
-            file_hash = compute_file_hash(canonical_path)
-
-            # Save to voice bank directory
-            user_id = "local"
-            relative_path = save_voice_file(canonical_path, user_id, voice_id)
-
-        # Create DB record
-        db_path = os.path.join(get_config_path(), "voice_bank.db")
+        # Use the service layer for the upload pipeline
+        db_path = get_config_path("voice_bank.db")
         db_manager = VoiceBankDatabaseManager(db_path=db_path)
         await db_manager.init_db()
 
         try:
-            # Check for duplicate
-            existing = await db_manager.get_voice_by_hash(user_id, file_hash)
-            if existing:
-                console.print("[bold red]Error:[/bold red] Duplicate voice sample (same file already uploaded).")
-                return
-
-            voice_record_id = await db_manager.create_voice_sample(
-                user_id=user_id,
+            voice_record = await upload_voice(
+                db=db_manager,
+                user_id="local",
+                audio_file_path=audio_path,
+                ref_text=ref_text,
                 name=name,
                 description="",
-                ref_audio_path=relative_path,
-                ref_text=ref_text,
-                duration_ms=canonical_validation.duration_ms,
-                sample_rate=canonical_validation.sample_rate,
                 gender=gender,
                 age_group=age_group,
                 language=language,
                 mood=mood,
-                visibility="private",
-                file_hash=file_hash,
+                tags=tags,
             )
-
-            if tags:
-                await db_manager.set_tags(voice_record_id, tags)
 
             # Show success summary
             console.print("\n[bold green]✓ Voice sample uploaded successfully![/bold green]")
             result_table = Table(border_style="bright_green")
             result_table.add_column("Field", style="cyan")
             result_table.add_column("Value", style="white")
-            result_table.add_row("ID", voice_record_id)
+            result_table.add_row("ID", voice_record["id"])
             result_table.add_row("Name", name)
-            result_table.add_row("Duration", f"{canonical_validation.duration_ms}ms")
-            result_table.add_row("Visibility", "private")
-            result_table.add_row("Path", os.path.join(get_voice_bank_dir(), relative_path))
+            result_table.add_row("Duration", f"{voice_record['duration_ms']}ms")
+            result_table.add_row("Visibility", voice_record["visibility"])
+            result_table.add_row("Path", os.path.join(get_voice_bank_dir(), voice_record["ref_audio_path"]))
             console.print(result_table)
 
             # Ask about publishing
             if args.publish or input("\nPublish to community? [y/N]: ").strip().lower() in ("y", "yes"):
-                await db_manager.publish_voice(voice_record_id, user_id)
+                await db_manager.publish_voice(voice_record["id"], "local")
                 console.print("[bold green]✓ Published to community![/bold green]")
 
+        except ValueError as e:
+            console.print(f"[bold red]Error:[/bold red] {e}")
+            return
         finally:
             await db_manager.close()
 
@@ -1013,7 +980,7 @@ class ValvrareScraperCLI:
             console.print("[yellow]Skipping voice selection (auto-assign mode).[/yellow]")
             return
 
-        db_path = os.path.join(get_config_path(), "voice_bank.db")
+        db_path = get_config_path("voice_bank.db")
         db_manager = VoiceBankDatabaseManager(db_path=db_path)
         await db_manager.init_db()
 
@@ -1097,87 +1064,92 @@ class ValvrareScraperCLI:
                     char_name = char.get("name", "Unknown")
                     char_gender = char.get("gender", "other")
 
-                    console.print(f"\n[bold cyan]Character:[/bold cyan] {char_name}")
+                    # Use a while loop to allow "Search again" to re-prompt for the same character
+                    char_done = False
+                    while not char_done:
+                        console.print(f"\n[bold cyan]Character:[/bold cyan] {char_name}")
 
-                    # Prompt for search tags
-                    session = PromptSession()
-                    console.print("[yellow]Search tags (e.g., 'male adult serious') or press Enter to search all:[/yellow]")
-                    search_query = await session.prompt_async("  Tags: ")
-                    search_query = search_query.strip()
+                        # Prompt for search tags
+                        session = PromptSession()
+                        console.print("[yellow]Search tags (e.g., 'male adult serious') or press Enter to search all:[/yellow]")
+                        search_query = await session.prompt_async("  Tags: ")
+                        search_query = search_query.strip()
 
-                    # Build search tags list
-                    search_tags = search_query.split() if search_query else None
+                        # Build search tags list
+                        search_tags = search_query.split() if search_query else None
 
-                    # Search community voices
-                    results = await db_manager.list_community_voices(
-                        limit=5,
-                        offset=0,
-                        tags=search_tags,
-                        gender=char_gender if char_gender in ("male", "female") else None,
-                    )
-
-                    items = results.get("items", [])
-                    if not items:
-                        console.print("  [yellow]No community voices found.[/yellow]")
-                        continue
-
-                    # Show results table
-                    console.print(f"\n  [bold cyan]Top community voices for '{search_query or 'all'}':[/bold cyan]")
-                    table = Table(border_style="bright_blue")
-                    table.add_column("#", style="cyan", width=4)
-                    table.add_column("Name", style="white")
-                    table.add_column("Gender", style="cyan")
-                    table.add_column("Age", style="cyan")
-                    table.add_column("Tags", style="dim")
-                    table.add_column("Votes", style="yellow")
-
-                    for i, v in enumerate(items, 1):
-                        vote_score = v.get("vote_score", 0)
-                        vote_display = f"+{vote_score}" if vote_score >= 0 else str(vote_score)
-                        tags_str = ", ".join(v.get("tags", [])[:3])
-                        table.add_row(
-                            str(i),
-                            v.get("name", "Unknown"),
-                            v.get("gender", "?"),
-                            v.get("age_group", "?"),
-                            tags_str[:30],
-                            vote_display,
+                        # Search community voices
+                        results = await db_manager.list_community_voices(
+                            limit=5,
+                            offset=0,
+                            tags=search_tags,
+                            gender=char_gender if char_gender in ("male", "female") else None,
                         )
-                    console.print(table)
 
-                    # Add option to search again or skip
-                    voice_options = [f"{v['name']}" for v in items] + ["Search again", "Skip"]
-                    select_idx = InteractiveUI.show_menu(
-                        voice_options,
-                        f"Select voice for {char_name}",
-                        multi_select=False,
-                    )
+                        items = results.get("items", [])
+                        if not items:
+                            console.print("  [yellow]No community voices found.[/yellow]")
+                            char_done = True
+                            continue
 
-                    if select_idx is None or select_idx == len(items) + 1:
-                        # Skip
-                        continue
-                    if select_idx == len(items):
-                        # Search again - restart this character
-                        console.print("  [dim]Restarting search...[/dim]")
-                        # Re-prompt for this character (simple approach: just continue)
-                        continue
+                        # Show results table
+                        console.print(f"\n  [bold cyan]Top community voices for '{search_query or 'all'}':[/bold cyan]")
+                        table = Table(border_style="bright_blue")
+                        table.add_column("#", style="cyan", width=4)
+                        table.add_column("Name", style="white")
+                        table.add_column("Gender", style="cyan")
+                        table.add_column("Age", style="cyan")
+                        table.add_column("Tags", style="dim")
+                        table.add_column("Votes", style="yellow")
 
-                    selected_voice = items[select_idx]
+                        for i, v in enumerate(items, 1):
+                            vote_score = v.get("vote_score", 0)
+                            vote_display = f"+{vote_score}" if vote_score >= 0 else str(vote_score)
+                            tags_str = ", ".join(v.get("tags", [])[:3])
+                            table.add_row(
+                                str(i),
+                                v.get("name", "Unknown"),
+                                v.get("gender", "?"),
+                                v.get("age_group", "?"),
+                                tags_str[:30],
+                                vote_display,
+                            )
+                        console.print(table)
 
-                    # Resolve absolute path
-                    from vvr_scraper.voice_bank.storage import get_voice_file_path
-                    ref_audio = get_voice_file_path(selected_voice["ref_audio_path"])
-                    ref_text = selected_voice.get("ref_text", "")
+                        # Add option to search again or skip
+                        voice_options = [f"{v['name']}" for v in items] + ["Search again", "Skip"]
+                        select_idx = InteractiveUI.show_menu(
+                            voice_options,
+                            f"Select voice for {char_name}",
+                            multi_select=False,
+                        )
 
-                    # Save to character profile
-                    profile = CharacterProfile(
-                        name=char_name,
-                        story_id=story_id,
-                        ref_audio_path=ref_audio,
-                        ref_text=ref_text,
-                    )
-                    await self.db_manager.save_character_profile(profile)
-                    console.print(f"  [green]✓ Assigned {selected_voice['name']} to {char_name}[/green]")
+                        if select_idx is None or select_idx == len(items) + 1:
+                            # Skip
+                            char_done = True
+                            continue
+                        if select_idx == len(items):
+                            # Search again - restart this character (stay in while loop)
+                            console.print("  [dim]Restarting search...[/dim]")
+                            continue
+
+                        selected_voice = items[select_idx]
+
+                        # Resolve absolute path
+                        from vvr_scraper.voice_bank.storage import get_voice_file_path
+                        ref_audio = get_voice_file_path(selected_voice["ref_audio_path"])
+                        ref_text = selected_voice.get("ref_text", "")
+
+                        # Save to character profile
+                        profile = CharacterProfile(
+                            name=char_name,
+                            story_id=story_id,
+                            ref_audio_path=ref_audio,
+                            ref_text=ref_text,
+                        )
+                        await self.db_manager.save_character_profile(profile)
+                        console.print(f"  [green]✓ Assigned {selected_voice['name']} to {char_name}[/green]")
+                        char_done = True
 
         finally:
             await db_manager.close()

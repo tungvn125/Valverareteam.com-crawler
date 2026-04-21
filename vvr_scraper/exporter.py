@@ -32,8 +32,9 @@ from .freesound_manager import FreesoundManager
 from .image_gen import ImageGenerator
 from .mixing_engine import AudioTimeline, MixingEngine, TimelineConfig
 from .models import ContentItem
-from .utils import HEADERS
+from .utils import HEADERS, get_config_path
 from .video_renderer import VideoRenderer
+from .voice_bank.db import VoiceBankDatabaseManager
 
 ContentItemLike = ContentItem | dict[str, str]
 ContentList = list[ContentItemLike]
@@ -475,8 +476,13 @@ async def tao_file_audiodrama(
     voice_manager = None
     image_gen = None
     bgm_manager = None
+    voice_bank_db = None
     try:
-        voice_manager = VoiceManager(db_manager, story_id, provider=provider)
+        # Create shared VoiceBankDatabaseManager instance to avoid N+1 connections
+        voice_bank_db = VoiceBankDatabaseManager(db_path=get_config_path("voice_bank.db"))
+        await voice_bank_db.init_db()
+        
+        voice_manager = VoiceManager(db_manager, story_id, provider=provider, voice_bank_db=voice_bank_db)
         known_chars_raw = await _maybe_await(voice_manager.get_known_characters())
         known_chars = known_chars_raw if isinstance(known_chars_raw, list) else []
 
@@ -816,6 +822,8 @@ async def tao_file_audiodrama(
             await _maybe_await(voice_manager.close())
         if "image_gen" in locals():
             await _maybe_await(image_gen.close())
+        if "voice_bank_db" in locals() and voice_bank_db is not None:
+            await voice_bank_db.close()
 
     return detected_characters
 

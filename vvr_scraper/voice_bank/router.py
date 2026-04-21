@@ -1,6 +1,7 @@
 """FastAPI routes for the voice bank API."""
 
 import os
+import subprocess
 import tempfile
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
@@ -10,7 +11,7 @@ from ..social.auth import get_auth_user
 from ..voice_bank.db import VoiceBankDatabaseManager
 from ..voice_bank.models import VoicePreviewRequest, VoiceUpdateRequest, VoiceVoteRequest
 from ..voice_bank.service import delete_voice, delist_voice, publish_voice, upload_voice, vote_voice
-from ..voice_bank.storage import get_voice_file_path
+from ..voice_bank.storage import get_voice_bank_dir, get_voice_file_path
 
 router = APIRouter(prefix="/api/voices", tags=["Voice Bank"])
 
@@ -59,10 +60,16 @@ async def upload_voice_endpoint(
             detail="Unsupported audio format. Accepted: wav, mp3, ogg, m4a",
         )
 
-    # Save uploaded file to temp
+    # Stream uploaded file to temp with size limit (30MB)
+    max_size = 30 * 1024 * 1024
+    read = 0
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-        content = await audio.read()
-        tmp.write(content)
+        while chunk := await audio.read(8192):
+            read += len(chunk)
+            if read > max_size:
+                os.unlink(tmp.name)
+                raise HTTPException(status_code=413, detail="File too large (max 30MB)")
+            tmp.write(chunk)
         tmp_path = tmp.name
 
     try:
@@ -79,7 +86,7 @@ async def upload_voice_endpoint(
             mood=mood,
             tags=tag_list,
         )
-    except ValueError as e:
+    except (ValueError, subprocess.SubprocessError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     finally:
         os.unlink(tmp_path)
@@ -145,7 +152,11 @@ async def get_voice_audio(request: Request, voice_id: str, user=Depends(get_auth
     if voice["visibility"] == "private" and voice["user_id"] != user.id:
         raise HTTPException(status_code=404, detail="Voice sample not found")
 
-    abs_path = get_voice_file_path(voice["ref_audio_path"])
+    abs_path = os.path.abspath(get_voice_file_path(voice["ref_audio_path"]))
+    # Path traversal protection: ensure resolved path is inside voice bank directory
+    bank_dir = os.path.abspath(get_voice_bank_dir())
+    if not abs_path.startswith(bank_dir + os.sep):
+        raise HTTPException(status_code=400, detail="Invalid path")
     if not os.path.exists(abs_path):
         raise HTTPException(status_code=404, detail="Audio file not found on disk")
     return FileResponse(abs_path, media_type="audio/wav", filename=f"{voice_id}.wav")
@@ -233,16 +244,20 @@ async def preview_voice(request: Request, voice_id: str, body: VoicePreviewReque
     if voice["visibility"] == "private" and voice["user_id"] != user.id:
         raise HTTPException(status_code=404, detail="Voice sample not found")
 
-    abs_path = get_voice_file_path(voice["ref_audio_path"])
+    abs_path = os.path.abspath(get_voice_file_path(voice["ref_audio_path"]))
+    # Path traversal protection: ensure resolved path is inside voice bank directory
+    bank_dir = os.path.abspath(get_voice_bank_dir())
+    if not abs_path.startswith(bank_dir + os.sep):
+        raise HTTPException(status_code=400, detail="Invalid path")
     if not os.path.exists(abs_path):
         raise HTTPException(status_code=404, detail="Audio file not found on disk")
 
-    # Use OmniVoice provider for preview
+    # Lazily instantiate TTS provider (same pattern as correction.py)
     from vvr_scraper.tts.base import VoiceSpec
+    from vvr_scraper import tts as tts_module
 
-    provider = getattr(request.app.state, "tts_provider", None)
-    if provider is None:
-        raise HTTPException(status_code=503, detail="TTS provider not available")
+    provider_name = tts_module.auto_detect_provider()
+    provider = tts_module.get_provider(provider_name)
 
     spec = VoiceSpec(ref_audio_path=abs_path, ref_text=voice["ref_text"])
     try:
@@ -250,3 +265,5 @@ async def preview_voice(request: Request, voice_id: str, body: VoicePreviewReque
         return Response(content=result.audio_bytes, media_type="audio/wav")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Preview generation failed: {e}")
+    finally:
+        await provider.close()

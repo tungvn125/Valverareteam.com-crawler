@@ -8,13 +8,14 @@ import re
 import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from loguru import logger
 from pydantic import BaseModel
 
 from ..deps import get_db
 from ..models import load_vvr_settings
+from ...social.auth import get_auth_user, AuthUser
 
 router = APIRouter(prefix="/api/correction", tags=["Corrections"])
 
@@ -47,6 +48,7 @@ class CharacterUpdateRequest(BaseModel):
     ref_audio_path: str | None = None
     ref_text: str | None = None
     voice_bank_id: str | None = None
+    emotion_range: float | None = None
 
 
 # --- Helpers ---
@@ -138,7 +140,7 @@ async def _async_get_output_dir(slug: str) -> Path | None:
 
 
 @router.get("/{slug:path}/chapters")
-async def list_chapters(slug: str):
+async def list_chapters(slug: str, user: AuthUser = Depends(get_auth_user)):
     """List all chapters with scripts for a novel.
     Scans the output folder for .script.json files."""
     output_dir = await _async_get_output_dir(slug)
@@ -150,7 +152,7 @@ async def list_chapters(slug: str):
 
 
 @router.get("/{slug:path}/chapter/{chapter_idx}/script")
-async def get_chapter_script(slug: str, chapter_idx: int):
+async def get_chapter_script(slug: str, chapter_idx: int, user: AuthUser = Depends(get_auth_user)):
     """Read script JSON for a specific chapter."""
     output_dir = await _async_get_output_dir(slug)
     if not output_dir:
@@ -202,7 +204,7 @@ async def get_chapter_script(slug: str, chapter_idx: int):
 
 
 @router.post("/{slug:path}/chapter/{chapter_idx}/save")
-async def save_corrections(slug: str, chapter_idx: int, body: CorrectionRequest):
+async def save_corrections(slug: str, chapter_idx: int, body: CorrectionRequest, user: AuthUser = Depends(get_auth_user)):
     """Save corrected script. Updates .script.json and invalidates audio cache."""
     output_dir = await _async_get_output_dir(slug)
     if not output_dir:
@@ -270,7 +272,7 @@ async def save_corrections(slug: str, chapter_idx: int, body: CorrectionRequest)
 
 
 @router.post("/{slug:path}/apply-similar")
-async def apply_similar(slug: str, body: ApplySimilarRequest):
+async def apply_similar(slug: str, body: ApplySimilarRequest, user: AuthUser = Depends(get_auth_user)):
     """Find and apply role change to similar segments (same old role) across a chapter or all chapters."""
     output_dir = await _async_get_output_dir(slug)
     if not output_dir:
@@ -399,7 +401,7 @@ async def apply_similar(slug: str, body: ApplySimilarRequest):
 
 
 @router.get("/{slug:path}/characters")
-async def get_characters(slug: str):
+async def get_characters(slug: str, user: AuthUser = Depends(get_auth_user)):
     """Get character profiles for a novel from DB."""
     db = get_db()
     profiles = await db.get_character_profiles(slug)
@@ -423,7 +425,7 @@ async def get_characters(slug: str):
 
 
 @router.put("/{slug:path}/characters/{character_name}")
-async def update_character(slug: str, character_name: str, body: CharacterUpdateRequest):
+async def update_character(slug: str, character_name: str, body: CharacterUpdateRequest, user: AuthUser = Depends(get_auth_user)):
     """Update a character profile (voice, color, aliases, etc.)."""
     db = get_db()
     profiles = await db.get_character_profiles(slug)
@@ -449,6 +451,8 @@ async def update_character(slug: str, character_name: str, body: CharacterUpdate
             existing.ref_audio_path = body.ref_audio_path
         if body.ref_text is not None:
             existing.ref_text = body.ref_text
+        if body.emotion_range is not None:
+            existing.emotion_range = body.emotion_range
         if body.voice_bank_id is not None:
             from vvr_scraper.voice_bank.db import VoiceBankDatabaseManager
             from vvr_scraper.voice_bank.storage import get_voice_file_path
@@ -458,7 +462,8 @@ async def update_character(slug: str, character_name: str, body: CharacterUpdate
             await vb_db.init_db()
             try:
                 voice = await vb_db.get_voice_sample(body.voice_bank_id)
-                if voice and voice["visibility"] in ("public", "private"):
+                if voice and (voice["visibility"] == "public" or
+                              (voice["visibility"] == "private" and voice["user_id"] == user.id)):
                     existing.ref_audio_path = get_voice_file_path(voice["ref_audio_path"])
                     existing.ref_text = voice["ref_text"]
             finally:
@@ -477,7 +482,8 @@ async def update_character(slug: str, character_name: str, body: CharacterUpdate
             await vb_db.init_db()
             try:
                 voice = await vb_db.get_voice_sample(body.voice_bank_id)
-                if voice and voice["visibility"] in ("public", "private"):
+                if voice and (voice["visibility"] == "public" or
+                              (voice["visibility"] == "private" and voice["user_id"] == user.id)):
                     resolved_ref_audio_path = get_voice_file_path(voice["ref_audio_path"])
                     resolved_ref_text = voice["ref_text"]
             finally:
@@ -494,6 +500,7 @@ async def update_character(slug: str, character_name: str, body: CharacterUpdate
             personality=body.personality,
             speaking_style=body.speaking_style,
             color=body.color,
+            emotion_range=body.emotion_range,
         )
         await db.save_character_profile(profile)
 
@@ -501,7 +508,7 @@ async def update_character(slug: str, character_name: str, body: CharacterUpdate
 
 
 @router.get("/voices/list")
-async def list_voices():
+async def list_voices(user: AuthUser = Depends(get_auth_user)):
     """List available voices from the configured TTS provider."""
     try:
         provider = _get_tts_provider()
@@ -519,7 +526,8 @@ async def list_voices():
 async def preview_voice(
     voice_id: str | None = None,
     ref_audio_path: str | None = None,
-    text: str = Query(default="Xin chào, tôi là người kể chuyện."),
+    text: str = Query(default="Xin chào, tôi là ngườii kể chuyện."),
+    user: AuthUser = Depends(get_auth_user),
 ):
     """Generate a short audio preview using the configured TTS provider."""
     if len(text) > 150:

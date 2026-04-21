@@ -22,13 +22,14 @@ class VoiceBankDatabaseManager:
             if self._db is None:
                 self._db = await aiosqlite.connect(self.db_path)
                 self._db.row_factory = aiosqlite.Row
+                await self._db.execute("PRAGMA foreign_keys = ON")
+                await self._db.execute("PRAGMA journal_mode = WAL")
         return self._db
 
     async def init_db(self):
         """Create tables and indexes with WAL mode."""
         db = await self.get_db()
-        await db.execute("PRAGMA journal_mode=WAL")
-        await db.execute("PRAGMA foreign_keys = ON")
+        # Note: PRAGMAs are now set in get_db() to ensure they apply on every connection
 
         await db.execute(
             """CREATE TABLE IF NOT EXISTS voice_samples (
@@ -86,7 +87,7 @@ class VoiceBankDatabaseManager:
             "CREATE INDEX IF NOT EXISTS idx_tags_tag ON voice_tags(tag)"
         )
         await db.execute(
-            "CREATE INDEX IF NOT EXISTS idx_voices_file_hash ON voice_samples(user_id, file_hash)"
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_voices_user_hash ON voice_samples(user_id, file_hash)"
         )
 
         await db.commit()
@@ -123,25 +124,25 @@ class VoiceBankDatabaseManager:
         voice_id = str(uuid.uuid4())
         now = datetime.now(UTC).isoformat()
 
-        # Check for duplicate file_hash per user
-        existing = await self.get_voice_by_hash(user_id, file_hash)
-        if existing:
-            raise ValueError("Duplicate voice sample")
-
         db = await self.get_db()
-        await db.execute(
-            """INSERT INTO voice_samples
-                (id, user_id, name, description, ref_audio_path, ref_text, duration_ms,
-                 sample_rate, gender, age_group, language, mood, visibility, usage_count,
-                 file_hash, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)""",
-            (
-                voice_id, user_id, name, description or "", ref_audio_path, ref_text,
-                duration_ms, sample_rate, gender, age_group, language, mood, visibility,
-                file_hash, now, now,
-            ),
-        )
-        await db.commit()
+        try:
+            await db.execute(
+                """INSERT INTO voice_samples
+                    (id, user_id, name, description, ref_audio_path, ref_text, duration_ms,
+                     sample_rate, gender, age_group, language, mood, visibility, usage_count,
+                     file_hash, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)""",
+                (
+                    voice_id, user_id, name, description or "", ref_audio_path, ref_text,
+                    duration_ms, sample_rate, gender, age_group, language, mood, visibility,
+                    file_hash, now, now,
+                ),
+            )
+            await db.commit()
+        except aiosqlite.IntegrityError as exc:
+            if "user_id" in str(exc).lower() and "file_hash" in str(exc).lower():
+                raise ValueError("Duplicate voice sample") from exc
+            raise
         return voice_id
 
     async def get_voice_sample(self, voice_id: str) -> dict | None:
@@ -153,8 +154,12 @@ class VoiceBankDatabaseManager:
         if row is None:
             return None
         result = dict(row)
-        result["tags"] = await self.get_tags(voice_id)
-        result["vote_score"] = await self.get_vote_score(voice_id)
+        tags, vote_score = await asyncio.gather(
+            self.get_tags(voice_id),
+            self.get_vote_score(voice_id)
+        )
+        result["tags"] = tags
+        result["vote_score"] = vote_score
         return result
 
     async def get_voice_by_hash(self, user_id: str, file_hash: str) -> dict | None:
@@ -206,56 +211,78 @@ class VoiceBankDatabaseManager:
         age_group: str | None = None,
         sort: str = "votes",
     ) -> dict:
-        """List public voice samples with optional filters."""
+        """List public voice samples with optional filters.
+        
+        Tag filtering is done in SQL using EXISTS to ensure correct pagination.
+        """
         db = await self.get_db()
 
         conditions = ["visibility = 'public'"]
         params: list = []
+        count_params: list = []
 
         if gender:
             conditions.append("gender = ?")
             params.append(gender)
+            count_params.append(gender)
         if age_group:
             conditions.append("age_group = ?")
             params.append(age_group)
+            count_params.append(age_group)
+
+        # Tag filtering using EXISTS (moved to SQL for correct pagination)
+        tag_conditions = []
+        if tags:
+            tag_placeholders = ",".join(["?"] * len(tags))
+            tag_conditions.append(
+                f"EXISTS (SELECT 1 FROM voice_tags vt WHERE vt.voice_id = v.id AND vt.tag IN ({tag_placeholders}))"
+            )
+            params.extend(tags)
+            count_params.extend(tags)
 
         where_clause = " AND ".join(conditions) if conditions else "1=1"
+        if tag_conditions:
+            where_clause += " AND " + " AND ".join(tag_conditions)
 
-        # Get total count
-        count_sql = f"SELECT COUNT(*) FROM voice_samples WHERE {where_clause}"
-        cursor = await db.execute(count_sql, params)
+        # Get total count with same WHERE clause
+        count_sql = f"""SELECT COUNT(*) FROM voice_samples v WHERE {where_clause}"""
+        cursor = await db.execute(count_sql, count_params)
         row = await cursor.fetchone()
         total = row[0]
 
         # Build ordering
         if sort == "votes":
             order_sql = """ORDER BY
-                (SELECT COALESCE(SUM(vote), 0) FROM voice_votes WHERE voice_id = voice_samples.id) DESC,
+                (SELECT COALESCE(SUM(vote), 0) FROM voice_votes WHERE voice_id = v.id) DESC,
                 usage_count DESC, created_at DESC"""
         else:
             order_sql = "ORDER BY created_at DESC"
 
-        # Get items
-        sql = f"""SELECT * FROM voice_samples WHERE {where_clause} {order_sql} LIMIT ? OFFSET ?"""
-        params.extend([limit, offset])
-        cursor = await db.execute(sql, params)
+        # Get items with JOINs for tags and vote_score
+        sql = f"""SELECT 
+            v.*,
+            GROUP_CONCAT(vt.tag) as tags,
+            COALESCE(SUM(vv.vote), 0) as vote_score
+        FROM voice_samples v
+        LEFT JOIN voice_tags vt ON v.id = vt.voice_id
+        LEFT JOIN voice_votes vv ON v.id = vv.voice_id
+        WHERE {where_clause}
+        GROUP BY v.id
+        {order_sql}
+        LIMIT ? OFFSET ?"""
+        
+        query_params = params + [limit, offset]
+        cursor = await db.execute(sql, query_params)
         rows = await cursor.fetchall()
+        
         items = []
         for row in rows:
             item = dict(row)
-            item["tags"] = await self.get_tags(item["id"])
-            item["vote_score"] = await self.get_vote_score(item["id"])
+            # Parse GROUP_CONCAT result into list of tags
+            tags_str = item.get("tags")
+            item["tags"] = tags_str.split(",") if tags_str else []
+            item["vote_score"] = item.get("vote_score", 0)
             items.append(item)
-
-        # Filter by tags if specified
-        if tags:
-            filtered_items = []
-            for item in items:
-                item_tags = set(item["tags"])
-                if any(t in item_tags for t in tags):
-                    filtered_items.append(item)
-            items = filtered_items
-            total = len(items)
 
         return {"items": items, "total": total}
 
@@ -282,7 +309,9 @@ class VoiceBankDatabaseManager:
     async def delete_voice_sample(self, voice_id: str, user_id: str) -> None:
         """Delete a voice sample and its associated tags and votes. Owner only."""
         db = await self.get_db()
-        # Explicitly delete tags and votes first (cascade delete may not be reliable across connections)
+        # Explicitly delete tags and votes first as a safety measure.
+        # Tables have ON DELETE CASCADE, but explicit deletes ensure cleanup
+        # even if foreign_keys pragma was not properly set on this connection.
         await db.execute("DELETE FROM voice_tags WHERE voice_id = ?", (voice_id,))
         await db.execute("DELETE FROM voice_votes WHERE voice_id = ?", (voice_id,))
         await db.execute(
@@ -342,47 +371,46 @@ class VoiceBankDatabaseManager:
 
         Score = (tag_matches * 10) + vote_score.
         Sort by score DESC, usage_count DESC, created_at DESC. LIMIT 1.
+        Uses a single query with JOINs to avoid N+1 queries.
         """
         db = await self.get_db()
 
-        # Get all public voices with matching gender
+        # Build placeholders for tags
+        if tags:
+            tag_placeholders = ",".join(["?"] * len(tags))
+            tag_params = tags
+        else:
+            tag_placeholders = "?"
+            tag_params = [""]
+
+        # Single query with JOINs to get voice, tags, vote_score, and tag_matches
         cursor = await db.execute(
-            """SELECT * FROM voice_samples
-               WHERE visibility = 'public'
-               AND (gender = ? OR gender = 'other')
-               ORDER BY created_at DESC""",
-            (gender,),
+            f"""SELECT 
+                v.*,
+                GROUP_CONCAT(vt.tag) as tags,
+                COALESCE(SUM(vv.vote), 0) as vote_score,
+                COUNT(CASE WHEN vt.tag IN ({tag_placeholders}) THEN 1 END) as matching_tags
+            FROM voice_samples v
+            LEFT JOIN voice_tags vt ON v.id = vt.voice_id
+            LEFT JOIN voice_votes vv ON v.id = vv.voice_id
+            WHERE v.visibility = 'public' AND (v.gender = ? OR v.gender = 'other')
+            GROUP BY v.id
+            ORDER BY matching_tags DESC, vote_score DESC, v.usage_count DESC, v.created_at DESC
+            LIMIT 1""",
+            tag_params + [gender],
         )
-        rows = await cursor.fetchall()
+        row = await cursor.fetchone()
 
-        best = None
-        best_score = -1
+        if row is None:
+            return None
 
-        for row in rows:
-            voice = dict(row)
-            voice_tags = set(await self.get_tags(voice["id"]))
+        voice = dict(row)
+        # Parse GROUP_CONCAT result into list of tags
+        tags_str = voice.get("tags")
+        voice["tags"] = tags_str.split(",") if tags_str else []
+        voice["vote_score"] = voice.get("vote_score", 0)
 
-            # Count matching tags
-            tag_matches = sum(1 for t in tags if t in voice_tags)
-
-            # Compute vote score
-            vote_score = await self.get_vote_score(voice["id"])
-
-            score = tag_matches * 10 + vote_score
-
-            if score > best_score:
-                best_score = score
-                best = voice
-                best["tags"] = list(voice_tags)
-                best["vote_score"] = vote_score
-            elif score == best_score:
-                # Tie-break: prefer higher usage_count
-                if voice["usage_count"] > (best["usage_count"] if best else 0):
-                    best = voice
-                    best["tags"] = list(voice_tags)
-                    best["vote_score"] = vote_score
-
-        return best
+        return voice
 
     async def update_voice_sample(
         self, voice_id: str, **updates

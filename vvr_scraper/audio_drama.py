@@ -244,7 +244,7 @@ class VoiceManager:
     _global_voice_metadata = {}
     _global_init_lock = asyncio.Lock()
 
-    def __init__(self, db, story_id: str, provider: TTSProvider | None = None):
+    def __init__(self, db, story_id: str, provider: TTSProvider | None = None, voice_bank_db=None):
         self._provider = provider
         self.db = db
         self.story_id = story_id
@@ -252,6 +252,7 @@ class VoiceManager:
         self._profile_cache = {}
         self._initialized = False
         self._instance_lock = asyncio.Lock()
+        self._voice_bank_db = voice_bank_db  # Injected VoiceBankDatabaseManager (optional)
 
         # Build narrator voice from env config
         narrator_ref = os.getenv("VVR_NARRATOR_REF_AUDIO")
@@ -391,33 +392,40 @@ class VoiceManager:
                     return spec
 
             # 3. Community Voice Bank lookup
+            voice_bank_db = None
             try:
                 from vvr_scraper.voice_bank.db import VoiceBankDatabaseManager
                 from vvr_scraper.voice_bank.storage import get_voice_bank_dir
                 from vvr_scraper.utils import get_config_path
 
-                voice_bank_db = VoiceBankDatabaseManager(db_path=get_config_path("voice_bank.db"))
-                await voice_bank_db.init_db()
-                try:
-                    community_voice = await voice_bank_db.find_best_voice(
-                        gender=gender.lower(),
-                        tags=_infer_tags_from_character(character_name),
+                # Use injected DB instance if available, otherwise create new (backward compatibility)
+                if self._voice_bank_db is not None:
+                    voice_bank_db = self._voice_bank_db
+                else:
+                    voice_bank_db = VoiceBankDatabaseManager(db_path=get_config_path("voice_bank.db"))
+                    await voice_bank_db.init_db()
+
+                community_voice = await voice_bank_db.find_best_voice(
+                    gender=gender.lower(),
+                    tags=_infer_tags_from_character(character_name),
+                )
+                if community_voice:
+                    canonical_path = os.path.join(
+                        get_voice_bank_dir(), community_voice["ref_audio_path"]
                     )
-                    if community_voice:
-                        canonical_path = os.path.join(
-                            get_voice_bank_dir(), community_voice["ref_audio_path"]
-                        )
-                        spec = VoiceSpec(
-                            ref_audio_path=canonical_path,
-                            ref_text=community_voice["ref_text"],
-                        )
-                        self._voice_cache[char_normalized] = spec
-                        await voice_bank_db.increment_usage(community_voice["id"])
-                        return spec
-                finally:
-                    await voice_bank_db.close()
+                    spec = VoiceSpec(
+                        ref_audio_path=canonical_path,
+                        ref_text=community_voice["ref_text"],
+                    )
+                    self._voice_cache[char_normalized] = spec
+                    await voice_bank_db.increment_usage(community_voice["id"])
+                    return spec
             except Exception as e:
                 logger.debug(f"Community voice bank lookup failed (non-fatal): {e}")
+            finally:
+                # Only close if we created a new instance (backward compatibility)
+                if voice_bank_db is not None and self._voice_bank_db is None:
+                    await voice_bank_db.close()
 
             # Auto-assign from available voices (ElevenLabs legacy path)
             available_ids = self._cached_available_voices

@@ -1,3 +1,4 @@
+import random
 import time
 from collections import defaultdict
 
@@ -33,6 +34,13 @@ async def _get_social_db(request: Request):
 def enforce_rate_limit(user_id: str, action: str, limit: int, window_seconds: int):
     now = time.monotonic()
     key = (user_id, action)
+    # Clean old entries occasionally (every 100 calls on average when > 1000 entries)
+    if len(RATE_BUCKETS) > 1000 and random.random() < 0.01:
+        for k in list(RATE_BUCKETS.keys()):
+            RATE_BUCKETS[k] = [ts for ts in RATE_BUCKETS[k] if now - ts < window_seconds]
+            if not RATE_BUCKETS[k]:
+                del RATE_BUCKETS[k]
+
     RATE_BUCKETS[key] = [ts for ts in RATE_BUCKETS[key] if now - ts < window_seconds]
     if len(RATE_BUCKETS[key]) >= limit:
         raise HTTPException(status_code=429, detail="Rate limit exceeded")

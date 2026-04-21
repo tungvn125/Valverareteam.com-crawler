@@ -108,18 +108,20 @@ async def delete_voice(db: VoiceBankDatabaseManager, voice_id: str, user_id: str
     if voice["user_id"] != user_id and not is_admin:
         raise ValueError("You do not own this voice sample")
 
-    # Delete files from disk (resolve relative path to absolute)
+    # Store file path before deleting DB record
     from .storage import get_voice_bank_dir
     abs_path = os.path.join(get_voice_bank_dir(), voice["ref_audio_path"])
+    user_dir = os.path.join(get_voice_bank_dir(), voice["user_id"])
+
+    # Delete DB record first (cascades tags and votes)
+    await db.delete_voice_sample(voice_id, user_id)
+
+    # Delete files from disk (resolve relative path to absolute)
     if os.path.exists(abs_path):
         os.remove(abs_path)
     # Clean up empty user directory
-    user_dir = os.path.join(get_voice_bank_dir(), voice["user_id"])
     if os.path.isdir(user_dir) and not os.listdir(user_dir):
         os.rmdir(user_dir)
-
-    # Delete DB record (cascades tags and votes)
-    await db.delete_voice_sample(voice_id, user_id)
 
 
 async def vote_voice(db: VoiceBankDatabaseManager, voice_id: str, user_id: str, vote: int) -> int:
