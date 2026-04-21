@@ -218,7 +218,12 @@ async def test_voice_manager_gender_aware():
         mock_db.save_character_profile = AsyncMock()
 
         story_id = "story_gender"
-        vm = VoiceManager(mock_db, story_id)
+        mock_voice_bank_db = AsyncMock()
+        mock_voice_bank_db.find_best_voice = AsyncMock(return_value=None)
+        mock_voice_bank_db.init_db = AsyncMock()
+        mock_voice_bank_db.close = AsyncMock()
+
+        vm = VoiceManager(mock_db, story_id, voice_bank_db=mock_voice_bank_db)
 
         # 1. Request male voice
         v_male = await vm.get_voice("Nam", gender="male")
