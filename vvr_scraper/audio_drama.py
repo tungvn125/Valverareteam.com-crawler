@@ -4,6 +4,7 @@ import io
 import json
 import os
 import random
+import re
 from typing import Any
 
 import httpx
@@ -30,7 +31,7 @@ class ScriptResult(list):
                 "type": "mood_shift",
                 "mood": "peaceful",
                 "tags": ["peaceful"],
-                "visual_prompt": "A peaceful setting.",
+                "visual_prompt": "",  # Empty to avoid spurious image generation
                 "vfx": [],
                 "transition": "fade",
                 "intensity": 0.5,
@@ -118,7 +119,6 @@ class OpenAIParser:
             raise ValueError("Empty content in response")
 
         # --- JSON Sanity Fix ---
-        import re
 
         content = re.sub(r'(:[ \t]*"(?:[^"\\]|\\.)*")\s*(")', r"\1, \2", content)
         content = re.sub(r"(})\s*({)", r"\1, \2", content)
@@ -247,15 +247,15 @@ class VoiceManager:
             narrator_id = os.getenv("VVR_NARRATOR_VOICE_ID", self.DEFAULT_NARRATOR_VOICE_ID)
             self.narrator_voice = VoiceSpec(voice_id=narrator_id)
 
-        self._client = httpx.AsyncClient(timeout=300.0)
         self._cached_available_voices = []
         self._cached_voice_metadata = {}
+        self._closed = False
 
     async def close(self):
         """Closes resources."""
-        await self._client.aclose()
-        if self._provider and hasattr(self._provider, "close"):
-            await self._provider.close()
+        if self._closed:
+            return
+        self._closed = True
         logger.debug("VoiceManager closed.")
 
     async def _init_cache(self):
@@ -279,57 +279,65 @@ class VoiceManager:
                     self._voice_cache[p.name.lower()] = VoiceSpec(voice_id=p.voice_id)
 
         # 2. Fetch voices (using global cache) — from provider or ElevenLabs legacy
-        async with self._global_init_lock:
-            if VoiceManager._global_available_voices is None:
-                if self._provider is not None:
-                    # Use the provider's voice discovery
-                    try:
-                        voices = await self._provider.discover_voices()
-                        VoiceManager._global_available_voices = [v.voice_id for v in voices if v.voice_id]
-                        VoiceManager._global_voice_metadata = {
-                            v.voice_id: {
-                                "name": v.name,
-                                "gender": v.gender.lower() if v.gender else "unknown",
-                                "labels": v.labels,
-                            }
-                            for v in voices
-                            if v.voice_id
-                        }
-                        logger.info(f"Fetched {len(voices)} voices from provider.")
-                    except Exception as e:
-                        logger.warning(f"Failed to discover voices from provider: {e}")
-                        VoiceManager._global_available_voices = []
-                        VoiceManager._global_voice_metadata = {}
-                else:
-                    # Legacy ElevenLabs path
-                    api_key = os.getenv("ELEVENLABS_API_KEY")
-                    if not api_key:
-                        logger.warning("ELEVENLABS_API_KEY missing, using fallback empty voice list")
-                        VoiceManager._global_available_voices = []
-                    else:
+        # Double-check locking: first check without lock (fast path), then re-check with lock
+        if VoiceManager._global_available_voices is None:
+            async with self._global_init_lock:
+                # Re-check after acquiring lock to handle race condition
+                if VoiceManager._global_available_voices is None:
+                    if self._provider is not None:
+                        # Use the provider's voice discovery
                         try:
-                            from elevenlabs.client import ElevenLabs
-
-                            client = ElevenLabs(api_key=api_key)
-
-                            def fetch_voices():
-                                return client.voices.get_all().voices
-
-                            voices = await asyncio.to_thread(fetch_voices)
-                            VoiceManager._global_available_voices = [v.voice_id for v in voices]
+                            voices = await self._provider.discover_voices()
+                            VoiceManager._global_available_voices = [v.voice_id for v in voices if v.voice_id]
                             VoiceManager._global_voice_metadata = {
                                 v.voice_id: {
                                     "name": v.name,
-                                    "gender": v.labels.get("gender", "unknown").lower() if v.labels else "unknown",
-                                    "labels": v.labels if v.labels else {},
+                                    "gender": v.gender.lower() if v.gender else "unknown",
+                                    "labels": v.labels,
                                 }
                                 for v in voices
+                                if v.voice_id
                             }
-                            logger.info(f"Fetched {len(voices)} voices from ElevenLabs.")
+                            logger.info(f"Fetched {len(voices)} voices from provider.")
                         except Exception as e:
-                            logger.error(f"Failed to fetch ElevenLabs voices: {e}")
+                            logger.warning(f"Failed to discover voices from provider: {e}")
                             VoiceManager._global_available_voices = []
+                            VoiceManager._global_voice_metadata = {}
+                    else:
+                        # Legacy ElevenLabs path
+                        api_key = os.getenv("ELEVENLABS_API_KEY")
+                        if not api_key:
+                            logger.warning("ELEVENLABS_API_KEY missing, using fallback empty voice list")
+                            VoiceManager._global_available_voices = []
+                        else:
+                            try:
+                                from elevenlabs.client import ElevenLabs
 
+                                client = ElevenLabs(api_key=api_key)
+
+                                def fetch_voices():
+                                    return client.voices.get_all().voices
+
+                                voices = await asyncio.to_thread(fetch_voices)
+                                VoiceManager._global_available_voices = [v.voice_id for v in voices]
+                                VoiceManager._global_voice_metadata = {
+                                    v.voice_id: {
+                                        "name": v.name,
+                                        "gender": v.labels.get("gender", "unknown").lower() if v.labels else "unknown",
+                                        "labels": v.labels if v.labels else {},
+                                    }
+                                    for v in voices
+                                }
+                                logger.info(f"Fetched {len(voices)} voices from ElevenLabs.")
+                            except Exception as e:
+                                logger.error(f"Failed to fetch ElevenLabs voices: {e}")
+                                VoiceManager._global_available_voices = []
+
+                # Always cache the global state (inside lock, after potential init)
+                self._cached_available_voices = VoiceManager._global_available_voices
+                self._cached_voice_metadata = VoiceManager._global_voice_metadata
+        else:
+            # Fast path: global already initialized, just cache it
             self._cached_available_voices = VoiceManager._global_available_voices
             self._cached_voice_metadata = VoiceManager._global_voice_metadata
 
@@ -340,7 +348,7 @@ class VoiceManager:
         await self._init_cache()
         return list(self._profile_cache.values())
 
-    async def get_voice(self, character_name: str, gender: str = "unknown") -> VoiceSpec:
+    async def get_voice(self, character_name: str | None, gender: str = "unknown") -> VoiceSpec:
         """Resolve character -> VoiceSpec."""
         if not character_name:
             return self.narrator_voice
@@ -429,111 +437,7 @@ class VoiceManager:
         return script_segments
 
     async def synthesize(self, voice: VoiceSpec, text: str, **kwargs: Any) -> SynthesisResult:
-        """Delegate synthesis to provider, or fall back to legacy ElevenLabs."""
-        if self._provider:
-            return await self._provider.synthesize(text, voice)
-
-        # Legacy path: direct ElevenLabs call (backward compat when no provider)
-        from .tts.base import WordAlignment
-
-        voice_id = voice.voice_id or self.narrator_voice.voice_id
-        stability = kwargs.get("stability", 0.35)
-        audio_bytes, word_alignments_raw = await self._synthesize_elevenlabs_legacy(voice_id, text, stability)
-
-        word_alignments = (
-            [WordAlignment(word=w["word"], start=w["start"], end=w["end"]) for w in word_alignments_raw]
-            if word_alignments_raw
-            else None
-        )
-
-        duration_ms = _estimate_duration_ms_legacy(audio_bytes)
-        return SynthesisResult(
-            audio_bytes=audio_bytes,
-            sample_rate=44100,
-            duration_ms=duration_ms,
-            word_alignments=word_alignments,
-        )
-
-    async def _synthesize_elevenlabs_legacy(self, voice_id: str, text: str, stability: float):
-        """Legacy ElevenLabs synthesis (backward compat when no provider)."""
-        api_key = os.getenv("ELEVENLABS_API_KEY")
-        if not api_key:
-            raise ValueError("ELEVENLABS_API_KEY required")
-
-        url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream-with-timestamps"
-        headers = {"xi-api-key": api_key, "Content-Type": "application/json"}
-        data = {
-            "text": text,
-            "model_id": "eleven_v3",
-            "voice_settings": {
-                "stability": stability,
-                "similarity_boost": 0.75,
-                "style": 0.0,
-                "use_speaker_boost": True,
-            },
-        }
-
-        audio_buffer = io.BytesIO()
-        all_alignments = []
-
-        async with self._client.stream("POST", url, headers=headers, json=data) as response:
-            if response.status_code != 200:
-                error_msg = await response.aread()
-                raise Exception(f"ElevenLabs API error ({response.status_code}): {error_msg}")
-            async for line in response.aiter_lines():
-                if not line:
-                    continue
-                try:
-                    chunk = json.loads(line)
-                    if "audio_base64" in chunk:
-                        audio_buffer.write(base64.b64decode(chunk["audio_base64"]))
-                    if "alignment" in chunk:
-                        all_alignments.append(chunk["alignment"])
-                except Exception as e:
-                    logger.warning(f"Error parsing alignment chunk: {e}")
-
-        full_audio = audio_buffer.getvalue()
-        audio_buffer.close()
-
-        word_alignments = []
-        current_word_chars = []
-        current_word_start = None
-        last_end = 0
-
-        for alignment in all_alignments:
-            chars = alignment.get("characters", [])
-            starts = alignment.get("character_start_times_seconds", [])
-            ends = alignment.get("character_end_times_seconds", [])
-            for char, start, end in zip(chars, starts, ends, strict=False):
-                if char.isspace():
-                    if current_word_chars:
-                        word_text = "".join(current_word_chars)
-                        word_alignments.append(
-                            {"word": word_text, "start": int(current_word_start * 1000), "end": int(last_end * 1000)}
-                        )
-                        current_word_chars = []
-                        current_word_start = None
-                    continue
-                if not current_word_chars:
-                    current_word_start = start
-                current_word_chars.append(char)
-                last_end = end
-
-        if current_word_chars:
-            word_text = "".join(current_word_chars)
-            word_alignments.append(
-                {"word": word_text, "start": int(current_word_start * 1000), "end": int(last_end * 1000)}
-            )
-
-        return full_audio, word_alignments
-
-
-def _estimate_duration_ms_legacy(audio_bytes: bytes) -> int:
-    """Estimate audio duration from MP3 bytes."""
-    try:
-        from pydub import AudioSegment
-
-        seg = AudioSegment.from_file(io.BytesIO(audio_bytes), format="mp3")
-        return len(seg)
-    except Exception:
-        return int(len(audio_bytes) * 8 / 128)
+        """Delegate synthesis to provider. Provider is required."""
+        if not self._provider:
+            raise ValueError("VoiceManager requires a TTSProvider. Legacy path removed.")
+        return await self._provider.synthesize(text, voice)

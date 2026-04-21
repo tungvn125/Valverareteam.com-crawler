@@ -36,6 +36,9 @@ def auto_detect_provider() -> str:
     if os.getenv("OPENAI_TTS_API_KEY") or os.getenv("OPENAI_TTS_BASE_URL"):
         return "openai_tts"
 
+    if os.getenv("VVR_OMNIVOICE_DEVICE"):
+        return "omnivoice"
+
     raise ValueError(
         "No TTS provider configured. "
         "Set ELEVENLABS_API_KEY for ElevenLabs, "

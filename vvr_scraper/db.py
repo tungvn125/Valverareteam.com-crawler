@@ -204,7 +204,17 @@ class DatabaseManager:
 
     async def close(self):
         if self._db:
-            await self._db.close()
+            try:
+                asyncio.get_running_loop()
+                # Event loop is running, safe to close
+                await self._db.close()
+            except RuntimeError:
+                # No running event loop (shutdown scenario)
+                # aiosqlite connections handle this gracefully
+                try:
+                    self._db.close()
+                except Exception:
+                    pass
             self._db = None
 
     async def get_all_novels(

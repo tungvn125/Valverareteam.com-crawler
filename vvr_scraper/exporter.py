@@ -9,7 +9,7 @@ import json
 import os
 import urllib.parse
 import uuid
-from io import BytesIO
+import io
 from typing import Any, cast
 
 import httpx
@@ -285,7 +285,7 @@ async def tao_file_pdf(
             story.append(Spacer(1, 0.1 * inch))
         elif item.type == "image" and item.data in image_cache:
             try:
-                img_data = BytesIO(image_cache[item.data])
+                img_data = io.BytesIO(image_cache[item.data])
                 pil_img = PILImage.open(img_data)
                 w, h = pil_img.size
                 ratio = min(max_w / w, max_h / h, 1)
@@ -425,6 +425,9 @@ async def tao_file_mp3(
     except Exception as e:
         logger.error(f"Lỗi khi tạo Audiobook: {e}")
         raise e
+    finally:
+        if hasattr(provider, 'close') and asyncio.iscoroutinefunction(provider.close):
+            await provider.close()
 
 
 async def tao_file_audiodrama(
@@ -435,6 +438,7 @@ async def tao_file_audiodrama(
     title: str = "Chương truyện",
     timeline_config: TimelineConfig | None = None,
     tts_provider_name: str | None = None,
+    fail_on_synth_error: bool = False,
 ) -> None:
     """
     AI-Powered Audio Drama generation.
@@ -445,7 +449,7 @@ async def tao_file_audiodrama(
     """
 
     from . import tts
-    from .tts.base import VoiceSpec
+    from .tts.base import VoiceSpec, map_tags
 
     # Instantiate provider with appropriate kwargs
     provider_name = tts_provider_name or tts.auto_detect_provider()
@@ -466,63 +470,68 @@ async def tao_file_audiodrama(
     script = []
 
     # 1. Initialize voice manager to get known characters for parsing context
-    voice_manager = VoiceManager(db_manager, story_id, provider=provider)
-    known_chars_raw = await _maybe_await(voice_manager.get_known_characters())
-    known_chars = known_chars_raw if isinstance(known_chars_raw, list) else []
+    voice_manager = None
+    image_gen = None
+    bgm_manager = None
+    try:
+        voice_manager = VoiceManager(db_manager, story_id, provider=provider)
+        known_chars_raw = await _maybe_await(voice_manager.get_known_characters())
+        known_chars = known_chars_raw if isinstance(known_chars_raw, list) else []
 
-    # 2. Load cached script if exists
-    if os.path.exists(script_file):
-        try:
-            with open(script_file, encoding="utf-8") as f:
-                raw_script = json.load(f)
-                script = ScriptResult(raw_script)
-            logger.info(f"Loaded cached script from {script_file}")
-        except Exception as e:
-            logger.warning(f"Failed to load cached script: {e}")
+        # 2. Load cached script if exists
+        if os.path.exists(script_file):
+            try:
+                with open(script_file, encoding="utf-8") as f:
+                    raw_script = json.load(f)
+                    script = ScriptResult(raw_script)
+                logger.info(f"Loaded cached script from {script_file}")
+            except Exception as e:
+                logger.warning(f"Failed to load cached script: {e}")
 
-    # 3. Parse if needed
-    if not script:
-        logger.info(f"Generating audio drama script for {title}...")
-        parser = OpenAIParser()
-        script = await parser.parse_chapter(full_text, known_characters=known_chars)
+        # 3. Parse if needed
         if not script:
-            logger.error("OpenAI failed to generate script. Aborting Audio Drama generation.")
-            return
+            logger.info(f"Generating audio drama script for {title}...")
+            parser = OpenAIParser()
+            script = await parser.parse_chapter(full_text, known_characters=known_chars)
+            if not script:
+                logger.error("OpenAI failed to generate script. Aborting Audio Drama generation.")
+                return
 
-    # 4. Resolve Aliases (NLP-based post-processing)
-    resolved_script = await _maybe_await(voice_manager.resolve_aliases(script))
-    if isinstance(resolved_script, list):
-        script = resolved_script
+        # 4. Resolve Aliases (NLP-based post-processing)
+        resolved_script = await _maybe_await(voice_manager.resolve_aliases(script))
+        if isinstance(resolved_script, list):
+            script = resolved_script
 
-    # 5. Save script checkpoint (after alias resolution)
-    try:
-        with open(script_file, "w", encoding="utf-8") as f:
-            json.dump(script, f, ensure_ascii=False, indent=2)
-        logger.info(f"Saved script checkpoint to {script_file}")
+        # 5. Save script checkpoint (after alias resolution)
+        try:
+            with open(script_file, "w", encoding="utf-8") as f:
+                json.dump(script, f, ensure_ascii=False, indent=2)
+            logger.info(f"Saved script checkpoint to {script_file}")
+        except Exception as e:
+            logger.warning(f"Failed to save script checkpoint: {e}")
+
+        # 6. Prepare voice assignments and handle mood shifts
+        enriched_script = ScriptResult()
+        for item in script:
+            if item.get("type") == "mood_shift":
+                enriched_script.append(item)
+            else:
+                char_name = item.get("role", "narrator")
+                text = item.get("text", "").strip()
+                gender = (item.get("gender") or "unknown").lower()
+                if not text:
+                    continue
+                voice_name = await voice_manager.get_voice(char_name, gender)
+                enriched_script.append({"type": "segment", "role": char_name, "voice": voice_name, "text": text})
     except Exception as e:
-        logger.warning(f"Failed to save script checkpoint: {e}")
+        logger.error(f"Error preparing audio drama script: {e}")
+        raise
 
-    # 6. Prepare voice assignments and handle mood shifts
-    enriched_script = ScriptResult()
-    for item in script:
-        if item.get("type") == "mood_shift":
-            enriched_script.append(item)
-        else:
-            char_name = item.get("role", "narrator")
-            text = item.get("text", "").strip()
-            gender = (item.get("gender") or "unknown").lower()
-            if not text:
-                continue
-            voice_name = await voice_manager.get_voice(char_name, gender)
-            enriched_script.append({"type": "segment", "role": char_name, "voice": voice_name, "text": text})
-
-    # 4. Synthesis and Mixing pipeline
+    # Synthesis requires pydub — check separately
     try:
-        import io
-
         from pydub import AudioSegment
     except ImportError as e:
-        logger.error(f"Required libraries for Audio Drama v2.5 not found: {e}")
+        logger.error(f"pydub not found. Please run 'uv pip install vvr-scraper[audio]'. Error: {e}")
         return
 
     logger.info(f"Synthesizing audio drama v2.5 (Parallel & Block-based): {filename}...")
@@ -549,8 +558,11 @@ async def tao_file_audiodrama(
     async def synthesize_segment(item):
         async with semaphore:
             voice_spec = item["voice"]  # VoiceSpec
-            text = item["text"]
+            raw_text = item["text"]
             role = item.get("role", "narrator")
+
+            # Map performance tags for the active provider
+            text = map_tags(raw_text, provider_name)
 
             # Stability: Narrator needs to be stable (0.75), Characters need to be expressive (0.35)
             stability = 0.75 if role.lower() == "narrator" else 0.35
@@ -574,14 +586,18 @@ async def tao_file_audiodrama(
                 )
                 return segment, alignments
             except Exception as e:
+                if fail_on_synth_error:
+                    raise
                 logger.error(f"Error synthesizing segment: {e}")
                 return AudioSegment.silent(duration=500), []
 
     try:
         timeline = AudioTimeline(cfg)
         final_audio = None
-        current_block_start_ms = 0
         all_events = []
+        temp_bgm_files: list[str] = []  # Track temp BGM files for cleanup (Issue #6)
+        # Store per-block metadata for event creation after render() (Issue #7)
+        block_metadata: list[dict] = []
 
         for i, block in enumerate(blocks):
             mood_info = block["mood_info"]
@@ -601,41 +617,110 @@ async def tao_file_audiodrama(
                 except Exception as e:
                     logger.warning(f"Failed to generate background image: {e}")
 
+            # 2. Parallel Synthesis for the block
+            synthesis_results = await asyncio.gather(*[synthesize_segment(s) for s in segments])
+            voice_segments = [res[0] for res in synthesis_results]
+            raw_block_alignments = [res[1] for res in synthesis_results]
+
+            # 3. Find BGM (Async)
+            bgm_track_path = None
+            for tag in tags:
+                bgm_track_path = bgm_manager.get_random_track(tag)
+                if bgm_track_path:
+                    logger.debug(f"Found local BGM for tag '{tag}': {bgm_track_path}")
+                    break
+
+            if not bgm_track_path:
+                logger.info(f"No local BGM for {tags}, searching Freesound...")
+                try:
+                    fs_results = await freesound_manager.search_bgm(tags, limit=5)
+                    if fs_results:
+                        sound = fs_results[0]
+                        bgm_track_path = f"temp_bgm_{uuid.uuid4().hex[:8]}_{sound.id}.wav"
+                        await freesound_manager.download_and_convert(sound.id, bgm_track_path)
+                        temp_bgm_files.append(bgm_track_path)
+                        logger.debug(f"Downloaded Freesound BGM: {bgm_track_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to fetch from Freesound: {e}")
+                    bgm_track_path = None
+
+            # 4. Mix block using AudioTimeline (Issue #7 - use render() instead of closure)
+            combined_voice = AudioSegment.silent(duration=0)
+            for j, vs in enumerate(voice_segments):
+                combined_voice += vs
+                if j < len(voice_segments) - 1:
+                    combined_voice += AudioSegment.silent(duration=cfg.gap_between_segments_ms)
+
+            # Do NOT apply fade here — AudioTimeline.render() handles it
+
+            # Store metadata for event creation after render()
+            block_metadata.append(
+                {
+                    "mood_info": mood_info,
+                    "segments": segments,
+                    "bg_rel_path": bg_rel_path,
+                    "voice_segments": voice_segments,
+                    "raw_block_alignments": raw_block_alignments,
+                    "bgm_track_path": bgm_track_path,
+                    "combined_voice_duration": len(combined_voice),
+                }
+            )
+
+            # Add block to timeline (Issue #7 - use AudioTimeline methods instead of closure)
+            timeline.add_block(i, combined_voice, current_mood, bgm_track_path)
+
+        # After all blocks, render the timeline (Issue #7)
+        try:
+            final_audio, block_timings = timeline.render(filename, mixing_engine)
+        except Exception as e:
+            logger.error(f"Error rendering timeline: {e}")
+            raise
+
+        # Create events using block_timings from render() (Issue #7)
+        current_block_start_ms = 0
+        for i, metadata in enumerate(block_metadata):
+            mood_info = metadata["mood_info"]
+            segments = metadata["segments"]
+            bg_rel_path = metadata["bg_rel_path"]
+            voice_segments = metadata["voice_segments"]
+            raw_block_alignments = metadata["raw_block_alignments"]
+
+            # Use block timing from render() for accurate positions
+            block_start_ms = block_timings[i]["start_ms"] if i < len(block_timings) else current_block_start_ms
+            block_mood = mood_info.get("mood", "peaceful")
+
+            # Background event
             if bg_rel_path:
                 all_events.append(
                     {
                         "type": "background",
-                        "start": current_block_start_ms,
+                        "start": block_start_ms,
                         "src": bg_rel_path,
                         "transition": mood_info.get("transition", "fade"),
                     }
                 )
 
+            # VFX event
             vfx_list = mood_info.get("vfx", [])
             if vfx_list:
                 all_events.append(
                     {
                         "type": "vfx",
-                        "start": current_block_start_ms,
-                        "end": current_block_start_ms + mood_info.get("duration", 1000),
+                        "start": block_start_ms,
+                        "end": block_start_ms + mood_info.get("duration", 1000),
                         "effect": vfx_list[0] if isinstance(vfx_list, list) and vfx_list else str(vfx_list),
                         "intensity": mood_info.get("intensity", 0.5),
                         "duration": mood_info.get("duration", 1000),
                     }
                 )
 
-            # 2. Parallel Synthesis for the block
-            synthesis_results = await asyncio.gather(*[synthesize_segment(s) for s in segments])
-            voice_segments = [res[0] for res in synthesis_results]
-            raw_block_alignments = [res[1] for res in synthesis_results]
-
-            # Adjust word alignments and create dialogue events
+            # Dialogue events
             segment_offset_in_block_ms = cfg.voice_overlay_offset_ms
             for j, segment_alignments in enumerate(raw_block_alignments):
                 role = segments[j].get("role", "narrator")
                 text = segments[j].get("text", "")
 
-                seg_start_ms = current_block_start_ms + segment_offset_in_block_ms
+                seg_start_ms = block_start_ms + segment_offset_in_block_ms
                 seg_duration_ms = len(voice_segments[j])
                 seg_end_ms = seg_start_ms + seg_duration_ms
 
@@ -659,105 +744,9 @@ async def tao_file_audiodrama(
                 all_events.append(dialogue_event)
                 segment_offset_in_block_ms += seg_duration_ms + cfg.gap_between_segments_ms
 
-            # 3. Find BGM (Async)
-            bgm_track_path = None
-            is_temp_bgm = False
-            for tag in tags:
-                bgm_track_path = bgm_manager.get_random_track(tag)
-                if bgm_track_path:
-                    logger.debug(f"Found local BGM for tag '{tag}': {bgm_track_path}")
-                    break
-
-            if not bgm_track_path:
-                logger.info(f"No local BGM for {tags}, searching Freesound...")
-                try:
-                    fs_results = await freesound_manager.search_bgm(tags, limit=5)
-                    if fs_results:
-                        sound = fs_results[0]
-                        bgm_track_path = f"temp_bgm_{uuid.uuid4().hex[:8]}_{sound.id}.wav"
-                        await freesound_manager.download_and_convert(sound.id, bgm_track_path)
-                        is_temp_bgm = True
-                        logger.debug(f"Downloaded Freesound BGM: {bgm_track_path}")
-                except Exception as e:
-                    logger.warning(f"Failed to fetch from Freesound: {e}")
-                    bgm_track_path = None
-
-            # 4. Mix block using timeline
-            def process_block_with_timeline(
-                v_segments, current_bgm_path, prev_mood, block_mood, current_final, temp_bgm
-            ):
-                combined_voice = AudioSegment.silent(duration=0)
-                for j, vs in enumerate(v_segments):
-                    combined_voice += vs
-                    if j < len(v_segments) - 1:
-                        combined_voice += AudioSegment.silent(duration=cfg.gap_between_segments_ms)
-
-                combined_voice = combined_voice.fade_in(cfg.voice_fade_in_ms).fade_out(cfg.voice_fade_out_ms)
-
-                if current_bgm_path and os.path.exists(current_bgm_path):
-                    bgm_audio = AudioSegment.from_file(current_bgm_path)
-                else:
-                    fallback_path = bgm_manager.get_random_track("peaceful")
-                    if fallback_path:
-                        bgm_audio = AudioSegment.from_file(fallback_path)
-                    else:
-                        bgm_audio = AudioSegment.silent(duration=10000)
-
-                bg_duration = len(combined_voice) + cfg.voice_overlay_offset_ms * 2
-                background = mixing_engine.create_looped_background(bgm_audio, bg_duration, gain_db=cfg.bgm_volume_db)
-
-                block_audio = mixing_engine.overlay_voice_on_background(
-                    background, combined_voice, position=cfg.voice_overlay_offset_ms
-                )
-
-                # Apply BGM crossfade if mood changed
-                if prev_mood is not None and prev_mood != block_mood:
-                    cf_duration = cfg.crossfade_default_ms
-                    if (prev_mood, block_mood) in {
-                        ("peaceful", "battle"),
-                        ("romance", "battle"),
-                        ("peaceful", "tension"),
-                        ("battle", "peaceful"),
-                    }:
-                        cf_duration = cfg.crossfade_battle_ms
-                    # Fade out the end of current block and fade in the start of new block
-                    fade_in = block_audio[:cf_duration].fade_in(cf_duration)
-                    tail_keep = len(block_audio) - cf_duration
-                    if tail_keep > 0:
-                        block_audio = fade_in + block_audio[cf_duration:]
-
-                block_audio_duration = len(block_audio)
-
-                new_final = current_final
-                if new_final is None:
-                    new_final = block_audio
-                else:
-                    new_final = new_final.append(block_audio, crossfade=cfg.crossfade_voice_ms)
-
-                # Cleanup temp BGM
-                if temp_bgm and current_bgm_path and os.path.exists(current_bgm_path):
-                    try:
-                        os.remove(current_bgm_path)
-                    except OSError:
-                        pass
-
-                return new_final, block_audio_duration
-
-            try:
-                prev_mood = blocks[i - 1]["mood_info"].get("mood", "peaceful") if i > 0 else None
-                final_audio, block_duration = await asyncio.to_thread(
-                    process_block_with_timeline,
-                    voice_segments,
-                    bgm_track_path,
-                    prev_mood,
-                    current_mood,
-                    final_audio,
-                    is_temp_bgm,
-                )
-                current_block_start_ms += block_duration - cfg.crossfade_voice_ms
-            except Exception as e:
-                logger.error(f"Error processing block {i + 1}: {e}")
-                raise
+            # Update current_block_start_ms for next iteration (based on render output)
+            if i < len(block_timings):
+                current_block_start_ms = block_timings[i]["end_ms"]
 
         # Only generate manifest if we have alignment data
         has_alignments = any(e.get("alignment") for e in all_events if e.get("type") == "dialogue")
@@ -779,15 +768,13 @@ async def tao_file_audiodrama(
         else:
             logger.info("No alignment data — skipping manifest generation")
 
-        if final_audio:
+        if final_audio and len(final_audio) > 0:
             logger.info(f"Exporting final Audio Drama to {filename}...")
 
             def export_final():
                 final_audio.export(filename, format="mp3")
 
             await asyncio.to_thread(export_final)
-
-            # Keep script.json for correction UI — do NOT delete on success
         else:
             logger.error("Audio Drama generation failed: No audio produced.")
 
@@ -797,6 +784,15 @@ async def tao_file_audiodrama(
 
         logger.error(traceback.format_exc())
     finally:
+        # Cleanup temp BGM files (Issue #6)
+        for temp_bgm_path in temp_bgm_files:
+            if temp_bgm_path and os.path.exists(temp_bgm_path):
+                try:
+                    os.remove(temp_bgm_path)
+                except OSError:
+                    pass
+        if "provider" in locals() and hasattr(provider, "close"):
+            await _maybe_await(provider.close())
         if "voice_manager" in locals():
             await _maybe_await(voice_manager.close())
         if "image_gen" in locals():

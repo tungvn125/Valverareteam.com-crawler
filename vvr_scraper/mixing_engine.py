@@ -116,15 +116,23 @@ class AudioTimeline:
             return self.config.crossfade_battle_ms
         return self.config.crossfade_default_ms
 
-    def render(self, output_path: str, mixing_engine: "MixingEngine") -> AudioSegment:
+    def render(self, output_path: str, mixing_engine: "MixingEngine") -> tuple[AudioSegment, list[dict]]:
+        """
+        Render the timeline to audio and return (final_audio, block_timings).
+
+        block_timings is a list of dicts with 'start_ms' and 'end_ms' for each block,
+        useful for computing event positions after rendering.
+        """
         cfg = self.config
         blocks = self._block_index
         if not blocks:
             logger.warning("AudioTimeline: no blocks to render")
-            return AudioSegment.silent(duration=0)
+            return AudioSegment.silent(duration=0), []
 
         final_audio: AudioSegment | None = None
         prev_mood: str | None = None
+        block_timings: list[dict] = []
+        current_position_ms = 0
 
         for i, block_info in enumerate(blocks):
             voice_segments = [t for t in self.tracks if t.segment_type == "voice_block"]
@@ -145,6 +153,8 @@ class AudioTimeline:
                 background, combined_voice, position=cfg.voice_overlay_offset_ms
             )
 
+            block_start_ms = current_position_ms
+
             if final_audio is None:
                 final_audio = block_audio
             else:
@@ -160,8 +170,10 @@ class AudioTimeline:
                 final_audio = final_audio.append(block_audio, crossfade=cfg.crossfade_voice_ms)
 
             prev_mood = mood
+            block_timings.append({"start_ms": block_start_ms, "end_ms": current_position_ms + len(block_audio)})
+            current_position_ms += len(block_audio) - cfg.crossfade_voice_ms
 
-        return final_audio
+        return final_audio, block_timings
 
     def _load_bgm(self, bgm_path: str | None, mood: str, mixing_engine: "MixingEngine") -> AudioSegment:
         import os

@@ -88,11 +88,6 @@ class OpenAITTSProvider:
 
 def _estimate_duration_ms(audio_bytes: bytes) -> int:
     """Estimate audio duration from MP3 bytes using pydub."""
-    try:
-        from pydub import AudioSegment
+    from .base import estimate_duration_ms
 
-        seg = AudioSegment.from_file(io.BytesIO(audio_bytes), format="mp3")
-        return len(seg)
-    except Exception as e:
-        logger.warning(f"Failed to estimate audio duration: {e}")
-        return int(len(audio_bytes) * 8 / 128)
+    return estimate_duration_ms(audio_bytes)

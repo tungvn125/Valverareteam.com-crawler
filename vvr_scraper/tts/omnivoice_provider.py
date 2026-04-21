@@ -67,7 +67,8 @@ class OmniVoiceProvider:
         try:
             import torch
 
-            del self._model
+            if hasattr(self, "_model"):
+                del self._model
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
         except Exception as e:

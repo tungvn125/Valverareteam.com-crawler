@@ -99,3 +99,16 @@ class TTSProvider(Protocol):
     async def discover_voices(self) -> list[VoiceInfo]: ...
     async def preview_voice(self, voice: VoiceSpec, text: str) -> bytes: ...
     async def close(self) -> None: ...
+
+
+def estimate_duration_ms(audio_bytes: bytes) -> int:
+    """Estimate audio duration from MP3 bytes using pydub."""
+    try:
+        import io
+
+        from pydub import AudioSegment
+
+        seg = AudioSegment.from_file(io.BytesIO(audio_bytes), format="mp3")
+        return len(seg)
+    except Exception:
+        return int(len(audio_bytes) * 8 / 128)

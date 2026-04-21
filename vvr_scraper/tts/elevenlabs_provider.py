@@ -18,6 +18,13 @@ class ElevenLabsProvider:
     def __init__(self, api_key: str):
         self._api_key = api_key
         self._client = httpx.AsyncClient(timeout=300.0)
+        self._sync_client = None  # Lazy init
+
+    def _get_sync_client(self):
+        if self._sync_client is None:
+            from elevenlabs.client import ElevenLabs
+            self._sync_client = ElevenLabs(api_key=self._api_key)
+        return self._sync_client
 
     async def synthesize(self, text: str, voice: VoiceSpec) -> SynthesisResult:
         """Synthesize using ElevenLabs stream-with-timestamps endpoint."""
@@ -75,9 +82,7 @@ class ElevenLabsProvider:
 
     async def discover_voices(self) -> list[VoiceInfo]:
         """List available voices from ElevenLabs cloud API."""
-        from elevenlabs.client import ElevenLabs
-
-        client = ElevenLabs(api_key=self._api_key)
+        client = self._get_sync_client()
 
         def fetch():
             return client.voices.get_all().voices
@@ -95,9 +100,7 @@ class ElevenLabsProvider:
 
     async def preview_voice(self, voice: VoiceSpec, text: str) -> bytes:
         """Generate a short audio preview via ElevenLabs."""
-        from elevenlabs.client import ElevenLabs
-
-        client = ElevenLabs(api_key=self._api_key)
+        client = self._get_sync_client()
         voice_id = voice.voice_id or DEFAULT_ELEVENLABS_VOICE_ID
 
         def generate():
@@ -157,10 +160,6 @@ def _parse_word_alignments(all_alignments: list[dict]) -> list[WordAlignment]:
 
 def _estimate_duration_ms(audio_bytes: bytes) -> int:
     """Estimate audio duration from MP3 bytes using pydub."""
-    try:
-        from pydub import AudioSegment
+    from .base import estimate_duration_ms
 
-        seg = AudioSegment.from_file(io.BytesIO(audio_bytes), format="mp3")
-        return len(seg)
-    except Exception:
-        return int(len(audio_bytes) * 8 / 128)
+    return estimate_duration_ms(audio_bytes)

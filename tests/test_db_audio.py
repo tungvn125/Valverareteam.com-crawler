@@ -33,6 +33,8 @@ async def test_character_voice_persistence(tmp_path):
     assert await db.get_character_voice("story1", "Unknown") is None
     assert await db.get_character_voice("unknown_story", "Character A") is None
 
+    await db.close()
+
 
 @pytest.mark.asyncio
 async def test_character_voice_with_ref_audio(tmp_path):
@@ -57,3 +59,5 @@ async def test_character_voice_with_ref_audio(tmp_path):
     assert loaded[0].ref_audio_path == "voices/hero/sample.wav"
     assert loaded[0].ref_text == "I am the hero of this story."
     assert loaded[0].voice_id == "abc123"
+
+    await db.close()
