@@ -44,15 +44,21 @@ def print_voice_table(items: list, title: str = "Voices") -> None:
     for item in items:
         visibility = item.get("visibility", "unknown")
         visibility_color = VISIBILITY_COLORS.get(visibility, "white")
+        tags = item.get("tags", [])
+        tags_str = ", ".join(tags) if isinstance(tags, list) else str(tags)
+        duration_ms = item.get("duration_ms")
+        duration_str = f"{duration_ms}ms" if duration_ms is not None else "N/A"
+        vote_score = item.get("vote_score")
+        vote_str = str(vote_score) if vote_score is not None else "N/A"
 
         table.add_row(
-            str(item.get("id", "")),
+            str(item.get("id", ""))[:12],
             str(item.get("name", "")),
             str(item.get("gender", "")),
-            str(item.get("age", "")),
-            str(item.get("duration", "")),
-            str(item.get("tags", "")),
-            str(item.get("votes", "")),
+            str(item.get("age_group", "")),
+            duration_str,
+            tags_str,
+            vote_str,
             f"[{visibility_color}]{visibility}[/{visibility_color}]",
         )
 
@@ -68,6 +74,12 @@ def print_voice_detail(voice: dict) -> None:
     """
     visibility = voice.get("visibility", "unknown")
     visibility_color = VISIBILITY_COLORS.get(visibility, "white")
+    tags = voice.get("tags", [])
+    tags_str = ", ".join(tags) if isinstance(tags, list) else str(tags)
+    duration_ms = voice.get("duration_ms")
+    duration_str = f"{duration_ms}ms" if duration_ms is not None else "N/A"
+    vote_score = voice.get("vote_score")
+    vote_str = str(vote_score) if vote_score is not None else "N/A"
 
     content = f"""
 [bold]ID:[/bold] {voice.get("id", "N/A")}
@@ -75,16 +87,16 @@ def print_voice_detail(voice: dict) -> None:
 [bold]Gender:[/bold] {voice.get("gender", "N/A")}
 [bold]Age Group:[/bold] {voice.get("age_group", "N/A")}
 [bold]Language:[/bold] {voice.get("language", "N/A")}
-[bold]Duration:[/bold] {voice.get("duration", "N/A")}
-[bold]Sample Rate:[/bold] {voice.get("sample_rate", "N/A")}
+[bold]Duration:[/bold] {duration_str}
+[bold]Sample Rate:[/bold] {voice.get("sample_rate", "N/A")} Hz
 [bold]Mood:[/bold] {voice.get("mood", "N/A")}
 [bold]Visibility:[/bold] [{visibility_color}]{visibility}[/{visibility_color}]
 [bold]Usage Count:[/bold] {voice.get("usage_count", "N/A")}
-[bold]Votes:[/bold] {voice.get("votes", "N/A")}
-[bold]Tags:[/bold] {voice.get("tags", "N/A")}
+[bold]Votes:[/bold] {vote_str}
+[bold]Tags:[/bold] {tags_str}
 [bold]Description:[/bold] {voice.get("description", "N/A")}
 [bold]Ref Text:[/bold] {voice.get("ref_text", "N/A")}
-[bold]Created:[/bold] {voice.get("created", "N/A")}
+[bold]Created:[/bold] {voice.get("created_at", "N/A")}
     """.strip()
 
     panel = Panel(content, title=f"Voice Details: {voice.get('name', 'Unknown')}", border_style="blue")
