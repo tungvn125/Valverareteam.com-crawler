@@ -118,9 +118,26 @@ The OpenAI TTS provider works with any server that exposes an OpenAI-compatible 
 
 The `VoiceManager` resolves character voices using a cascading lookup:
 
-1. **Database cache** — checks `CharacterProfile.voice_id` for existing assignments
-2. **Provider discovery** — calls `discover_voices()` on the configured provider for gender-aware matching
-3. **Fallback** — uses the narrator voice when no specific voice is found
+1. **Story-specific cache** — checks `_voice_cache` for assignments made in the current session
+2. **CharacterProfile from DB** — checks `CharacterProfile.ref_audio_path` or `voice_id` for existing assignments
+3. **Community Voice Bank** — queries public voices by gender and inferred character tags, sorted by vote score
+4. **Provider discovery** — calls `discover_voices()` on the configured provider for gender-aware matching
+5. **Fallback** — uses the narrator voice when no specific voice is found
+
+### Community Voice Bank Integration
+
+When the Community Voice Bank is enabled (requires `voice_bank.db`):
+
+- `VoiceManager` calls `find_best_voice(gender, tags)` on the voice bank
+- Tags are inferred from character names via keyword matching (e.g., "loli" → `child`, "tsun" → `tsundere`)
+- The highest-scoring public voice (by tag matches + community votes) is selected
+- Selected voices are cached per story and their `usage_count` increments
+
+To manually assign community voices, use `--select-voices` with `AD-MP3`:
+
+```bash
+vvrt <slug> -f AD-MP3 --tts-provider omnivoice --select-voices
+```
 
 ### VoiceSpec Resolution Modes
 
@@ -301,6 +318,83 @@ Generates a short audio preview for the specified voice. Returns audio bytes (ty
 curl "http://localhost:8000/voices/preview?voice_id=EXAVITQu4vr4xnSDxMaL" \
   --output preview.mp3
 ```
+
+## Section 8: Community Voice Bank API
+
+The Web UI exposes endpoints for managing community voice samples (OmniVoice only).
+
+### Upload Voice
+
+```
+POST /api/voices/upload
+```
+
+**Multipart form fields:**
+
+- `audio` — audio file (.wav, .mp3, .ogg, .m4a)
+- `ref_text` — transcript text (min 10 chars)
+- `name` — voice name (3–100 chars)
+- `gender` — `male`, `female`, or `other`
+- `age_group` — `child`, `teen`, `young_adult`, `adult`, `elder`
+- `description` — optional (max 500 chars)
+- `language` — default `vi`
+- `mood` — optional
+- `tags` — comma-separated, max 5 tags
+
+**Validation:**
+- Audio must be 3–10 seconds
+- Sample rate ≥ 22050 Hz
+- WAV files must be PCM 16/24-bit
+- Duplicate detection via file hash
+
+### List My Voices
+
+```
+GET /api/voices/me?limit=20&offset=0
+```
+
+Returns voices owned by the authenticated user (private + public).
+
+### List Community Voices
+
+```
+GET /api/voices/community?limit=20&offset=0&tag=tsundere&gender=male&age_group=adult
+```
+
+Returns public voices with optional filters.
+
+### Publish / Delist
+
+```
+PATCH /api/voices/{id}/publish    # private → public
+PATCH /api/voices/{id}/delist     # public → delisted
+```
+
+### Vote
+
+```
+POST /api/voices/{id}/vote
+Body: { "vote": 1 }  # or -1
+```
+
+### Preview
+
+```
+POST /api/voices/{id}/preview
+Body: { "text": "Xin chào" }
+Response: audio/wav bytes
+```
+
+### Character Profile Integration
+
+Update a character's voice from the community bank:
+
+```
+PUT /api/correction/{slug}/characters/{name}
+Body: { "voice_bank_id": "uuid-of-voice" }
+```
+
+The system resolves the voice from the bank and writes `ref_audio_path` + `ref_text` into the character profile.
 
 ## Troubleshooting
 

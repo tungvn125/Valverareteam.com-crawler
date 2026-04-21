@@ -149,6 +149,76 @@ Built-in providers:
 
 When `--tts-provider` is not set, the CLI auto-detects from environment variables. See [TTS Providers](tts-providers.md) for full configuration details.
 
+## Interactive Voice Selection (`--select-voices`)
+
+When generating `AD-MP3` with OmniVoice, use `--select-voices` to manually assign voices to characters:
+
+```bash
+vvrt <slug> -f AD-MP3 --tts-provider omnivoice --select-voices
+```
+
+This flag activates an interactive prompt after the script is parsed. For each detected character, you can:
+
+- **Auto-assign** — use the default VoiceManager logic
+- **Choose from local directory** — scan a folder with voice samples
+- **Choose from community voice bank** — search and select from uploaded voices
+- **Skip** — leave unassigned
+
+### Local Voice Directory Structure
+
+For local voice selection, organize voices as:
+
+```
+voice-directory/
+├── character1-voice/
+│   ├── ref_audio_path.wav   # or .mp3, .ogg, .m4a
+│   └── ref_text.txt         # transcript (min 10 chars)
+├── character2-voice/
+│   ├── ref_audio_path.mp3
+│   └── ref_text.txt
+└── narrator-voice/
+    ├── ref_audio_path.wav
+    └── ref_text.txt
+```
+
+Requirements:
+- Audio file must be 3–10 seconds, ≥22050 Hz sample rate
+- `ref_text.txt` contains the spoken transcript
+- Directory name suffix `-voice` is optional (e.g., `linh-voice/` or just `linh/`)
+
+## Voice Upload Subcommand
+
+Upload a voice sample to the community voice bank:
+
+```bash
+vvrt voice upload
+```
+
+Interactive prompts:
+
+1. Audio file path (`--audio`)
+2. Transcript text (`--ref-text`)
+3. Voice name (`--name`)
+4. Gender (`--gender`: male/female/other)
+5. Age group (`--age-group`: child/teen/young_adult/adult/elder)
+6. Optional tags (`--tags`: comma-separated)
+7. Publish immediately (`--publish`)
+
+Example with all flags:
+
+```bash
+vvrt voice upload \
+  --audio ./my_voice.wav \
+  --ref-text "Xin chào, đây là giọng nói của tôi" \
+  --name "Giọng Hà Nội" \
+  --gender male \
+  --age-group adult \
+  --tags hanoi-accent,serious \
+  --publish
+```
+
+Uploaded voices are stored in `~/.config/vvr-scraper/voice_bank/` (or `VVR_VOICE_BANK_DIR`).
+
 ## Playwright Modes
 
 The CLI exposes a mutually exclusive Playwright mode group:

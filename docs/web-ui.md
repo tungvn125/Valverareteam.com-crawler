@@ -37,6 +37,19 @@ The current FastAPI app includes these major surfaces:
 - `/novels`: static mount for generated output files
 - `/static`: static frontend assets
 - `/opds/...`: OPDS catalog and download routes
+- `/api/voices/...`: Community Voice Bank (upload, list, vote, preview)
+- `/api/correction/...`: character profile correction and voice assignment
+
+## Community Voice Bank
+
+The Web UI integrates with the Community Voice Bank for OmniVoice cloning:
+
+- **Upload voices** via `POST /api/voices/upload`
+- **Browse community voices** via `GET /api/voices/community`
+- **Preview voices** via `POST /api/voices/{id}/preview`
+- **Assign voices to characters** via `PUT /api/correction/{slug}/characters/{name}` with `voice_bank_id`
+
+Character profiles now support `ref_audio_path`, `ref_text`, and `voice_bank_id` for persistent voice assignments.
 
 ## WebSocket Logs And Task Updates
 

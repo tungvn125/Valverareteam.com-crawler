@@ -91,6 +91,41 @@ Large chapters are split into chunks of about 30,000 characters before parsing.
 
 The TTS provider is configured via environment variables or the `--tts-provider` CLI flag. See [TTS Providers](tts-providers.md) for provider-specific configuration.
 
+### Community Voice Bank
+
+The Community Voice Bank (CVB) lets users upload voice samples for OmniVoice cloning. The system integrates these voices into the audio drama pipeline.
+
+**Uploading voices:**
+
+```bash
+vvrt voice upload --audio ./sample.wav --ref-text "Transcript text" --name "My Voice"
+```
+
+**Voice Lookup Priority:**
+
+`VoiceManager.get_voice()` resolves voices in this order:
+
+1. **Story-specific assignments** — manually assigned via `--select-voices` or Web UI
+2. **CharacterProfile from DB** — per-story `ref_audio_path` and `ref_text`
+3. **Community Voice Bank** — best matching public voice by gender + tags + vote score
+4. **Auto-assign fallback** — random provider voice or narrator voice
+
+**Interactive Selection:**
+
+Use `--select-voices` during AD-MP3 export to manually assign voices:
+
+```bash
+vvrt <slug> -f AD-MP3 --tts-provider omnivoice --select-voices
+```
+
+Options per character:
+- **Keep auto-assigned** — use the default lookup result
+- **Local directory** — scan a folder with `ref_audio_path.*` + `ref_text.txt`
+- **Community bank** — search public voices by tags/gender
+- **Skip** — leave unassigned
+
+Selections are persisted to `character_profiles` in the database.
+
 ### TTS Provider Integration
 
 The audio drama pipeline supports multiple TTS backends through the provider abstraction:
