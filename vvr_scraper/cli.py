@@ -222,15 +222,27 @@ class ValvrareScraperCLI:
         ten_truyen = []
         rest_args = []
         i = 1  # skip program name (sys.argv[0])
+        # Multi-value flags (nargs='+') that consume all following non-flag args
+        multi_value_flags = {"-f", "--format", "--volumes", "--chapters"}
         while i < len(sys.argv):
             arg = sys.argv[i]
             if arg.startswith("-"):
                 rest_args.append(arg)
+                flag = arg.split("=")[0]
                 i += 1
-                # Include the next arg if it's not an option (simplified handling)
-                if i < len(sys.argv) and not sys.argv[i].startswith("-"):
-                    rest_args.append(sys.argv[i])
-                    i += 1
+                if flag in multi_value_flags:
+                    # Consume all subsequent non-flag args for this flag
+                    while i < len(sys.argv) and not sys.argv[i].startswith("-"):
+                        rest_args.append(sys.argv[i])
+                        i += 1
+                else:
+                    # Consume at most one value for single-arg flags
+                    if i < len(sys.argv) and not sys.argv[i].startswith("-"):
+                        # Check if next arg looks like a value (not another flag)
+                        # Handle --flag=value syntax
+                        if "=" not in arg:
+                            rest_args.append(sys.argv[i])
+                            i += 1
             else:
                 # All remaining positional args go to ten_truyen
                 while i < len(sys.argv) and not sys.argv[i].startswith("-"):
