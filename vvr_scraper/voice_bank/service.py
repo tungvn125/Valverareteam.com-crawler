@@ -3,13 +3,10 @@
 import os
 import tempfile
 import uuid
-from datetime import UTC, datetime
-
-from loguru import logger
 
 from .db import VoiceBankDatabaseManager
-from .storage import get_voice_file_path, save_voice_file
-from .validator import AudioValidationResult, compute_file_hash, convert_to_canonical, validate_audio
+from .storage import save_voice_file
+from .validator import compute_file_hash, convert_to_canonical, validate_audio
 
 
 async def upload_voice(
@@ -110,6 +107,7 @@ async def delete_voice(db: VoiceBankDatabaseManager, voice_id: str, user_id: str
 
     # Store file path before deleting DB record
     from .storage import get_voice_bank_dir
+
     abs_path = os.path.realpath(os.path.join(get_voice_bank_dir(), voice["ref_audio_path"]))
     user_dir = os.path.realpath(os.path.join(get_voice_bank_dir(), voice["user_id"]))
     bank_dir = os.path.realpath(get_voice_bank_dir())

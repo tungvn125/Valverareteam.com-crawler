@@ -394,9 +394,9 @@ class VoiceManager:
             # 3. Community Voice Bank lookup
             voice_bank_db = None
             try:
+                from vvr_scraper.utils import get_config_path
                 from vvr_scraper.voice_bank.db import VoiceBankDatabaseManager
                 from vvr_scraper.voice_bank.storage import get_voice_bank_dir
-                from vvr_scraper.utils import get_config_path
 
                 # Use injected DB instance if available, otherwise create new (backward compatibility)
                 if self._voice_bank_db is not None:
@@ -410,9 +410,7 @@ class VoiceManager:
                     tags=_infer_tags_from_character(character_name),
                 )
                 if community_voice:
-                    canonical_path = os.path.join(
-                        get_voice_bank_dir(), community_voice["ref_audio_path"]
-                    )
+                    canonical_path = os.path.join(get_voice_bank_dir(), community_voice["ref_audio_path"])
                     spec = VoiceSpec(
                         ref_audio_path=canonical_path,
                         ref_text=community_voice["ref_text"],

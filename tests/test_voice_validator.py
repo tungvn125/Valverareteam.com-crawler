@@ -1,9 +1,11 @@
-import pytest
 import os
+import struct
 import tempfile
 import wave
-import struct
-from vvr_scraper.voice_bank.validator import validate_audio, convert_to_canonical, SUPPORTED_EXTENSIONS
+
+import pytest
+
+from vvr_scraper.voice_bank.validator import convert_to_canonical, validate_audio
 
 
 def _create_wav(path, duration_s=5, sample_rate=22050, channels=1, bit_depth=16):

@@ -1,15 +1,15 @@
 """Tests for the CLI client display module."""
 
 import io
-import pytest
+
 from rich.console import Console
 
 from vvr_scraper.cli_client.display import (
+    VISIBILITY_COLORS,
     print_error,
     print_success,
-    print_voice_table,
     print_voice_detail,
-    VISIBILITY_COLORS,
+    print_voice_table,
 )
 
 

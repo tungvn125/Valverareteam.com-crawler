@@ -1,5 +1,4 @@
 """Tests for CLI client — APIClient and CLIError."""
-import pytest
 
 from vvr_scraper.cli_client.client import APIClient, CLIError
 
@@ -45,4 +44,6 @@ class TestAPIClientErrorMapping:
 
     def test_404_message(self):
         client = APIClient()
-        assert "không tìm thấy" in client.ERROR_MESSAGES[404].lower() or "not found" in client.ERROR_MESSAGES[404].lower()
+        assert (
+            "không tìm thấy" in client.ERROR_MESSAGES[404].lower() or "not found" in client.ERROR_MESSAGES[404].lower()
+        )

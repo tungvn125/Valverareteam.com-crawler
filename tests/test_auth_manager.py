@@ -1,4 +1,5 @@
 """Tests for CLI client — TokenManager and AuthenticationRequired."""
+
 import json
 import os
 import tempfile
@@ -48,7 +49,13 @@ class TestTokenManager:
             assert mgr.get_token() == "ctor-token"
 
     def test_get_token_priority_env_over_file(self):
-        data = {"token": "file-token", "username": "a", "user_id": "b", "role": "member", "created_at": "2026-01-01T00:00:00Z"}
+        data = {
+            "token": "file-token",
+            "username": "a",
+            "user_id": "b",
+            "role": "member",
+            "created_at": "2026-01-01T00:00:00Z",
+        }
         os.makedirs(os.path.dirname(self.token_path), exist_ok=True)
         with open(self.token_path, "w") as f:
             json.dump(data, f)

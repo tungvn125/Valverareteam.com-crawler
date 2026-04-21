@@ -121,6 +121,7 @@ class TestCorrectionAPI:
         # Mock auth for testing
         def _fake_auth_user():
             from vvr_scraper.social.auth import AuthUser
+
             return AuthUser(id="test-user-id", username="testuser", role="admin")
 
         app.dependency_overrides[get_auth_user] = _fake_auth_user

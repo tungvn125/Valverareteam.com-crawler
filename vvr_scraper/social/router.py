@@ -1,4 +1,4 @@
-import random
+import secrets
 import time
 from collections import defaultdict
 
@@ -35,7 +35,7 @@ def enforce_rate_limit(user_id: str, action: str, limit: int, window_seconds: in
     now = time.monotonic()
     key = (user_id, action)
     # Clean old entries occasionally (every 100 calls on average when > 1000 entries)
-    if len(RATE_BUCKETS) > 1000 and random.random() < 0.01:
+    if len(RATE_BUCKETS) > 1000 and secrets.randbelow(100) == 0:
         for k in list(RATE_BUCKETS.keys()):
             RATE_BUCKETS[k] = [ts for ts in RATE_BUCKETS[k] if now - ts < window_seconds]
             if not RATE_BUCKETS[k]:

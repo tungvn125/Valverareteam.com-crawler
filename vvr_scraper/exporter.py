@@ -481,7 +481,7 @@ async def tao_file_audiodrama(
         # Create shared VoiceBankDatabaseManager instance to avoid N+1 connections
         voice_bank_db = VoiceBankDatabaseManager(db_path=get_config_path("voice_bank.db"))
         await voice_bank_db.init_db()
-        
+
         voice_manager = VoiceManager(db_manager, story_id, provider=provider, voice_bank_db=voice_bank_db)
         known_chars_raw = await _maybe_await(voice_manager.get_known_characters())
         known_chars = known_chars_raw if isinstance(known_chars_raw, list) else []

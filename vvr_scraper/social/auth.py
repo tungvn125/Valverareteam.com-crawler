@@ -40,10 +40,7 @@ class AuthUser(BaseModel):
     role: str
 
 
-async def get_auth_user(
-    request: Request,
-    authorization: str | None = Header(default=None)
-) -> AuthUser:
+async def get_auth_user(request: Request, authorization: str | None = Header(default=None)) -> AuthUser:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing bearer token")
     token = authorization[7:]
@@ -55,8 +52,8 @@ async def get_auth_user(
         raise HTTPException(status_code=401, detail="Invalid token") from exc
 
     # Check if user still exists in the database
-    from .db import SocialDatabaseManager
     from ..utils import get_config_path
+    from .db import SocialDatabaseManager
 
     # Use existing db connection from app state if available, otherwise create new
     db = getattr(request.app.state, "social_db", None)

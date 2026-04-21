@@ -45,20 +45,24 @@ def validate_audio(file_path: str) -> AudioValidationResult:
     # Check extension
     ext = path.suffix.lower()
     if ext not in SUPPORTED_EXTENSIONS:
-        return AudioValidationResult(
-            valid=False, error=f"Unsupported audio format. Accepted: wav, mp3, ogg, m4a"
-        )
+        return AudioValidationResult(valid=False, error="Unsupported audio format. Accepted: wav, mp3, ogg, m4a")
 
     # Run ffprobe
     try:
         result = subprocess.run(
             [
-                "ffprobe", "-v", "error",
-                "-show_format", "-show_streams",
-                "-of", "json",
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_format",
+                "-show_streams",
+                "-of",
+                "json",
                 str(path),
             ],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         if result.returncode != 0:
             return AudioValidationResult(valid=False, error=f"ffprobe failed: {result.stderr.strip()}")
@@ -87,23 +91,28 @@ def validate_audio(file_path: str) -> AudioValidationResult:
     # Validate codec for WAV
     if ext == ".wav" and codec not in ("pcm_s16le", "pcm_s24le", "pcm_s32le"):
         return AudioValidationResult(
-            valid=False, format="wav", codec=codec,
-            error=f"WAV must be PCM 16/24-bit (got {codec})"
+            valid=False, format="wav", codec=codec, error=f"WAV must be PCM 16/24-bit (got {codec})"
         )
 
     # Validate sample rate
     if sample_rate < MIN_SAMPLE_RATE:
         return AudioValidationResult(
-            valid=False, format=ext.lstrip("."), codec=codec,
-            sample_rate=sample_rate, error=f"Sample rate must be >= {MIN_SAMPLE_RATE} Hz (got {sample_rate})"
+            valid=False,
+            format=ext.lstrip("."),
+            codec=codec,
+            sample_rate=sample_rate,
+            error=f"Sample rate must be >= {MIN_SAMPLE_RATE} Hz (got {sample_rate})",
         )
 
     # Validate channels
     if channels > 2:
         return AudioValidationResult(
-            valid=False, format=ext.lstrip("."), codec=codec,
-            sample_rate=sample_rate, channels=channels,
-            error=f"Only mono/stereo supported (got {channels} channels)"
+            valid=False,
+            format=ext.lstrip("."),
+            codec=codec,
+            sample_rate=sample_rate,
+            channels=channels,
+            error=f"Only mono/stereo supported (got {channels} channels)",
         )
 
     # Get duration from format
@@ -114,9 +123,13 @@ def validate_audio(file_path: str) -> AudioValidationResult:
     # Validate duration
     if duration_ms < MIN_DURATION_MS or duration_ms > MAX_DURATION_MS:
         return AudioValidationResult(
-            valid=False, format=ext.lstrip("."), codec=codec,
-            sample_rate=sample_rate, channels=channels, duration_ms=duration_ms,
-            error=f"Duration must be 3-10 seconds (got {duration_ms}ms)"
+            valid=False,
+            format=ext.lstrip("."),
+            codec=codec,
+            sample_rate=sample_rate,
+            channels=channels,
+            duration_ms=duration_ms,
+            error=f"Duration must be 3-10 seconds (got {duration_ms}ms)",
         )
 
     return AudioValidationResult(
@@ -135,11 +148,21 @@ def convert_to_canonical(input_path: str, output_path: str) -> None:
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     subprocess.run(
         [
-            "ffmpeg", "-y", "-i", input_path,
-            "-ar", "22050", "-ac", "1", "-c:a", "pcm_s16le",
+            "ffmpeg",
+            "-y",
+            "-i",
+            input_path,
+            "-ar",
+            "22050",
+            "-ac",
+            "1",
+            "-c:a",
+            "pcm_s16le",
             output_path,
         ],
-        capture_output=True, text=True, timeout=30,
+        capture_output=True,
+        text=True,
+        timeout=30,
         check=True,
     )
 
@@ -148,6 +171,7 @@ def compute_file_hash(file_path: str) -> str:
     """Compute BLAKE3 hash of a file for deduplication."""
     try:
         import blake3
+
         h = blake3.blake3()
         with open(file_path, "rb") as f:
             while chunk := f.read(65536):
@@ -156,6 +180,7 @@ def compute_file_hash(file_path: str) -> str:
     except ImportError:
         # Fallback to SHA-256 if blake3 not installed
         import hashlib
+
         h = hashlib.sha256()
         with open(file_path, "rb") as f:
             while chunk := f.read(65536):

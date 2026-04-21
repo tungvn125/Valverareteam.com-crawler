@@ -13,9 +13,9 @@ from fastapi.responses import Response
 from loguru import logger
 from pydantic import BaseModel
 
+from ...social.auth import AuthUser, get_auth_user
 from ..deps import get_db
 from ..models import load_vvr_settings
-from ...social.auth import get_auth_user, AuthUser
 
 router = APIRouter(prefix="/api/correction", tags=["Corrections"])
 
@@ -62,9 +62,9 @@ def _get_tts_provider():
     if provider_name == "elevenlabs":
         return tts_module.get_provider("elevenlabs", api_key=os.getenv("ELEVENLABS_API_KEY"))
     elif provider_name == "openai_tts":
-        return tts_module.get_provider("openai_tts", 
-            api_key=os.getenv("OPENAI_TTS_API_KEY"),
-            base_url=os.getenv("OPENAI_TTS_BASE_URL"))
+        return tts_module.get_provider(
+            "openai_tts", api_key=os.getenv("OPENAI_TTS_API_KEY"), base_url=os.getenv("OPENAI_TTS_BASE_URL")
+        )
     else:
         return tts_module.get_provider(provider_name)
 
@@ -206,7 +206,9 @@ async def get_chapter_script(slug: str, chapter_idx: int, user: AuthUser = Depen
 
 
 @router.post("/{slug:path}/chapter/{chapter_idx}/save")
-async def save_corrections(slug: str, chapter_idx: int, body: CorrectionRequest, user: AuthUser = Depends(get_auth_user)):
+async def save_corrections(
+    slug: str, chapter_idx: int, body: CorrectionRequest, user: AuthUser = Depends(get_auth_user)
+):
     """Save corrected script. Updates .script.json and invalidates audio cache."""
     output_dir = await _async_get_output_dir(slug)
     if not output_dir:
@@ -428,19 +430,20 @@ async def get_characters(slug: str, user: AuthUser = Depends(get_auth_user)):
 
 @router.put("/{slug:path}/characters/{character_name}")
 async def update_character(
-    slug: str, 
-    character_name: str, 
-    body: CharacterUpdateRequest, 
+    slug: str,
+    character_name: str,
+    body: CharacterUpdateRequest,
     request: Request,
-    user: AuthUser = Depends(get_auth_user)
+    user: AuthUser = Depends(get_auth_user),
 ):
     """Update a character profile (voice, color, aliases, etc.)."""
     db = get_db()
     profiles = await db.get_character_profiles(slug)
     existing = next((p for p in profiles if p.name.lower() == character_name.lower()), None)
 
-    from ...models import CharacterProfile
     from vvr_scraper.voice_bank.storage import get_voice_file_path
+
+    from ...models import CharacterProfile
 
     if existing:
         # Update existing profile

@@ -4,11 +4,10 @@ Integration tests for voice bank API endpoints using FastAPI TestClient.
 
 import io
 import os
+import struct
 import tempfile
 import wave
-import struct
 from contextlib import asynccontextmanager
-from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -46,6 +45,7 @@ def _make_wav_file(temp_dir, duration_s=5, filename="voice.wav"):
 
 # --- Fake user for auth mocking ---
 
+
 def _fake_auth_user():
     return AuthUser(id="test-user", username="testuser", role="member")
 
@@ -68,6 +68,7 @@ class TestVoiceBankAPI:
         # Create and init the voice bank DB synchronously via aiosqlite
         voice_bank_db = VoiceBankDatabaseManager(db_path)
         import asyncio
+
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         loop.run_until_complete(voice_bank_db.init_db())

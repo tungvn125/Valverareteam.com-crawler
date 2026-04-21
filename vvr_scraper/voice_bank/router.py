@@ -25,6 +25,7 @@ async def _get_voice_bank_db(request: Request) -> VoiceBankDatabaseManager:
 
 # --- Upload ---
 
+
 @router.post("/upload")
 async def upload_voice_endpoint(
     request: Request,
@@ -92,18 +93,19 @@ async def upload_voice_endpoint(
             tags=tag_list,
         )
     except (ValueError, subprocess.SubprocessError, FileNotFoundError) as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from None
     finally:
         if tmp_path:
             try:
                 os.unlink(tmp_path)
-            except Exception:
+            except Exception:  # noqa: S110
                 pass
 
     return result
 
 
 # --- List Endpoints ---
+
 
 @router.get("/me")
 async def list_my_voices(
@@ -140,6 +142,7 @@ async def list_community_voices(
 
 # --- Single Voice ---
 
+
 @router.get("/{voice_id}")
 async def get_voice(request: Request, voice_id: str, user=Depends(get_auth_user)):
     db = await _get_voice_bank_db(request)
@@ -173,9 +176,13 @@ async def get_voice_audio(request: Request, voice_id: str, user=Depends(get_auth
 
 # --- Update / Publish / Delist ---
 
+
 @router.patch("/{voice_id}")
 async def update_voice(
-    request: Request, voice_id: str, body: VoiceUpdateRequest, user=Depends(get_auth_user),
+    request: Request,
+    voice_id: str,
+    body: VoiceUpdateRequest,
+    user=Depends(get_auth_user),
 ):
     db = await _get_voice_bank_db(request)
     voice = await db.get_voice_sample(voice_id)
@@ -205,8 +212,7 @@ async def publish_voice_endpoint(request: Request, voice_id: str, user=Depends(g
     try:
         return await publish_voice(db, voice_id, user.id)
     except ValueError as e:
-        raise HTTPException(status_code=403, detail=str(e))
-
+        raise HTTPException(status_code=403, detail=str(e)) from None
 
 @router.patch("/{voice_id}/delist")
 async def delist_voice_endpoint(request: Request, voice_id: str, user=Depends(get_auth_user)):
@@ -215,10 +221,10 @@ async def delist_voice_endpoint(request: Request, voice_id: str, user=Depends(ge
     try:
         return await delist_voice(db, voice_id, user.id, is_admin=is_admin)
     except ValueError as e:
-        raise HTTPException(status_code=403, detail=str(e))
-
+        raise HTTPException(status_code=403, detail=str(e)) from None
 
 # --- Delete ---
+
 
 @router.delete("/{voice_id}", status_code=204)
 async def delete_voice_endpoint(request: Request, voice_id: str, user=Depends(get_auth_user)):
@@ -227,10 +233,11 @@ async def delete_voice_endpoint(request: Request, voice_id: str, user=Depends(ge
     try:
         await delete_voice(db, voice_id, user.id, is_admin=is_admin)
     except ValueError as e:
-        raise HTTPException(status_code=403, detail=str(e))
+        raise HTTPException(status_code=403, detail=str(e)) from None
 
 
 # --- Vote ---
+
 
 @router.post("/{voice_id}/vote")
 async def vote_voice_endpoint(request: Request, voice_id: str, body: VoiceVoteRequest, user=Depends(get_auth_user)):
@@ -239,10 +246,11 @@ async def vote_voice_endpoint(request: Request, voice_id: str, body: VoiceVoteRe
         new_score = await vote_voice(db, voice_id, user.id, body.vote)
         return {"voice_id": voice_id, "vote_score": new_score}
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from None
 
 
 # --- Preview ---
+
 
 @router.post("/{voice_id}/preview")
 async def preview_voice(request: Request, voice_id: str, body: VoicePreviewRequest, user=Depends(get_auth_user)):
@@ -262,8 +270,8 @@ async def preview_voice(request: Request, voice_id: str, body: VoicePreviewReque
         raise HTTPException(status_code=404, detail="Audio file not found on disk")
 
     # Lazily instantiate TTS provider (same pattern as correction.py)
-    from vvr_scraper.tts.base import VoiceSpec
     from vvr_scraper import tts as tts_module
+    from vvr_scraper.tts.base import VoiceSpec
 
     provider_name = tts_module.auto_detect_provider()
     provider = tts_module.get_provider(provider_name)
@@ -272,10 +280,10 @@ async def preview_voice(request: Request, voice_id: str, body: VoicePreviewReque
     try:
         result = await provider.synthesize(text=body.text, voice=spec)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Preview generation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Preview generation failed: {e}") from None
     finally:
         try:
             await provider.close()
-        except Exception:
+        except Exception:  # noqa: S110
             pass
     return Response(content=result.audio_bytes, media_type="audio/wav")

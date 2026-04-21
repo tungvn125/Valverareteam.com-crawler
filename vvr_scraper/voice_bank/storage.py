@@ -8,6 +8,7 @@ from pathlib import Path
 def get_voice_bank_dir() -> str:
     """Get the voice bank storage directory from env or default."""
     from vvr_scraper.utils import get_config_dir
+
     return os.environ.get("VVR_VOICE_BANK_DIR", os.path.join(get_config_dir(), "voice_bank"))
 
 
@@ -50,7 +51,7 @@ def scan_local_voice_dir(voice_dir: str) -> list[dict]:
 
     Returns a list of dicts with keys: name, ref_audio_path, ref_text, duration_ms.
     """
-    from vvr_scraper.voice_bank.validator import validate_audio, SUPPORTED_EXTENSIONS
+    from vvr_scraper.voice_bank.validator import SUPPORTED_EXTENSIONS, validate_audio
 
     results = []
     voice_path = Path(voice_dir)
@@ -88,12 +89,14 @@ def scan_local_voice_dir(voice_dir: str) -> list[dict]:
         dir_name = subdir.name
         name = dir_name.removesuffix("-voice") if dir_name.endswith("-voice") else dir_name
 
-        results.append({
-            "name": name,
-            "ref_audio_path": str(audio_file),
-            "ref_text": ref_text,
-            "duration_ms": validation.duration_ms,
-            "sample_rate": validation.sample_rate,
-        })
+        results.append(
+            {
+                "name": name,
+                "ref_audio_path": str(audio_file),
+                "ref_text": ref_text,
+                "duration_ms": validation.duration_ms,
+                "sample_rate": validation.sample_rate,
+            }
+        )
 
     return results

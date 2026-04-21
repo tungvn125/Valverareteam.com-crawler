@@ -1,15 +1,15 @@
 """Pydantic request/response models for the voice bank API."""
 
-from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-
 # --- Request Models ---
+
 
 class VoiceUploadRequest(BaseModel):
     """Validated fields from multipart upload (validated in router, not here)."""
+
     name: str = Field(min_length=3, max_length=100)
     description: str | None = Field(default=None, max_length=500)
     ref_text: str = Field(min_length=10, max_length=5000)
@@ -58,6 +58,7 @@ class VoicePreviewRequest(BaseModel):
 
 
 # --- Response Models ---
+
 
 class VoiceSampleResponse(BaseModel):
     id: str

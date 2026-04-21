@@ -3,9 +3,9 @@ Tests for voice bank service layer — upload, publish, delist, delete, vote.
 """
 
 import os
+import struct
 import tempfile
 import wave
-import struct
 from unittest.mock import patch
 
 import pytest
@@ -58,6 +58,7 @@ def _make_valid_wav(temp_dir, duration_s=5):
 # =============================================================================
 # Upload Tests
 # =============================================================================
+
 
 @pytest.mark.asyncio
 async def test_upload_voice_success(voice_bank_dir, db):
@@ -140,6 +141,7 @@ async def test_upload_voice_duplicate_hash(voice_bank_dir, db):
 # Publish Tests
 # =============================================================================
 
+
 @pytest.mark.asyncio
 async def test_publish_voice(voice_bank_dir, db):
     """Create private voice, publish -> visibility='public'."""
@@ -186,6 +188,7 @@ async def test_publish_voice_not_owner(voice_bank_dir, db):
 # Delist Tests
 # =============================================================================
 
+
 @pytest.mark.asyncio
 async def test_delist_voice(voice_bank_dir, db):
     """Publish then delist -> visibility='delisted'."""
@@ -210,6 +213,7 @@ async def test_delist_voice(voice_bank_dir, db):
 # =============================================================================
 # Delete Tests
 # =============================================================================
+
 
 @pytest.mark.asyncio
 async def test_delete_voice(voice_bank_dir, db):
@@ -264,6 +268,7 @@ async def test_delete_voice_not_owner(voice_bank_dir, db):
 # =============================================================================
 # Vote Tests
 # =============================================================================
+
 
 @pytest.mark.asyncio
 async def test_vote_voice(voice_bank_dir, db):

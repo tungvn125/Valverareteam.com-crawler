@@ -1,7 +1,7 @@
 ---
 description: Branstorming agent
 mode: primary
-model: opencode-go/glm-5.1
+model: opencode-go/kimi-k2.6
 temperature: 0.5
 tools:
   write: true

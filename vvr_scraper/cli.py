@@ -47,6 +47,7 @@ from .utils import (
     resolve_story_url,
     sanitize_filename,
 )
+from .voice_bank.db import VoiceBankDatabaseManager
 
 SESSION_FILE = ".vvr_session.json"
 console = Console()
@@ -181,6 +182,7 @@ class ValvrareScraperCLI:
         # sys.argv looks like: ['vvrt', 'voice', 'upload', '--audio', '/path.wav']
         # We need to handle 'voice' as the subcommand prefix
         import copy
+
         voice_args = copy.deepcopy(sys.argv[2:]) if len(sys.argv) > 2 else []  # skip 'vvrt' and 'voice'
 
         parser = argparse.ArgumentParser(prog="vvrt voice", add_help=False)
@@ -191,7 +193,9 @@ class ValvrareScraperCLI:
         upload_parser.add_argument("--ref-text", "-t", help="Transcript text (min 10 chars)")
         upload_parser.add_argument("--name", "-n", help="Voice name (3-100 chars)")
         upload_parser.add_argument("--gender", "-g", choices=["male", "female", "other"], help="Voice gender")
-        upload_parser.add_argument("--age-group", choices=["child", "teen", "young_adult", "adult", "elder"], help="Age group")
+        upload_parser.add_argument(
+            "--age-group", choices=["child", "teen", "young_adult", "adult", "elder"], help="Age group"
+        )
         upload_parser.add_argument("--language", default="vi", help="Language code (default: vi)")
         upload_parser.add_argument("--mood", "-m", help="Voice mood (optional)")
         upload_parser.add_argument("--tags", help="Comma-separated tags (max 5)")
@@ -220,16 +224,16 @@ class ValvrareScraperCLI:
         i = 1  # skip program name (sys.argv[0])
         while i < len(sys.argv):
             arg = sys.argv[i]
-            if arg.startswith('-'):
+            if arg.startswith("-"):
                 rest_args.append(arg)
                 i += 1
                 # Include the next arg if it's not an option (simplified handling)
-                if i < len(sys.argv) and not sys.argv[i].startswith('-'):
+                if i < len(sys.argv) and not sys.argv[i].startswith("-"):
                     rest_args.append(sys.argv[i])
                     i += 1
             else:
                 # All remaining positional args go to ten_truyen
-                while i < len(sys.argv) and not sys.argv[i].startswith('-'):
+                while i < len(sys.argv) and not sys.argv[i].startswith("-"):
                     ten_truyen.append(sys.argv[i])
                     i += 1
 
@@ -866,9 +870,7 @@ class ValvrareScraperCLI:
         # Prompt for gender if not provided
         gender = args.gender
         if not gender:
-            gender_idx = InteractiveUI.show_menu(
-                ["Male", "Female", "Other"], "Select gender", multi_select=False
-            )
+            gender_idx = InteractiveUI.show_menu(["Male", "Female", "Other"], "Select gender", multi_select=False)
             if gender_idx is None:
                 return
             gender = ["male", "female", "other"][gender_idx]
@@ -998,6 +1000,7 @@ class ValvrareScraperCLI:
 
                 # Scan local voice directory
                 from vvr_scraper.voice_bank.storage import scan_local_voice_dir
+
                 local_voices = scan_local_voice_dir(voice_dir)
 
                 if not local_voices:
@@ -1012,7 +1015,11 @@ class ValvrareScraperCLI:
                 table.add_column("Duration", style="cyan")
                 table.add_column("Transcript", style="dim")
                 for i, v in enumerate(local_voices, 1):
-                    ref_preview = (v["ref_text"] or "N/A")[:40] + "..." if v["ref_text"] and len(v["ref_text"]) > 40 else (v["ref_text"] or "N/A")
+                    ref_preview = (
+                        (v["ref_text"] or "N/A")[:40] + "..."
+                        if v["ref_text"] and len(v["ref_text"]) > 40
+                        else (v["ref_text"] or "N/A")
+                    )
                     table.add_row(str(i), v["name"], f"{v['duration_ms']}ms", ref_preview)
                 console.print(table)
 
@@ -1071,7 +1078,9 @@ class ValvrareScraperCLI:
 
                         # Prompt for search tags
                         session = PromptSession()
-                        console.print("[yellow]Search tags (e.g., 'male adult serious') or press Enter to search all:[/yellow]")
+                        console.print(
+                            "[yellow]Search tags (e.g., 'male adult serious') or press Enter to search all:[/yellow]"
+                        )
                         search_query = await session.prompt_async("  Tags: ")
                         search_query = search_query.strip()
 
@@ -1137,6 +1146,7 @@ class ValvrareScraperCLI:
 
                         # Resolve absolute path
                         from vvr_scraper.voice_bank.storage import get_voice_file_path
+
                         ref_audio = get_voice_file_path(selected_voice["ref_audio_path"])
                         ref_text = selected_voice.get("ref_text", "")
 
