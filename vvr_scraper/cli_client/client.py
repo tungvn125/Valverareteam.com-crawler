@@ -44,8 +44,9 @@ class APIClient:
         files: dict | None = None,
         data: dict | None = None,
         timeout: float = 30.0,
+        auth: bool = True,
     ) -> Any:
-        """Make an authenticated HTTP request.
+        """Make an HTTP request.
 
         Args:
             method: HTTP method (GET, POST, etc.)
@@ -55,6 +56,8 @@ class APIClient:
             files: Files to upload (for multipart)
             data: Form data (for multipart)
             timeout: Request timeout in seconds
+            auth: Whether to require authentication (default True).
+                Set to False for login/register endpoints.
 
         Returns:
             Parsed JSON response, or None for 204 responses
@@ -62,14 +65,15 @@ class APIClient:
         Raises:
             CLIError: On connection errors or HTTP error responses
         """
-        # Get token from TokenManager
-        try:
-            token = self.token_manager.get_token()
-        except AuthenticationRequired as e:
-            raise CLIError(str(e), exit_code=1) from None
-
         url = f"{self.base_url}{path}"
-        headers = {"Authorization": f"Bearer {token}"}
+        headers: dict[str, str] = {}
+
+        if auth:
+            try:
+                token = self.token_manager.get_token()
+            except AuthenticationRequired as e:
+                raise CLIError(str(e), exit_code=1) from None
+            headers["Authorization"] = f"Bearer {token}"
 
         # Don't set Content-Type for multipart uploads (httpx sets it with boundary)
         if files is None:

@@ -37,6 +37,7 @@ async def login(client: APIClient, args) -> None:
             "username": username,
             "password": password,
         },
+        auth=False,
     )
 
     token_data = {
