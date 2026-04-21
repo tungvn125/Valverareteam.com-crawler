@@ -218,6 +218,23 @@ class OpenAIParser:
         return ScriptResult(full_script)
 
 
+def _infer_tags_from_character(character_name: str) -> list[str]:
+    """Infer community voice tags from a character name. MVP keyword matching."""
+    name = character_name.lower()
+    tags = []
+    if any(k in name for k in ("loli", "nhóc", "bé", "con nít", "trẻ con")):
+        tags.append("child")
+    if any(k in name for k in ("ông", "bà", "lão", "già", "cụ")):
+        tags.append("elder")
+    if "tsun" in name:
+        tags.append("tsundere")
+    if any(k in name for k in ("yandere", "điên", "psycho")):
+        tags.append("yandere")
+    if any(k in name for k in ("chúa", "vua", "hoàng đế", "lord")):
+        tags.append("noble")
+    return tags
+
+
 class VoiceManager:
     """Manages voice assignment for characters. Delegates synthesis to TTSProvider."""
 
@@ -373,8 +390,36 @@ class VoiceManager:
                     self._voice_cache[char_normalized] = spec
                     return spec
 
+            # 3. Community Voice Bank lookup
+            try:
+                from vvr_scraper.voice_bank.db import VoiceBankDatabaseManager
+                from vvr_scraper.voice_bank.storage import get_voice_bank_dir
+                from vvr_scraper.utils import get_config_path
+
+                voice_bank_db = VoiceBankDatabaseManager(db_path=get_config_path("voice_bank.db"))
+                await voice_bank_db.init_db()
+                try:
+                    community_voice = await voice_bank_db.find_best_voice(
+                        gender=gender.lower(),
+                        tags=_infer_tags_from_character(character_name),
+                    )
+                    if community_voice:
+                        canonical_path = os.path.join(
+                            get_voice_bank_dir(), community_voice["ref_audio_path"]
+                        )
+                        spec = VoiceSpec(
+                            ref_audio_path=canonical_path,
+                            ref_text=community_voice["ref_text"],
+                        )
+                        self._voice_cache[char_normalized] = spec
+                        await voice_bank_db.increment_usage(community_voice["id"])
+                        return spec
+                finally:
+                    await voice_bank_db.close()
+            except Exception as e:
+                logger.debug(f"Community voice bank lookup failed (non-fatal): {e}")
+
             # Auto-assign from available voices (ElevenLabs legacy path)
-            gender = gender.lower()
             available_ids = self._cached_available_voices
             assigned_ids = {v.voice_id for v in self._voice_cache.values() if v.voice_id}
             candidate_ids = [

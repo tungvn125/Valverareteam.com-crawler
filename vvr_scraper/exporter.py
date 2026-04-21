@@ -439,7 +439,8 @@ async def tao_file_audiodrama(
     timeline_config: TimelineConfig | None = None,
     tts_provider_name: str | None = None,
     fail_on_synth_error: bool = False,
-) -> None:
+    select_voices_callback: Any = None,
+) -> list[dict] | None:
     """
     AI-Powered Audio Drama generation.
     1. Extracts text and parses into a script (dialogue/narrator) using OpenAI.
@@ -468,6 +469,7 @@ async def tao_file_audiodrama(
 
     script_file = f"{filename}.script.json"
     script = []
+    detected_characters: list[dict] = []
 
     # 1. Initialize voice manager to get known characters for parsing context
     voice_manager = None
@@ -509,6 +511,23 @@ async def tao_file_audiodrama(
             logger.info(f"Saved script checkpoint to {script_file}")
         except Exception as e:
             logger.warning(f"Failed to save script checkpoint: {e}")
+
+        # 5b. Extract detected characters from script for voice selection
+        detected_characters: list[dict] = []
+        for item in script:
+            if isinstance(item, dict) and item.get("type") != "mood_shift":
+                char_name = item.get("role", "narrator")
+                char_gender = (item.get("gender") or "unknown").lower()
+                # Deduplicate by name
+                if not any(c.get("name") == char_name for c in detected_characters):
+                    detected_characters.append({"name": char_name, "gender": char_gender})
+
+        # 5c. Invoke voice selection callback if provided
+        if select_voices_callback and detected_characters:
+            try:
+                await select_voices_callback(detected_characters, story_id)
+            except Exception as e:
+                logger.warning(f"Voice selection callback failed (non-fatal): {e}")
 
         # 6. Prepare voice assignments and handle mood shifts
         enriched_script = ScriptResult()
@@ -797,6 +816,8 @@ async def tao_file_audiodrama(
             await _maybe_await(voice_manager.close())
         if "image_gen" in locals():
             await _maybe_await(image_gen.close())
+
+    return detected_characters
 
 
 async def tao_file_mp4(

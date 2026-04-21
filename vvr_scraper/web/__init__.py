@@ -22,6 +22,8 @@ from ..job_worker import JobWorker
 from ..social.db import SocialDatabaseManager
 from ..social.router import admin_router, auth_router, social_router, websocket_router
 from ..utils import get_config_path
+from ..voice_bank.db import VoiceBankDatabaseManager
+from ..voice_bank.router import router as voice_bank_router
 from .deps import get_current_user  # noqa: F401
 
 # Re-export for backward compatibility
@@ -65,6 +67,12 @@ async def lifespan(app: FastAPI):
     await app.state.db.init_db()
     await app.state.social_db.init_db()
 
+    # Voice Bank DB
+    if not hasattr(app.state, "voice_bank_db") or app.state.voice_bank_db is None:
+        voice_bank_db_path = get_config_path("voice_bank.db")
+        app.state.voice_bank_db = VoiceBankDatabaseManager(db_path=voice_bank_db_path)
+    await app.state.voice_bank_db.init_db()
+
     # Universal Task Runner: Start JobWorker
     state.worker = JobWorker(app.state.db)
     await state.worker.start()
@@ -82,6 +90,8 @@ async def lifespan(app: FastAPI):
         await state.worker.stop()
     jobs_routes.worker = None
     await download_queue.stop_workers()
+    if hasattr(app.state, "voice_bank_db") and app.state.voice_bank_db:
+        await app.state.voice_bank_db.close()
     if hasattr(app.state, "social_db") and app.state.social_db:
         await app.state.social_db.close()
     if hasattr(app.state, "db") and app.state.db:
@@ -132,6 +142,7 @@ app.include_router(auth_router, prefix="/api/auth", tags=["Social Auth"])
 app.include_router(admin_router, prefix="/api/admin", tags=["Social Admin"])
 app.include_router(social_router, prefix="/api/social", tags=["Social"])
 app.include_router(websocket_router, tags=["Social"])
+app.include_router(voice_bank_router)
 
 # Mount novel assets
 vvr_settings_for_mount = load_vvr_settings()

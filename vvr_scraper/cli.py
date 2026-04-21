@@ -33,7 +33,7 @@ from .exporter import (
     tao_file_pdf,
     tao_file_txt,
 )
-from .models import StoryInfo
+from .models import CharacterProfile, StoryInfo
 from .scraper_core import lay_thong_tin_truyen, scrape_chapters
 from .session_manager import capture_session, load_session, save_session
 from .utils import (
@@ -176,16 +176,69 @@ class ValvrareScraperCLI:
         # Configure logging
         configure_logger(self.args.verbose)
 
+    def _parse_arguments_voice(self) -> argparse.Namespace:
+        """Parse arguments for 'voice' subcommand without ten_truyen positional conflict."""
+        # sys.argv looks like: ['vvrt', 'voice', 'upload', '--audio', '/path.wav']
+        # We need to handle 'voice' as the subcommand prefix
+        import copy
+        voice_args = copy.deepcopy(sys.argv[2:]) if len(sys.argv) > 2 else []  # skip 'vvrt' and 'voice'
+
+        parser = argparse.ArgumentParser(prog="vvrt voice", add_help=False)
+        voice_subparsers = parser.add_subparsers(dest="voice_command", help="Voice bank sub-commands")
+
+        upload_parser = voice_subparsers.add_parser("upload", help="Upload a voice sample to the voice bank")
+        upload_parser.add_argument("--audio", "-a", help="Path to audio file (wav, mp3, ogg, m4a)")
+        upload_parser.add_argument("--ref-text", "-t", help="Transcript text (min 10 chars)")
+        upload_parser.add_argument("--name", "-n", help="Voice name (3-100 chars)")
+        upload_parser.add_argument("--gender", "-g", choices=["male", "female", "other"], help="Voice gender")
+        upload_parser.add_argument("--age-group", choices=["child", "teen", "young_adult", "adult", "elder"], help="Age group")
+        upload_parser.add_argument("--language", default="vi", help="Language code (default: vi)")
+        upload_parser.add_argument("--mood", "-m", help="Voice mood (optional)")
+        upload_parser.add_argument("--tags", help="Comma-separated tags (max 5)")
+        upload_parser.add_argument("--publish", action="store_true", help="Publish to community immediately")
+
+        # Add standard CLI flags that may appear before 'voice'
+        parser.add_argument("--verbose", action="store_true", help="Hiển thị log chi tiết.")
+
+        args = parser.parse_args(voice_args)
+        # Wrap in a namespace with command='voice'
+        namespace = argparse.Namespace(command="voice", ten_truyen=[], verbose=getattr(args, "verbose", False))
+        for key, value in vars(args).items():
+            if key not in ("verbose",):
+                setattr(namespace, key, value)
+        return namespace
+
     def _parse_arguments(self) -> argparse.Namespace:
+        # Handle 'voice' subcommand specially to avoid argparse nargs='*' conflict
+        if len(sys.argv) > 2 and sys.argv[1] == "voice":
+            return self._parse_arguments_voice()
+
+        # Manually extract ten_truyen (positional args before any -option)
+        # to avoid argparse nargs='*' conflict with subparsers
+        ten_truyen = []
+        rest_args = []
+        i = 1  # skip program name (sys.argv[0])
+        while i < len(sys.argv):
+            arg = sys.argv[i]
+            if arg.startswith('-'):
+                rest_args.append(arg)
+                i += 1
+                # Include the next arg if it's not an option (simplified handling)
+                if i < len(sys.argv) and not sys.argv[i].startswith('-'):
+                    rest_args.append(sys.argv[i])
+                    i += 1
+            else:
+                # All remaining positional args go to ten_truyen
+                while i < len(sys.argv) and not sys.argv[i].startswith('-'):
+                    ten_truyen.append(sys.argv[i])
+                    i += 1
+
+        # Build the parser (without ten_truyen positional)
         parser = argparse.ArgumentParser(
             description="Tải truyện từ Valvrare Team dưới dạng PDF, EPUB, và các định dạng khác.",
             formatter_class=argparse.RawTextHelpFormatter,
         )
-        parser.add_argument(
-            "ten_truyen",
-            nargs="*",
-            help="Tên truyện cần tải (slug). Hoặc dùng 'web' để mở giao diện, 'run <file>' để chạy manifest.",
-        )
+        # ten_truyen is handled manually, not as a parser argument
         parser.add_argument("-o", "--output", dest="output_folder", help="Thư mục đầu ra.")
         parser.add_argument(
             "-f",
@@ -246,7 +299,18 @@ class ValvrareScraperCLI:
         selection_group.add_argument("--volumes", nargs="+", type=int, help="Tải các tập cụ thể.")
         selection_group.add_argument("--chapters", nargs="+", type=int, help="Tải các chương cụ thể.")
 
-        return parser.parse_args()
+        parser.add_argument(
+            "--select-voices",
+            action="store_true",
+            help="Interactively select voices for characters when generating AD-MP3.",
+        )
+
+        # Note: voice subcommand is handled separately in _parse_arguments_voice
+        # (to avoid argparse nargs='*' conflict with subparsers)
+
+        args = parser.parse_args(rest_args)
+        args.ten_truyen = ten_truyen
+        return args
 
     async def setup_session(self):
         """Handles session loading, login, and token extraction."""
@@ -422,6 +486,12 @@ class ValvrareScraperCLI:
                 num_workers=self.args.workers,
                 playwright_mode=self._cli_playwright_mode(),
             )
+            return
+
+        # Handle 'voice' commands
+        if self.args.command == "voice":
+            if self.args.voice_command == "upload":
+                await self._handle_voice_upload(self.args)
             return
 
         await self.setup_session()
@@ -709,14 +779,31 @@ class ValvrareScraperCLI:
                         "VVR_API_KEY or VVR_BASE_URL not found. Audio Drama generation might fail or fallback."
                     )
 
-                await tao_file_audiodrama(
-                    content_list=content,
-                    filename=fpath,
-                    story_id=info.slug,
-                    db_manager=self.db_manager,
-                    title=title,
-                    tts_provider_name=self.args.tts_provider,
-                )
+                # Check if --select-voices is set and provider is omnivoice (or auto-detect)
+                select_voices = getattr(self.args, "select_voices", False)
+                tts_provider = self.args.tts_provider
+                is_omnivoice = tts_provider is None or tts_provider == "omnivoice"
+
+                if select_voices and is_omnivoice:
+                    # Run voice selection after script parsing but before synthesis
+                    await tao_file_audiodrama(
+                        content_list=content,
+                        filename=fpath,
+                        story_id=info.slug,
+                        db_manager=self.db_manager,
+                        title=title,
+                        tts_provider_name=tts_provider,
+                        select_voices_callback=lambda chars, sid: self._select_voices_interactive(chars, sid),
+                    )
+                else:
+                    await tao_file_audiodrama(
+                        content_list=content,
+                        filename=fpath,
+                        story_id=info.slug,
+                        db_manager=self.db_manager,
+                        title=title,
+                        tts_provider_name=tts_provider,
+                    )
             elif fmt == "MP4":
                 # Check for API Key as video needs Audio Drama
                 if not os.getenv("VVR_API_KEY") or not os.getenv("VVR_BASE_URL"):
@@ -731,6 +818,369 @@ class ValvrareScraperCLI:
                     fps=config.get("fps", 30),
                     render_format=config.get("render_format", "landscape"),
                 )
+
+    async def _handle_voice_upload(self, args):
+        """Handle the `vvrt voice upload` subcommand."""
+        from vvr_scraper.voice_bank.db import VoiceBankDatabaseManager
+        from vvr_scraper.voice_bank.storage import get_voice_bank_dir, save_voice_file
+        from vvr_scraper.voice_bank.validator import (
+            compute_file_hash,
+            convert_to_canonical,
+            validate_audio,
+        )
+
+        session = PromptSession()
+
+        # Prompt for audio file if not provided
+        audio_path = args.audio
+        if not audio_path:
+            console.print("[yellow]Audio file path (wav, mp3, ogg, m4a):[/yellow]")
+            audio_path = await session.prompt_async("  Audio file: ")
+            audio_path = audio_path.strip()
+
+        # Validate audio file
+        validation = validate_audio(audio_path)
+        if not validation.valid:
+            console.print(f"[bold red]Error:[/bold red] {validation.error}")
+            return
+
+        # Prompt for ref_text if not provided
+        ref_text = args.ref_text
+        if not ref_text:
+            console.print("[yellow]Transcript text (min 10 chars, what is spoken in the audio):[/yellow]")
+            ref_text = await session.prompt_async("  Transcript text: ")
+            ref_text = ref_text.strip()
+
+        if len(ref_text) < 10:
+            console.print("[bold red]Error:[/bold red] ref_text must be at least 10 characters.")
+            return
+
+        # Prompt for name if not provided
+        name = args.name
+        if not name:
+            console.print("[yellow]Voice name (3-100 chars):[/yellow]")
+            name = await session.prompt_async("  Name: ")
+            name = name.strip()
+
+        if len(name) < 3 or len(name) > 100:
+            console.print("[bold red]Error:[/bold red] Name must be 3-100 characters.")
+            return
+
+        # Prompt for gender if not provided
+        gender = args.gender
+        if not gender:
+            gender_idx = InteractiveUI.show_menu(
+                ["Male", "Female", "Other"], "Select gender", multi_select=False
+            )
+            if gender_idx is None:
+                return
+            gender = ["male", "female", "other"][gender_idx]
+
+        # Prompt for age_group if not provided
+        age_group = args.age_group
+        if not age_group:
+            age_idx = InteractiveUI.show_menu(
+                ["Child", "Teen", "Young Adult", "Adult", "Elder"],
+                "Select age group",
+                multi_select=False,
+            )
+            if age_idx is None:
+                return
+            age_group = ["child", "teen", "young_adult", "adult", "elder"][age_idx]
+
+        # Get optional fields
+        language = args.language or "vi"
+        mood = args.mood
+        tags = []
+        if args.tags:
+            tags = [t.strip().lower() for t in args.tags.split(",") if t.strip()][:5]
+
+        # Show summary table and ask for confirmation
+        console.print("\n[bold cyan]Voice Sample Summary:[/bold cyan]")
+        table = Table(border_style="bright_blue")
+        table.add_column("Field", style="cyan")
+        table.add_column("Value", style="white")
+        table.add_row("Name", name)
+        table.add_row("Gender", gender)
+        table.add_row("Age Group", age_group)
+        table.add_row("Language", language)
+        table.add_row("Duration", f"{validation.duration_ms}ms")
+        table.add_row("Format", validation.format.upper())
+        if mood:
+            table.add_row("Mood", mood)
+        if tags:
+            table.add_row("Tags", ", ".join(tags))
+        console.print(table)
+
+        confirm = input("\nConfirm upload? [y/N]: ").strip().lower()
+        if confirm not in ("y", "yes"):
+            console.print("[yellow]Upload cancelled.[/yellow]")
+            return
+
+        # Convert to canonical WAV
+        import tempfile
+        import uuid
+
+        voice_id = str(uuid.uuid4())
+        with tempfile.TemporaryDirectory() as tmpdir:
+            canonical_path = os.path.join(tmpdir, f"{voice_id}.wav")
+            convert_to_canonical(audio_path, canonical_path)
+
+            # Re-validate duration on canonical file
+            canonical_validation = validate_audio(canonical_path)
+            if not canonical_validation.valid:
+                console.print(f"[bold red]Error:[/bold red] Canonical file invalid: {canonical_validation.error}")
+                return
+
+            # Compute hash for dedup
+            file_hash = compute_file_hash(canonical_path)
+
+            # Save to voice bank directory
+            user_id = "local"
+            relative_path = save_voice_file(canonical_path, user_id, voice_id)
+
+        # Create DB record
+        db_path = os.path.join(get_config_path(), "voice_bank.db")
+        db_manager = VoiceBankDatabaseManager(db_path=db_path)
+        await db_manager.init_db()
+
+        try:
+            # Check for duplicate
+            existing = await db_manager.get_voice_by_hash(user_id, file_hash)
+            if existing:
+                console.print("[bold red]Error:[/bold red] Duplicate voice sample (same file already uploaded).")
+                return
+
+            voice_record_id = await db_manager.create_voice_sample(
+                user_id=user_id,
+                name=name,
+                description="",
+                ref_audio_path=relative_path,
+                ref_text=ref_text,
+                duration_ms=canonical_validation.duration_ms,
+                sample_rate=canonical_validation.sample_rate,
+                gender=gender,
+                age_group=age_group,
+                language=language,
+                mood=mood,
+                visibility="private",
+                file_hash=file_hash,
+            )
+
+            if tags:
+                await db_manager.set_tags(voice_record_id, tags)
+
+            # Show success summary
+            console.print("\n[bold green]✓ Voice sample uploaded successfully![/bold green]")
+            result_table = Table(border_style="bright_green")
+            result_table.add_column("Field", style="cyan")
+            result_table.add_column("Value", style="white")
+            result_table.add_row("ID", voice_record_id)
+            result_table.add_row("Name", name)
+            result_table.add_row("Duration", f"{canonical_validation.duration_ms}ms")
+            result_table.add_row("Visibility", "private")
+            result_table.add_row("Path", os.path.join(get_voice_bank_dir(), relative_path))
+            console.print(result_table)
+
+            # Ask about publishing
+            if args.publish or input("\nPublish to community? [y/N]: ").strip().lower() in ("y", "yes"):
+                await db_manager.publish_voice(voice_record_id, user_id)
+                console.print("[bold green]✓ Published to community![/bold green]")
+
+        finally:
+            await db_manager.close()
+
+    async def _select_voices_interactive(self, characters: list[dict], story_id: str):
+        """Interactively select voices for characters.
+
+        Args:
+            characters: List of dicts with 'name' and 'gender' keys (detected from script).
+            story_id: The story slug for saving character profiles.
+        """
+        if not characters:
+            console.print("[yellow]No characters detected in script.[/yellow]")
+            return
+
+        console.print(f"\n[bold cyan]Voice Selection for {len(characters)} character(s)[/bold cyan]")
+
+        # Ask for voice source
+        source_idx = InteractiveUI.show_menu(
+            ["Local directory", "Community voice bank", "Auto-assign (skip)"],
+            "Choose voice source",
+            multi_select=False,
+        )
+        if source_idx is None or source_idx == 2:
+            console.print("[yellow]Skipping voice selection (auto-assign mode).[/yellow]")
+            return
+
+        db_path = os.path.join(get_config_path(), "voice_bank.db")
+        db_manager = VoiceBankDatabaseManager(db_path=db_path)
+        await db_manager.init_db()
+
+        try:
+            if source_idx == 0:
+                # Mode A: Local directory
+                session = PromptSession()
+                console.print("[yellow]Enter path to local voice directory:[/yellow]")
+                voice_dir = await session.prompt_async("  Directory path: ")
+                voice_dir = voice_dir.strip()
+
+                if not os.path.isdir(voice_dir):
+                    console.print(f"[bold red]Error:[/bold red] Directory not found: {voice_dir}")
+                    return
+
+                # Scan local voice directory
+                from vvr_scraper.voice_bank.storage import scan_local_voice_dir
+                local_voices = scan_local_voice_dir(voice_dir)
+
+                if not local_voices:
+                    console.print("[yellow]No valid voices found in directory.[/yellow]")
+                    return
+
+                # Show discovered voices
+                console.print("\n[bold cyan]Discovered local voices:[/bold cyan]")
+                table = Table(border_style="bright_blue")
+                table.add_column("#", style="cyan", width=4)
+                table.add_column("Voice Name", style="white")
+                table.add_column("Duration", style="cyan")
+                table.add_column("Transcript", style="dim")
+                for i, v in enumerate(local_voices, 1):
+                    ref_preview = (v["ref_text"] or "N/A")[:40] + "..." if v["ref_text"] and len(v["ref_text"]) > 40 else (v["ref_text"] or "N/A")
+                    table.add_row(str(i), v["name"], f"{v['duration_ms']}ms", ref_preview)
+                console.print(table)
+
+                # Assign voices to characters
+                for char in characters:
+                    char_name = char.get("name", "Unknown")
+                    char_gender = char.get("gender", "other")
+
+                    console.print(f"\n[bold cyan]Character:[/bold cyan] {char_name} (gender: {char_gender})")
+                    assign_idx = InteractiveUI.show_menu(
+                        ["Auto-assign", "Choose from local voices", "Skip"],
+                        f"Assign voice for {char_name}",
+                        multi_select=False,
+                    )
+                    if assign_idx is None or assign_idx == 0:
+                        console.print(f"  [dim]Auto-assign for {char_name}[/dim]")
+                        continue
+                    if assign_idx == 2:
+                        console.print(f"  [dim]Skipped {char_name}[/dim]")
+                        continue
+
+                    # Show voice list
+                    voice_menu = [f"{v['name']} ({v['duration_ms']}ms)" for v in local_voices]
+                    selected_idx = InteractiveUI.show_menu(
+                        voice_menu,
+                        f"Select voice for {char_name}",
+                        multi_select=False,
+                    )
+                    if selected_idx is None:
+                        continue
+
+                    selected_voice = local_voices[selected_idx]
+                    ref_audio = selected_voice["ref_audio_path"]
+                    ref_text = selected_voice["ref_text"] or ""
+
+                    # Save to character profile (use library db_manager for character profiles)
+                    profile = CharacterProfile(
+                        name=char_name,
+                        story_id=story_id,
+                        ref_audio_path=ref_audio,
+                        ref_text=ref_text,
+                    )
+                    await self.db_manager.save_character_profile(profile)
+                    console.print(f"  [green]✓ Assigned {selected_voice['name']} to {char_name}[/green]")
+
+            elif source_idx == 1:
+                # Mode B: Community voice bank
+                for char in characters:
+                    char_name = char.get("name", "Unknown")
+                    char_gender = char.get("gender", "other")
+
+                    console.print(f"\n[bold cyan]Character:[/bold cyan] {char_name}")
+
+                    # Prompt for search tags
+                    session = PromptSession()
+                    console.print("[yellow]Search tags (e.g., 'male adult serious') or press Enter to search all:[/yellow]")
+                    search_query = await session.prompt_async("  Tags: ")
+                    search_query = search_query.strip()
+
+                    # Build search tags list
+                    search_tags = search_query.split() if search_query else None
+
+                    # Search community voices
+                    results = await db_manager.list_community_voices(
+                        limit=5,
+                        offset=0,
+                        tags=search_tags,
+                        gender=char_gender if char_gender in ("male", "female") else None,
+                    )
+
+                    items = results.get("items", [])
+                    if not items:
+                        console.print("  [yellow]No community voices found.[/yellow]")
+                        continue
+
+                    # Show results table
+                    console.print(f"\n  [bold cyan]Top community voices for '{search_query or 'all'}':[/bold cyan]")
+                    table = Table(border_style="bright_blue")
+                    table.add_column("#", style="cyan", width=4)
+                    table.add_column("Name", style="white")
+                    table.add_column("Gender", style="cyan")
+                    table.add_column("Age", style="cyan")
+                    table.add_column("Tags", style="dim")
+                    table.add_column("Votes", style="yellow")
+
+                    for i, v in enumerate(items, 1):
+                        vote_score = v.get("vote_score", 0)
+                        vote_display = f"+{vote_score}" if vote_score >= 0 else str(vote_score)
+                        tags_str = ", ".join(v.get("tags", [])[:3])
+                        table.add_row(
+                            str(i),
+                            v.get("name", "Unknown"),
+                            v.get("gender", "?"),
+                            v.get("age_group", "?"),
+                            tags_str[:30],
+                            vote_display,
+                        )
+                    console.print(table)
+
+                    # Add option to search again or skip
+                    voice_options = [f"{v['name']}" for v in items] + ["Search again", "Skip"]
+                    select_idx = InteractiveUI.show_menu(
+                        voice_options,
+                        f"Select voice for {char_name}",
+                        multi_select=False,
+                    )
+
+                    if select_idx is None or select_idx == len(items) + 1:
+                        # Skip
+                        continue
+                    if select_idx == len(items):
+                        # Search again - restart this character
+                        console.print("  [dim]Restarting search...[/dim]")
+                        # Re-prompt for this character (simple approach: just continue)
+                        continue
+
+                    selected_voice = items[select_idx]
+
+                    # Resolve absolute path
+                    from vvr_scraper.voice_bank.storage import get_voice_file_path
+                    ref_audio = get_voice_file_path(selected_voice["ref_audio_path"])
+                    ref_text = selected_voice.get("ref_text", "")
+
+                    # Save to character profile
+                    profile = CharacterProfile(
+                        name=char_name,
+                        story_id=story_id,
+                        ref_audio_path=ref_audio,
+                        ref_text=ref_text,
+                    )
+                    await self.db_manager.save_character_profile(profile)
+                    console.print(f"  [green]✓ Assigned {selected_voice['name']} to {char_name}[/green]")
+
+        finally:
+            await db_manager.close()
 
     def _cleanup(self):
         logger.success("--- HOÀN TẤT ---")

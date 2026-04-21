@@ -44,6 +44,9 @@ class CharacterUpdateRequest(BaseModel):
     personality: str | None = None
     speaking_style: str | None = None
     gender: str | None = None
+    ref_audio_path: str | None = None
+    ref_text: str | None = None
+    voice_bank_id: str | None = None
 
 
 # --- Helpers ---
@@ -442,15 +445,52 @@ async def update_character(slug: str, character_name: str, body: CharacterUpdate
             existing.speaking_style = body.speaking_style
         if body.gender is not None:
             existing.gender = body.gender
+        if body.ref_audio_path is not None:
+            existing.ref_audio_path = body.ref_audio_path
+        if body.ref_text is not None:
+            existing.ref_text = body.ref_text
+        if body.voice_bank_id is not None:
+            from vvr_scraper.voice_bank.db import VoiceBankDatabaseManager
+            from vvr_scraper.voice_bank.storage import get_voice_file_path
+            from vvr_scraper.utils import get_config_path
+
+            vb_db = VoiceBankDatabaseManager(db_path=get_config_path("voice_bank.db"))
+            await vb_db.init_db()
+            try:
+                voice = await vb_db.get_voice_sample(body.voice_bank_id)
+                if voice and voice["visibility"] in ("public", "private"):
+                    existing.ref_audio_path = get_voice_file_path(voice["ref_audio_path"])
+                    existing.ref_text = voice["ref_text"]
+            finally:
+                await vb_db.close()
         await db.save_character_profile(existing)
     else:
-        # Create new profile
+        # Resolve ref_audio_path and ref_text from voice_bank_id if provided
+        resolved_ref_audio_path = body.ref_audio_path
+        resolved_ref_text = body.ref_text
+        if body.voice_bank_id is not None:
+            from vvr_scraper.voice_bank.db import VoiceBankDatabaseManager
+            from vvr_scraper.voice_bank.storage import get_voice_file_path
+            from vvr_scraper.utils import get_config_path
+
+            vb_db = VoiceBankDatabaseManager(db_path=get_config_path("voice_bank.db"))
+            await vb_db.init_db()
+            try:
+                voice = await vb_db.get_voice_sample(body.voice_bank_id)
+                if voice and voice["visibility"] in ("public", "private"):
+                    resolved_ref_audio_path = get_voice_file_path(voice["ref_audio_path"])
+                    resolved_ref_text = voice["ref_text"]
+            finally:
+                await vb_db.close()
+
         profile = CharacterProfile(
             name=character_name,
             story_id=slug,
             aliases=body.aliases or [],
             gender=body.gender or "unknown",
             voice_id=body.voice_id,
+            ref_audio_path=resolved_ref_audio_path,
+            ref_text=resolved_ref_text,
             personality=body.personality,
             speaking_style=body.speaking_style,
             color=body.color,
