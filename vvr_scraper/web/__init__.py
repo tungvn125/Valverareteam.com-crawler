@@ -100,7 +100,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Valvrare Team Scraper Web UI",
-    version="1.9.1",
+    version="0.3.0",
     description="API for managing scraper tasks, job queues, library syncing, and OPDS feeds.",
     lifespan=lifespan,
 )
