@@ -362,39 +362,203 @@ class TruyenFullSource(BaseSource):
 
 ---
 
-## 4. Plugin Writer Guide (tóm tắt)
+## 4. Plugin Writer Guide
 
-Một external plugin chỉ cần:
+### 4.1 Cài đặt & Khởi động
+
+Tạo file Python tại thư mục plugin:
+
+```
+~/.config/vvr-scraper/plugins/my_source.py
+```
+
+VVR **tự động scan** thư mục này mỗi lần khởi động. Không cần đăng ký, không cần sửa bất kỳ file nào trong core.
+
+Nếu muốn dùng thư mục khác (ví dụ trong quá trình dev), set env:
+
+```bash
+export VVR_PLUGIN_PATHS=/path/to/my/plugins:/another/path
+```
+
+### 4.2 Minimal plugin
 
 ```python
 # ~/.config/vvr-scraper/plugins/my_source.py
-from vvr_scraper.sources import BaseSource, ChapterTreeItem, VolumeTreeItem
+import httpx
+from vvr_scraper.sources import BaseSource, ChapterTreeItem, VolumeTreeItem, SearchResult
 from vvr_scraper.models import ContentItem, StoryInfo
+from vvr_scraper.utils import HEADERS
 from typing import ClassVar
 
 class MySiteSource(BaseSource):
-    base_urls: ClassVar = ["mysite.example"]
-    priority: ClassVar = 80
-    name: ClassVar = "my-site"
+    # --- Khai báo bắt buộc ---
+    base_urls: ClassVar = ["mysite.example"]   # domain để matching URL
+    priority: ClassVar = 80                    # thấp hơn = ưu tiên cao hơn khi conflict domain
+    name: ClassVar = "my-site"                 # id duy nhất, dùng trong log
+    requires_browser: ClassVar = False         # True nếu cần Playwright
+
+    def __init__(self, client: httpx.AsyncClient | None = None):
+        # Dùng _owns_client pattern để tránh leak connection pool
+        self._owns_client = client is None
+        self.client = client or httpx.AsyncClient(headers=HEADERS, timeout=30.0)
+
+    async def aclose(self) -> None:
+        if self._owns_client:
+            await self.client.aclose()
 
     @classmethod
-    def slug_to_url(cls, slug):
+    def slug_to_url(cls, slug: str) -> str | None:
+        # Cho phép user dùng slug thay vì full URL
+        # Trả None nếu site không hỗ trợ slug dạng này
         return f"https://mysite.example/truyen/{slug}"
 
-    async def get_info(self, url): ...        # return StoryInfo
-    async def get_chapter_list(self, url): ...# return list[VolumeTreeItem] với absolute URLs
-    async def get_content(self, url): ...     # return list[ContentItem], raise nếu fail
-    async def aclose(self): ...
+    async def get_info(self, url: str) -> StoryInfo:
+        resp = await self.client.get(url)
+        resp.raise_for_status()
+        # ... parse HTML ...
+        return StoryInfo(
+            title=title,          # QUAN TRỌNG: "Unknown" nếu không tìm thấy truyện
+            author=author,
+            description=description,
+            slug=url.rstrip("/").split("/")[-1],  # convention: slug = last path segment
+            genres=genres,
+            cover_url=cover_url,  # source chỉ cần set cover_url, VVR tự tải về
+        )
+
+    async def get_chapter_list(self, url: str) -> list[VolumeTreeItem]:
+        # ...parse danh sách chapter...
+        return [
+            VolumeTreeItem(
+                volume="Volume 1",
+                chapters=[
+                    ChapterTreeItem(
+                        title="Chương 1",
+                        url="https://mysite.example/truyen/ten-truyen/chuong-1",  # PHẢI là absolute URL
+                        locked=False,
+                    )
+                ]
+            )
+        ]
+
+    async def get_content(self, chapter_url: str) -> list[ContentItem]:
+        resp = await self.client.get(chapter_url)
+        resp.raise_for_status()
+        # ...parse nội dung...
+        if not content:
+            raise RuntimeError(f"Không extract được nội dung từ: {chapter_url}")
+        # KHÔNG return [] hoặc None khi thất bại — phải raise
+        return content
 ```
 
-VVR tự động phát hiện khi khởi động. Không cần đăng ký, không cần sửa bất kỳ file nào trong core.
+### 4.3 Plugin cần Playwright (browser)
 
-**Constraints plugin phải tuân thủ:**
-1. `get_content()` raise exception thay vì return `[]` khi fail
-2. `get_info()` trả `title="Unknown"` khi không tìm thấy truyện
-3. Tất cả URL trong `ChapterTreeItem.url` phải là absolute URL
-4. Nếu cần `browser`: accept qua `__init__`, không tự `async_playwright()`
-5. Dùng `_owns_client` pattern nếu tự tạo HTTP client
+Nếu site dùng JavaScript rendering:
+
+```python
+from playwright.async_api import Browser
+
+class MySiteSource(BaseSource):
+    base_urls: ClassVar = ["mysite.example"]
+    requires_browser: ClassVar = True   # khai báo để VVR biết inject browser
+
+    def __init__(
+        self,
+        client: httpx.AsyncClient | None = None,
+        browser: Browser | None = None,   # VVR tự inject nếu có
+    ):
+        self._owns_client = client is None
+        self.client = client or httpx.AsyncClient(headers=HEADERS, timeout=30.0)
+        self.browser = browser  # KHÔNG tự gọi async_playwright() — sẽ leak Chromium process
+
+    async def get_content(self, chapter_url: str) -> list[ContentItem]:
+        if not self.browser:
+            raise RuntimeError("Browser required for MySiteSource")
+        page = await self.browser.new_page()
+        try:
+            await page.goto(chapter_url, wait_until="networkidle", timeout=60000)
+            # ...extract content...
+            return content
+        finally:
+            await page.close()  # luôn đóng page sau khi dùng
+```
+
+### 4.4 Rate limiting & retry
+
+Nếu site có rate limit, tự implement retry trong source (VVR không tự retry cho custom sources):
+
+```python
+import asyncio
+
+async def get_content(self, chapter_url: str) -> list[ContentItem]:
+    for attempt in range(3):
+        try:
+            resp = await self.client.get(chapter_url)
+            if resp.status_code == 429:
+                await asyncio.sleep(2 ** attempt)
+                continue
+            resp.raise_for_status()
+            # ...parse...
+            return content
+        except Exception:
+            if attempt == 2:
+                raise
+            await asyncio.sleep(2 ** attempt)
+```
+
+**Lưu ý về concurrency:** VVR tự động giảm concurrency xuống còn `n // 2` khi phát hiện URL không phải VVR. Nếu site của bạn cần giới hạn chặt hơn, hãy dùng retry + sleep thay vì dựa vào concurrency bên ngoài.
+
+### 4.5 Contracts bắt buộc — tóm tắt
+
+| Method | Behavior khi thất bại | Lý do |
+|--------|----------------------|-------|
+| `get_content()` | **raise exception** | Không raise → VVR timeout 60s chạy VVR Playwright fallback vô ích |
+| `get_info()` | trả `StoryInfo(title="Unknown")` | `resolve_story_url()` dùng làm sentinel check |
+| `get_chapter_list()` | raise exception | Rõ ràng hơn so với trả list rỗng |
+
+| Field | Yêu cầu | Lý do |
+|-------|---------|-------|
+| `ChapterTreeItem.url` | **Absolute URL** | `job_runner` chỉ prepend VVR base URL cho relative paths |
+| `StoryInfo.slug` | `url.rstrip("/").split("/")[-1]` | Dùng làm tên thư mục output |
+| `StoryInfo.cover_url` | URL đầy đủ | VVR tự tải cover bytes qua `fetch_cover()` |
+
+### 4.6 Debugging plugin
+
+Khi VVR khởi động, log sẽ hiển thị plugin được load:
+
+```
+INFO | Plugin loaded: my-site (mysite.example) — priority=80
+```
+
+Nếu plugin fail import:
+
+```
+WARNING | Failed loading plugin /path/to/my_source.py: ModuleNotFoundError: No module named 'beautifulsoup4'
+```
+
+Để test plugin nhanh mà không restart VVR, chạy từ Python shell:
+
+```python
+import asyncio
+from vvr_scraper.sources import REGISTRY
+
+async def test():
+    source = REGISTRY.get("https://mysite.example/truyen/ten-truyen")
+    print(source)  # MySiteSource instance hoặc None
+    if source:
+        info = await source.get_info("https://mysite.example/truyen/ten-truyen")
+        print(info)
+        await source.aclose()
+
+asyncio.run(test())
+```
+
+### 4.7 Ví dụ thực tế: source chỉ dùng HTTPX
+
+Tham khảo `vvr_scraper/sources/truyenfull.py` — source HTTPX-only với retry, pagination AJAX, và `<br><br>` markup parsing.
+
+### 4.8 Ví dụ thực tế: source dùng Playwright
+
+Tham khảo `vvr_scraper/sources/lnhako.py` — source Playwright với lazy-loaded volumes và exponential backoff.
 
 ---
 
