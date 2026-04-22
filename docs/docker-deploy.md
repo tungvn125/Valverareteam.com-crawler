@@ -147,7 +147,13 @@ Important defaults from the compose file:
 
 The social reader feature requires authentication and uses JWT tokens. For production Docker deployments, you must set:
 
-- `VVR_JWT_SECRET`: Secret key for signing JWT tokens. Generate a strong random value:
+- `VVR_JWT_SECRET`: Secret key for signing JWT tokens.
+
+  > ⚠️ **Security Warning**
+  > - This secret is used to sign all JWT tokens. If compromised, attackers can forge authentication tokens.
+  > - The default value `change-this-random-secret` is NOT safe for production.
+  > - Use `openssl rand -hex 32` to generate a strong secret before deploying.
+
   ```bash
   export VVR_JWT_SECRET="$(openssl rand -hex 32)"
   ```

@@ -115,7 +115,12 @@ All variables can be set in the shell environment, a `.env` file in the project 
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `VVR_JWT_SECRET` | `change-this-random-secret` | Secret key for signing JWT tokens. **Change this in production.** |
+| `VVR_JWT_SECRET` | `change-this-random-secret` | Secret key for signing JWT tokens. |
+
+> ⚠️ **Security Warning**
+> - This secret is used to sign all JWT tokens. If compromised, attackers can forge authentication tokens.
+> - The default value `change-this-random-secret` is NOT safe for production.
+> - Use `openssl rand -hex 32` to generate a strong secret before deploying.
 | `VVR_ADMIN_CODE` | — | Bootstrap invite code that creates the first admin user. Used once during `vvrt social create-admin` or via the `/api/auth/register` endpoint. |
 
 ---
