@@ -161,11 +161,12 @@ The social reader feature requires authentication and uses JWT tokens. For produ
 
 Example first-time setup in Docker:
 
+> **Note:** The `vvrt social create-admin` CLI command creates an admin directly and does NOT require `VVR_ADMIN_CODE`. The `VVR_ADMIN_CODE` is only needed for web registration via `/api/auth/register`.
+
 ```bash
 docker run --rm \
   -v vvr_config:/home/vvr/.config/vvr-scraper \
   -e VVR_JWT_SECRET="$(openssl rand -hex 32)" \
-  -e VVR_ADMIN_CODE="my-secret-invite" \
   vvr-scraper \
   social create-admin --username admin --password "your-secure-password"
 ```
