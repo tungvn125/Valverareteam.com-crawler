@@ -99,6 +99,10 @@ All variables can be set in the shell environment, a `.env` file in the project 
 | `FREESOUND_CLIENT_ID` | — | Optional. Freesound API for BGM/SFX. |
 | `FREESOUND_CLIENT_SECRET` | — | Optional. Freesound API secret. |
 | `VVR_SSR_URL` | `val-ssr-2kzit.ondigitalocean.app` | SSR proxy hostname (optional). |
+| `VVR_NARRATOR_REF_AUDIO` | — | Path to reference audio file for narrator voice cloning. |
+| `VVR_OMNIVOICE_DEVICE` | `cuda:0` | Device for OmniVoice TTS (e.g., `cuda:0`, `cpu`). |
+| `VVR_VOICE_BANK_DIR` | — | Custom directory for voice bank storage. |
+| `VVR_LOG_JSON` | `0` | Set to `1` to enable JSON formatted logging. |
 
 ### OPDS Catalog
 
