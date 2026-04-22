@@ -184,6 +184,127 @@ If audio is available, it renames the silent MP4 temporarily and calls `VideoRen
 
 The mux step uses `ffmpeg` with copied video, AAC audio, and `-shortest`.
 
+## BGMManager
+
+`BGMManager` provides mood-based background music selection from a local audio library.
+
+### Directory Structure
+
+The manager expects a base directory (default: `bgm/`) containing subdirectories named by mood. Each mood directory holds audio files:
+
+```
+bgm/
+├── calm/
+│   ├── track1.mp3
+│   └── track2.wav
+├── tense/
+│   ├── dramatic.ogg
+│   └── suspense.flac
+└── happy/
+    └── upbeat.m4a
+```
+
+Mood directories are scanned at initialization and can be refreshed at runtime.
+
+### Supported Audio Formats
+
+The following extensions are recognized: `.mp3`, `.wav`, `.ogg`, `.flac`, `.m4a`.
+
+### Mood Mapping
+
+Mood names are normalized to lowercase. The `available_moods` property returns all moods with at least one valid track. Tracks are retrieved via `get_random_track(mood)` which returns a random file path from the specified mood directory.
+
+### Key Methods
+
+| Method | Description |
+|--------|-------------|
+| `__init__(base_dir="bgm")` | Initialize with library path |
+| `refresh()` | Re-scan the library for updates |
+| `get_random_track(mood)` | Return random track path for mood |
+| `available_moods` | List of moods with tracks (property) |
+
+---
+
+## FreesoundManager
+
+`FreesoundManager` integrates with Freesound.org for OAuth2-authenticated background music discovery and download.
+
+### Authentication Flow
+
+Authentication uses OAuth2 with the Freesound API:
+
+1. **Authorization URL** — Generated via `get_auth_url()`. Users visit this URL to authorize the application.
+2. **Code Exchange** — After authorization, the callback code is exchanged for an access token via `exchange_code()`.
+3. **Token Persistence** — Tokens are saved to `.vvr_freesound_auth.json` in the config directory and automatically loaded on startup.
+
+### Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `FREESOUND_CLIENT_ID` | Yes | OAuth2 client ID from Freesound |
+| `FREESOUND_CLIENT_SECRET` | Yes | OAuth2 client secret from Freesound |
+
+### Search Behavior
+
+The `search_bgm(tags, limit=10)` method searches Freesound with the following filters:
+
+- **Query**: Joined tags (space-separated)
+- **Format filter**: `type:(wav OR flac)` — prioritizes lossless originals
+- **Fields returned**: `id,name,tags,type,previews,url`
+
+### Download and Conversion
+
+`download_and_convert(sound_id, output_path)` retrieves the original audio file and converts it to a standard WAV format:
+
+- Downloads the original file (WAV or FLAC) to a temporary directory
+- Loads with `pydub` and exports to 44.1kHz mono/stereo WAV
+- Returns the path to the converted file
+
+---
+
+## ImageGenerator
+
+`ImageGenerator` handles AI-powered image generation via DALL-E 3 with built-in caching and deduplication.
+
+### DALL-E 3 Integration
+
+Images are generated through the OpenAI API using the `dall-e-3` model:
+
+- **Resolution**: `1024x1024` (default) or `1792x1024` for wide formats
+- **Quality**: `standard`
+- **Concurrency**: Limited to 2 simultaneous requests via semaphore
+
+### Prompt Handling and Caching
+
+The generator uses SHA-256 hashing for deduplication:
+
+1. The prompt is hashed to produce a unique identifier
+2. Cached images are stored as `{hash}.webp`
+3. If a cached image exists for the same prompt, it is returned immediately without API call
+
+### Output Format and Directory
+
+- **Default cache directory**: `backgrounds/`
+- **Output format**: WebP (converted from PNG/JPG)
+- **Quality**: 80 (WebP compression)
+- **Color space**: RGB (converted for compatibility)
+
+### Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `OPENAI_API_KEY` | Yes | OpenAI API key for DALL-E 3 access |
+
+### Key Methods
+
+| Method | Description |
+|--------|-------------|
+| `__init__(cache_dir="backgrounds", api_key=None)` | Initialize with cache path and optional API key |
+| `generate(prompt, output_path=None)` | Generate or retrieve cached image |
+| `close()` | Close the shared HTTP client |
+
+---
+
 ## Required Runtime Dependencies
 
 Depending on which outputs you use, the current pipeline may require:
