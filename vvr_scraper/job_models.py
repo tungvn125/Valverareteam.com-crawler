@@ -9,7 +9,7 @@ class ScrapePayload(BaseModel):
     chapters: list[int] | None = None
     from_chapter: int | None = None
     to_chapter: int | None = None
-    grouping: int | None = None
+    grouping: str | None = None
     skip_illustrations: bool = False
     output_folder: str | None = None
     formats: list[str] = Field(default_factory=lambda: ["epub", "pdf", "cinema"])
