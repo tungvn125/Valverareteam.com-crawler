@@ -264,6 +264,111 @@ docker compose logs db-backup
 | `/novels` | Configured output folder (default: `novels/`) |
 | `/static` | `vvr_scraper/static/` |
 
+### Download Routes
+
+The legacy download endpoint queues scraping tasks directly:
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| POST | `/api/download` | none | Queue a direct download request |
+
+**Request Body** (`DownloadRequest` model):
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `slug` | string | required | Novel slug or full URL for custom sources |
+| `formats` | list[string] | `["EPUB"]` | Output formats: `EPUB`, `PDF`, `HTML`, `MD`, `TXT`, `MP3`, `AD-MP3` |
+| `grouping` | string | `"tatca"` | Chapter grouping strategy |
+| `tasks` | integer | `5` | Number of concurrent scraping tasks |
+| `skip_illustrations` | boolean | `false` | Skip chapters with "Minh họa" in the title |
+| `output_folder` | string | `null` | Custom output path (auto-generated if null) |
+| `selected_urls` | list[string] | `null` | Specific chapter URLs to download (partial export) |
+
+**Background Task Runner Interaction:**
+
+When a download request is received:
+
+1. The request is validated and a unique `task_id` is generated
+2. The task is added to the `DownloadManager` queue via `download_queue.add_task()`
+3. `DownloadManager` maintains a pool of worker tasks (configured by `--workers` or `num_workers` setting)
+4. Workers run `run_scrape_task()` from `vvr_scraper/web/routes/download.py` which:
+   - Resolves story metadata
+   - Scrapes chapters with checkpoint/resume support
+   - Exports to requested formats
+   - Updates the library database
+5. Progress is broadcast via WebSocket (`/ws/tasks`) throughout execution
+
+**Checkpoint System:**
+
+Downloads support automatic resume via checkpoint files (`.vvr_checkpoint.json`) stored in the output folder. If a task is interrupted, subsequent runs will skip already-scraped chapters.
+
+---
+
+## Social Database Schema
+
+The social reader uses a separate SQLite database (`social.db`) with the following schema:
+
+### Tables
+
+**`users`** — Registered user accounts
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | TEXT | PRIMARY KEY | UUID v4 user identifier |
+| `username` | TEXT | UNIQUE NOT NULL | Unique login name (3-32 chars) |
+| `display_name` | TEXT | NOT NULL | Display name shown in UI |
+| `hashed_password` | TEXT | NOT NULL | Bcrypt-hashed password |
+| `invite_code_used` | TEXT | — | Invite code used for registration |
+| `role` | TEXT | NOT NULL | `admin` or `member` |
+| `created_at` | TEXT | NOT NULL | ISO 8601 timestamp |
+
+**`invite_codes`** — Invite code management
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `code` | TEXT | PRIMARY KEY | Unique invite code (8-char UUID prefix) |
+| `created_by` | TEXT | NOT NULL | User ID who created the code |
+| `used_by` | TEXT | — | User ID who used the code (null if unused) |
+| `max_uses` | INTEGER | NOT NULL DEFAULT 1 | Maximum number of uses |
+| `use_count` | INTEGER | NOT NULL DEFAULT 0 | Current use count |
+| `created_at` | TEXT | NOT NULL | ISO 8601 timestamp |
+
+**`reactions`** — Chapter/paragraph emoji reactions
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | TEXT | PRIMARY KEY | UUID v4 reaction identifier |
+| `user_id` | TEXT | NOT NULL | User who created the reaction |
+| `book_slug` | TEXT | NOT NULL | Novel identifier |
+| `chapter_id` | TEXT | NOT NULL | Chapter identifier |
+| `anchor` | TEXT | NOT NULL | EPUB CFI or text anchor location |
+| `reaction_type` | TEXT | NOT NULL | One of: `heart`, `cry`, `wow`, `angry`, `fire`, `skull`, `think`, `clap`, `nerd`, `laugh`, `eyes`, `pray`, `sparkles` |
+| `created_at` | TEXT | NOT NULL | ISO 8601 timestamp |
+
+Unique constraint: `(user_id, book_slug, chapter_id, anchor, reaction_type)`
+
+**`comments`** — Chapter comments and replies
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | TEXT | PRIMARY KEY | UUID v4 comment identifier |
+| `user_id` | TEXT | NOT NULL | User who created the comment |
+| `book_slug` | TEXT | NOT NULL | Novel identifier |
+| `chapter_id` | TEXT | NOT NULL | Chapter identifier |
+| `anchor` | TEXT | — | Optional EPUB CFI anchor (null for chapter-level) |
+| `parent_id` | TEXT | — | Parent comment ID for replies (one level deep only) |
+| `content` | TEXT | NOT NULL | Comment text (1-2000 chars) |
+| `created_at` | TEXT | NOT NULL | ISO 8601 timestamp |
+| `updated_at` | TEXT | NOT NULL | ISO 8601 timestamp |
+
+### Implementation
+
+The schema is managed by `SocialDatabaseManager` in `vvr_scraper/social/db.py`. Database initialization:
+
+- Sets `PRAGMA journal_mode=WAL` for concurrent reads
+- Creates tables if they don't exist
+- Located at `~/.config/vvr-scraper/social.db` (or Docker volume `vvr_config`)
+
 ---
 
 ## Social Reader Setup

@@ -59,6 +59,80 @@ That socket is backed by the shared connection manager in `vvr_scraper.web.state
 
 The current endpoint keeps the connection open by receiving messages until the client disconnects.
 
+## Task WebSocket Protocol
+
+The `/ws/tasks` endpoint provides real-time updates for download and scraping tasks.
+
+### Connection Lifecycle
+
+1. **Connect**: Client opens a WebSocket connection to `/ws/tasks`
+2. **Accept**: Server accepts the connection via `ConnectionManager.connect()`
+3. **Receive**: Client listens for JSON messages until disconnected
+4. **Disconnect**: Server removes the connection via `ConnectionManager.disconnect()` when the client closes
+
+### Message Types
+
+All messages are JSON objects with a `type` field:
+
+| Type | Fields | Description |
+|---|---|---|
+| `status` | `task_id`, `status` | Task state change (queue, start, pause, export) |
+| `info` | `task_id`, `title` | Story metadata when resolved |
+| `progress` | `task_id`, `percent`, `msg` | Download progress update |
+| `complete` | `task_id`, `path` | Task finished successfully |
+| `error` | `task_id`, `error` | Task failed with error message |
+| `log` | `task_id`, `level`, `message`, `time` | Runtime log entry |
+
+### Example Messages
+
+**Task queued:**
+```json
+{"type": "status", "task_id": "abc-123", "status": "In Queue..."}
+```
+
+**Story resolved:**
+```json
+{"type": "info", "task_id": "abc-123", "title": "My Novel Title"}
+```
+
+**Progress update:**
+```json
+{"type": "progress", "task_id": "abc-123", "percent": 45, "msg": "Downloaded 45/100 chapters"}
+```
+
+**Export starting:**
+```json
+{"type": "status", "task_id": "abc-123", "status": "Exporting files..."}
+```
+
+**Task completed:**
+```json
+{"type": "complete", "task_id": "abc-123", "path": "/path/to/output/My Novel Title"}
+```
+
+**Task error:**
+```json
+{"type": "error", "task_id": "abc-123", "error": "Too many chapters failed to download"}
+```
+
+**Task paused:**
+```json
+{"type": "status", "task_id": "abc-123", "status": "Paused"}
+```
+
+**Log entry:**
+```json
+{"type": "log", "task_id": "abc-123", "level": "INFO", "message": "Chapter 10 downloaded", "time": "14:32:15"}
+```
+
+### Implementation Details
+
+The WebSocket system is implemented in `vvr_scraper/web/state.py`:
+
+- **ConnectionManager**: Manages active WebSocket connections and broadcasts messages to all connected clients
+- **websocket_sink**: Loguru sink that captures log records and broadcasts them as `log` type messages
+- **DownloadManager**: Queues tasks and broadcasts status updates via `manager.broadcast()`
+
 ## Where Settings Are Stored
 
 Web settings are loaded from and saved to `vvr_settings.json` through `load_vvr_settings()` and `save_vvr_settings()`.
