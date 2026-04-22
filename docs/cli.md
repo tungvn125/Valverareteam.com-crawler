@@ -186,6 +186,39 @@ Requirements:
 - `ref_text.txt` contains the spoken transcript
 - Directory name suffix `-voice` is optional (e.g., `linh-voice/` or just `linh/`)
 
+## `freesound-login` Subcommand
+
+Interactive OAuth2 login for Freesound.org to enable BGM search/download.
+
+```bash
+vvrt freesound-login
+```
+
+**Purpose:** Authenticates with Freesound.org via OAuth2 flow to obtain API tokens for searching and downloading background music and sound effects.
+
+**Behavior:**
+1. Opens your browser to the Freesound authorization page
+2. You authorize the application
+3. Copy the authorization code from the browser
+4. Paste it back into the CLI
+5. The token is saved to `~/.config/vvr-scraper/freesound_token.json`
+
+**Prerequisites:**
+- `FREESOUND_CLIENT_ID` and `FREESOUND_CLIENT_SECRET` must be set in your environment or `.env` file
+
+**Example:**
+
+```bash
+export FREESOUND_CLIENT_ID="your-client-id"
+export FREESOUND_CLIENT_SECRET="your-client-secret"
+vvrt freesound-login
+# Browser opens automatically...
+# Paste authorization code: xxxxxxxxxxxxxxxxxxxx
+# Đăng nhập Freesound thành công!
+```
+
+**Token Storage:** The authentication token is cached in `~/.config/vvr-scraper/freesound_token.json` so you only need to log in once per environment.
+
 ## Voice Upload Subcommand
 
 Upload a voice sample to the community voice bank:
