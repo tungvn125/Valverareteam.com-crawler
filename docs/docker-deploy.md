@@ -143,6 +143,90 @@ Important defaults from the compose file:
 
 `VVR_OPDS_PASS` has no secure default, so set it explicitly before exposing the service.
 
+## Social Reader Setup
+
+The social reader feature requires authentication and uses JWT tokens. For production Docker deployments, you must set:
+
+- `VVR_JWT_SECRET`: Secret key for signing JWT tokens. Generate a strong random value:
+  ```bash
+  export VVR_JWT_SECRET="$(openssl rand -hex 32)"
+  ```
+- `VVR_ADMIN_CODE`: Bootstrap invite code for creating the first admin user. Set this before starting the container, then use it to register the initial admin via the API or CLI.
+
+Example first-time setup in Docker:
+
+```bash
+docker run --rm \
+  -v vvr_config:/home/vvr/.config/vvr-scraper \
+  -e VVR_JWT_SECRET="$(openssl rand -hex 32)" \
+  -e VVR_ADMIN_CODE="my-secret-invite" \
+  vvr-scraper \
+  social create-admin --username admin --password "your-secure-password"
+```
+
+## Voice Bank Volume Mapping
+
+The voice bank feature stores character-specific TTS voices. To persist voice data across container restarts, mount a volume for the voice bank directory:
+
+- Environment variable: `VOICE_BANK_DIR` (defaults to `~/.config/vvr-scraper/voice_bank/`)
+- Container path: `/home/vvr/.config/vvr-scraper/voice_bank/`
+
+Docker Compose example:
+
+```yaml
+services:
+  vvr-web:
+    volumes:
+      - novels_data:/home/vvr/app/novels
+      - vvr_config:/home/vvr/.config/vvr-scraper
+      - voice_bank:/home/vvr/.config/vvr-scraper/voice_bank
+
+volumes:
+  voice_bank:
+```
+
+Or mount a host directory:
+
+```bash
+docker run --rm \
+  -v ~/.config/vvr-scraper/voice_bank:/home/vvr/.config/vvr-scraper/voice_bank \
+  -e VVR_JWT_SECRET="$(openssl rand -hex 32)" \
+  vvr-scraper
+```
+
+## Backgrounds & BGM
+
+The media pipeline can use custom backgrounds and background music. Configure volume mounts for these assets:
+
+### Backgrounds Directory
+
+Mount a directory containing background images (PNG, JPG) for video rendering:
+
+```yaml
+services:
+  vvr-web:
+    volumes:
+      - ./backgrounds:/home/vvr/app/backgrounds:ro
+```
+
+The application looks for backgrounds in the configured `backgrounds/` directory.
+
+### Freesound Token Cache
+
+When using Freesound integration for BGM/SFX, the application caches API tokens. To avoid re-authenticating on every container restart:
+
+```yaml
+services:
+  vvr-web:
+    volumes:
+      - vvr_config:/home/vvr/.config/vvr-scraper
+    environment:
+      - FREESOUND_CLIENT_ID=${FREESOUND_CLIENT_ID}
+      - FREESOUND_CLIENT_SECRET=${FREESOUND_CLIENT_SECRET}
+```
+
+The Freesound token is stored in the config volume at `~/.config/vvr-scraper/freesound_token.json`.
+
 ## Operational Notes
 
 - The image already installs Playwright Chromium and the system libraries needed by that browser.

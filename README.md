@@ -79,6 +79,13 @@ The project can run with no extra environment variables for basic CLI scraping a
 - `VVR_OPDS_USER`, `VVR_OPDS_PASS` to configure OPDS access; current OPDS routes expect both values and return a configuration error when they are missing
 - `VVR_AUTO_SYNC=1` to enable periodic library auto-sync in web mode
 - `VVR_PLAYWRIGHT_MODE` to control Playwright mode at runtime
+- `VVR_TTS_PROVIDER` to select the TTS provider (`elevenlabs`, `openai`, or `omnivoice`)
+- `OPENAI_TTS_API_KEY` for OpenAI TTS API access (when using OpenAI TTS provider)
+- `OPENAI_TTS_BASE_URL` for custom OpenAI-compatible TTS endpoints
+- `OMNIVOICE_MODEL_PATH` for local OmniVoice TTS model path
+- `VVR_JWT_SECRET` for signing JWT tokens in the social reader (change in production)
+- `VVR_ADMIN_CODE` for bootstrapping the first admin user in the social reader
+- `VVR_MODEL` for AI model selection (default: `gpt-4o-mini`)
 
 The provided Docker Compose setup exposes the Web UI on `${VVR_PORT:-8000}`, Prometheus on `9090`, Grafana on `3000`, and maps persistent data with named volumes.
 

@@ -39,7 +39,19 @@ If your change touches the CLI, Web UI, Docker docs, or other user-visible behav
 - `vvr_scraper/web/__init__.py`: FastAPI app setup, router registration, static/novels mounts, and `run_web_server()`.
 - `vvr_scraper/web/routes/`: routes for settings, jobs, library, OPDS, correction, download, and other web APIs.
 - `vvr_scraper/job_models.py`, `vvr_scraper/job_parser.py`, `vvr_scraper/job_runner.py`: manifest schema, dependency validation, and job execution.
+- `vvr_scraper/job_worker.py`: Universal Task Runner worker for executing background jobs from the job queue.
 - `vvr_scraper/exporter.py`, `vvr_scraper/audio_drama.py`, `vvr_scraper/video_renderer.py`: ebook, audio, audio drama, and video export pipelines.
+- `vvr_scraper/scraper_core.py`: Core scraping logic for fetching and parsing story content from source sites.
+- `vvr_scraper/session_manager.py`: HTTP session management with connection pooling and retry handling.
+- `vvr_scraper/tao_so_do_cay.py`: Story tree builder and chapter hierarchy management utilities.
+- `vvr_scraper/utils.py`: Shared utility functions for file operations, text processing, and data formatting.
+- `vvr_scraper/models.py`: Pydantic data models for stories, chapters, and API responses.
+- `vvr_scraper/enums.py`: Enumerated types for output formats, download states, and provider options.
+- `vvr_scraper/social/`: Social reader module with authentication, reactions, comments, and WebSocket support.
+- `vvr_scraper/voice_bank/`: Voice bank management for character-specific TTS voices.
+- `vvr_scraper/cli_client/`: CLI client utilities for interactive command-line workflows.
+- `vvr_scraper/tts/`: Text-to-speech providers and voice synthesis implementations.
+- `vvr_scraper/sources/`: Custom source adapters for different story websites (e.g., lnhako.py, truyenfull.py).
 - `tests/`: test suite.
 - `docs/`: detailed operational documentation. Prefer adding new long-form docs here when the content is too large for `README.md` or `CONTRIBUTING.md`.
 
