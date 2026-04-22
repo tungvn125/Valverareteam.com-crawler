@@ -71,7 +71,7 @@ The underlying server is implemented with FastAPI and Uvicorn. In local CLI usag
 
 The project can run with no extra environment variables for basic CLI scraping and local web usage, but some features depend on optional configuration:
 
-- `VVR_API_KEY`, `VVR_BASE_URL`, `VVR_MODEL` for AI-assisted audio drama and related workflows
+- `VVR_API_KEY`, `VVR_BASE_URL` for AI-assisted audio drama and related workflows
 - `ELEVENLABS_API_KEY`, `VVR_NARRATOR_VOICE_ID` for voice generation
 - `OPENAI_API_KEY` for image generation features
 - `FREESOUND_CLIENT_ID`, `FREESOUND_CLIENT_SECRET` for Freesound integration
@@ -83,6 +83,10 @@ The project can run with no extra environment variables for basic CLI scraping a
 - `OPENAI_TTS_API_KEY` for OpenAI TTS API access (when using OpenAI TTS provider)
 - `OPENAI_TTS_BASE_URL` for custom OpenAI-compatible TTS endpoints
 - `OMNIVOICE_MODEL_PATH` for local OmniVoice TTS model path
+- `VVR_OMNIVOICE_DEVICE` to specify the device for OmniVoice TTS (e.g., `cuda:0`, default: `cuda:0`)
+- `VVR_VOICE_BANK_DIR` to specify a custom voice bank storage directory
+- `VVR_NARRATOR_REF_AUDIO` to provide a reference audio file for the narrator voice
+- `VVR_LOG_JSON` to enable JSON logging format (set to `1`)
 - `VVR_JWT_SECRET` for signing JWT tokens in the social reader (change in production)
 - `VVR_ADMIN_CODE` for bootstrapping the first admin user in the social reader
 - `VVR_MODEL` for AI model selection (default: `gpt-4o-mini`)
