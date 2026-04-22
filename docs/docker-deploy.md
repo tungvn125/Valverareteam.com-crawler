@@ -175,7 +175,7 @@ docker run --rm \
 
 The voice bank feature stores character-specific TTS voices. To persist voice data across container restarts, mount a volume for the voice bank directory:
 
-- Environment variable: `VOICE_BANK_DIR` (defaults to `~/.config/vvr-scraper/voice_bank/`)
+- Environment variable: `VVR_VOICE_BANK_DIR` (defaults to `~/.config/vvr-scraper/voice_bank/`)
 - Container path: `/home/vvr/.config/vvr-scraper/voice_bank/`
 
 Docker Compose example:
@@ -232,7 +232,7 @@ services:
       - FREESOUND_CLIENT_SECRET=${FREESOUND_CLIENT_SECRET}
 ```
 
-The Freesound token is stored in the config volume at `~/.config/vvr-scraper/freesound_token.json`.
+The Freesound token is stored in the config volume at `~/.config/vvr-scraper/.vvr_freesound_auth.json`.
 
 ## Operational Notes
 

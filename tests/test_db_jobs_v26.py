@@ -58,10 +58,10 @@ async def test_create_job_v26(db_manager):
 
 
 def test_scrape_payload_v26():
-    payload = ScrapePayload(slug="test", from_chapter=1, to_chapter=5, grouping=10, skip_illustrations=True)
+    payload = ScrapePayload(slug="test", from_chapter=1, to_chapter=5, grouping="volume", skip_illustrations=True)
     assert payload.from_chapter == 1
     assert payload.to_chapter == 5
-    assert payload.grouping == 10
+    assert payload.grouping == "volume"
     assert payload.skip_illustrations is True
     assert payload.formats == ["epub", "pdf", "cinema"]
 

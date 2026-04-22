@@ -284,7 +284,7 @@ The Web UI exposes endpoints for voice discovery and preview.
 ### List Voices
 
 ```
-GET /voices/list
+GET /api/correction/voices/list
 ```
 
 Returns available voices from the configured provider:
@@ -301,7 +301,7 @@ Returns available voices from the configured provider:
 ### Preview Voice
 
 ```
-GET /voices/preview?voice_id=...&ref_audio_path=...&text=...
+GET /api/correction/voices/preview?voice_id=...&ref_audio_path=...&text=...
 ```
 
 Generates a short audio preview for the specified voice. Returns audio bytes (typically WAV or MP3).
@@ -316,7 +316,7 @@ Generates a short audio preview for the specified voice. Returns audio bytes (ty
 **Example:**
 
 ```bash
-curl "http://localhost:8000/voices/preview?voice_id=EXAVITQu4vr4xnSDxMaL" \
+curl "http://localhost:8000/api/correction/voices/preview?voice_id=EXAVITQu4vr4xnSDxMaL" \
   --output preview.mp3
 ```
 

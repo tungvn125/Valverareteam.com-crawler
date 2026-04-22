@@ -201,7 +201,7 @@ vvrt freesound-login
 2. You authorize the application
 3. Copy the authorization code from the browser
 4. Paste it back into the CLI
-5. The token is saved to `~/.config/vvr-scraper/freesound_token.json`
+5. The token is saved to `~/.config/vvr-scraper/.vvr_freesound_auth.json`
 
 **Prerequisites:**
 - `FREESOUND_CLIENT_ID` and `FREESOUND_CLIENT_SECRET` must be set in your environment or `.env` file
@@ -217,7 +217,7 @@ vvrt freesound-login
 # Đăng nhập Freesound thành công!
 ```
 
-**Token Storage:** The authentication token is cached in `~/.config/vvr-scraper/freesound_token.json` so you only need to log in once per environment.
+**Token Storage:** The authentication token is cached in `~/.config/vvr-scraper/.vvr_freesound_auth.json` so you only need to log in once per environment.
 
 ## Voice Upload Subcommand
 

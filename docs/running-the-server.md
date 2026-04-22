@@ -121,6 +121,9 @@ All variables can be set in the shell environment, a `.env` file in the project 
 > - This secret is used to sign all JWT tokens. If compromised, attackers can forge authentication tokens.
 > - The default value `change-this-random-secret` is NOT safe for production.
 > - Use `openssl rand -hex 32` to generate a strong secret before deploying.
+
+| Variable | Default | Purpose |
+|---|---|---|
 | `VVR_ADMIN_CODE` | — | Bootstrap invite code used by the **web registration endpoint** (`/api/auth/register`) to create the first admin user. The CLI command `vvrt social create-admin` creates an admin directly and does NOT require this code. |
 
 ---
