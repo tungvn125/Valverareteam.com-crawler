@@ -34,20 +34,45 @@ The current FastAPI app includes these major surfaces:
 - `/api/tasks/{task_id}/pause`, `/resume`, `/cancel`: task lifecycle controls
 - `/api/novels/manifest`: returns a generated `manifest.json` under the novels output tree
 - `/api/browse`: opens a host-native folder picker when the environment supports it
+- `/api/freesound/auth`, `/api/freesound/callback`: Freesound OAuth endpoints
 - `/novels`: static mount for generated output files
 - `/static`: static frontend assets
 - `/opds/...`: OPDS catalog and download routes
-- `/api/voices/...`: Community Voice Bank (upload, list, vote, preview)
+- `/api/voices/...`: Community Voice Bank (upload, list, vote, preview, etc.)
 - `/api/correction/...`: character profile correction and voice assignment
 
 ## Community Voice Bank
 
 The Web UI integrates with the Community Voice Bank for OmniVoice cloning:
 
-- **Upload voices** via `POST /api/voices/upload`
-- **Browse community voices** via `GET /api/voices/community`
-- **Preview voices** via `POST /api/voices/{id}/preview`
-- **Assign voices to characters** via `PUT /api/correction/{slug}/characters/{name}` with `voice_bank_id`
+### Voice Bank Endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/api/voices/upload` | Upload a new voice sample with audio, ref_text, name, gender, age_group |
+| GET | `/api/voices/me` | List current user's uploaded voices |
+| GET | `/api/voices/community` | Browse public community voices (filter by tag, gender, age_group, sort) |
+| GET | `/api/voices/{voice_id}` | Get voice details |
+| GET | `/api/voices/{voice_id}/audio` | Download voice audio file |
+| PATCH | `/api/voices/{voice_id}` | Update voice metadata (name, description, mood, tags) |
+| PATCH | `/api/voices/{voice_id}/publish` | Make voice public in community gallery |
+| PATCH | `/api/voices/{voice_id}/delist` | Remove voice from community gallery |
+| DELETE | `/api/voices/{voice_id}` | Delete voice sample |
+| POST | `/api/voices/{voice_id}/vote` | Vote on a voice (`{"vote": 1}` or `{"vote": -1}`) |
+| POST | `/api/voices/{voice_id}/preview` | Generate TTS preview using the voice |
+
+### Character Correction Endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/correction/{slug}/chapters` | List chapters with .script.json files |
+| GET | `/api/correction/{slug}/chapter/{chapter_idx}/script` | Get script JSON for editing |
+| POST | `/api/correction/{slug}/chapter/{chapter_idx}/save` | Save corrected script segments |
+| POST | `/api/correction/{slug}/apply-similar` | Apply role change to similar segments across chapters |
+| GET | `/api/correction/{slug}/characters` | Get character profiles for the novel |
+| PUT | `/api/correction/{slug}/characters/{character_name}` | Update character (voice_id, color, aliases, voice_bank_id) |
+| GET | `/api/correction/voices/list` | List available TTS voices |
+| GET | `/api/correction/voices/preview` | Generate preview with voice_id or ref_audio_path |
 
 Character profiles now support `ref_audio_path`, `ref_text`, and `voice_bank_id` for persistent voice assignments.
 

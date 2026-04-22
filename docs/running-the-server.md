@@ -215,6 +215,9 @@ docker compose logs db-backup
 | POST | `/api/tasks/{id}/resume` | none | Resume a task |
 | POST | `/api/tasks/{id}/cancel` | none | Cancel a task |
 | WS | `/ws/tasks` | none | Real-time task log stream |
+| GET | `/api/freesound/auth` | none | Freesound OAuth authorization URL |
+| POST | `/api/freesound/callback` | none | Freesound OAuth callback (exchanges code for token) |
+| GET | `/api/novels/manifest` | none | Get novel cinematic manifest JSON |
 
 ### Library Routes
 
@@ -265,6 +268,35 @@ docker compose logs db-backup
 | PUT | `/api/social/comments/{id}` | Bearer JWT (owner) | Edit own comment. |
 | DELETE | `/api/social/comments/{id}` | Bearer JWT (owner) | Delete own comment. |
 | WS | `/ws/social/{book_slug}/{chapter_id}` | none | Real-time reaction/comment updates for a chapter. |
+
+### Voice Bank Routes
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| POST | `/api/voices/upload` | Bearer JWT | Upload a new voice sample |
+| GET | `/api/voices/me` | Bearer JWT | List current user's voices |
+| GET | `/api/voices/community` | none | List public community voices |
+| GET | `/api/voices/{voice_id}` | Bearer JWT | Get voice details |
+| GET | `/api/voices/{voice_id}/audio` | Bearer JWT | Download voice audio file |
+| PATCH | `/api/voices/{voice_id}` | Bearer JWT (owner) | Update voice metadata |
+| PATCH | `/api/voices/{voice_id}/publish` | Bearer JWT (owner) | Publish voice to community |
+| PATCH | `/api/voices/{voice_id}/delist` | Bearer JWT (owner/admin) | Delist voice from community |
+| DELETE | `/api/voices/{voice_id}` | Bearer JWT (owner/admin) | Delete voice sample |
+| POST | `/api/voices/{voice_id}/vote` | Bearer JWT | Vote on a voice (up/down) |
+| POST | `/api/voices/{voice_id}/preview` | Bearer JWT | Generate TTS preview |
+
+### Correction Routes
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| GET | `/api/correction/{slug}/chapters` | Bearer JWT | List chapters with scripts for a novel |
+| GET | `/api/correction/{slug}/chapter/{chapter_idx}/script` | Bearer JWT | Get chapter script for review |
+| POST | `/api/correction/{slug}/chapter/{chapter_idx}/save` | Bearer JWT | Save corrected script |
+| POST | `/api/correction/{slug}/apply-similar` | Bearer JWT | Apply role change to similar segments |
+| GET | `/api/correction/{slug}/characters` | Bearer JWT | Get character profiles for a novel |
+| PUT | `/api/correction/{slug}/characters/{character_name}` | Bearer JWT | Update character profile (voice, color, aliases) |
+| GET | `/api/correction/voices/list` | Bearer JWT | List available voices from TTS provider |
+| GET | `/api/correction/voices/preview` | Bearer JWT | Generate voice preview |
 
 ### Static Mounts
 
