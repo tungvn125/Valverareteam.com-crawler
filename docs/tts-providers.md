@@ -39,7 +39,8 @@ When `VVR_TTS_PROVIDER` is not set, the system detects the provider in this orde
 1. If `VVR_TTS_PROVIDER` is set explicitly, use that value
 2. If `ELEVENLABS_API_KEY` exists, use `elevenlabs`
 3. If `OPENAI_TTS_API_KEY` or `OPENAI_TTS_BASE_URL` exists, use `openai_tts`
-4. If none match, raise `ValueError` with a message indicating no provider is configured
+4. If `VVR_OMNIVOICE_DEVICE` is set (e.g., `cuda:0`), select `omnivoice`
+5. If none match, raise `ValueError` with a message indicating no provider is configured
 
 ### CLI Override
 
