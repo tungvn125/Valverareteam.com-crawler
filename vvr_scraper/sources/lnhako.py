@@ -16,6 +16,10 @@ _HAKO_CHAPTER_RE = re.compile(r"/truyen/\d+-[^/]+/c\d+-")
 class LnHakoSource(BaseSource):
     base_urls = ["ln.hako.vn"]
 
+    @classmethod
+    def slug_to_url(cls, slug: str) -> str | None:
+        return f"https://ln.hako.vn/truyen/{slug}"
+
     def __init__(self, client: httpx.AsyncClient | None = None, browser: Browser | None = None):
         self._owns_client = client is None
         self.client = client or httpx.AsyncClient(headers=HEADERS, timeout=30.0)

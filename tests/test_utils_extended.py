@@ -261,3 +261,87 @@ class TestConfigureLogger:
 
     def test_normal_mode(self):
         configure_logger(verbose=False)
+
+
+# --- Tests cho Fix #4: slug_candidates refactor ---
+import pytest
+from unittest.mock import AsyncMock, patch
+
+from vvr_scraper.models import StoryInfo
+
+
+@pytest.mark.asyncio
+async def test_resolve_story_url_uses_registry_slug_candidates(monkeypatch):
+    """resolve_story_url() phải dùng REGISTRY.slug_candidates() thay vì hardcoded list."""
+    mock_source = AsyncMock()
+    mock_source.get_info = AsyncMock(
+        return_value=StoryInfo(
+            title="Found Story",
+            author="Author",
+            description="Desc",
+            slug="my-novel",
+        )
+    )
+
+    class FakeSource:
+        pass
+
+    with (
+        patch("vvr_scraper.utils.REGISTRY") as mock_registry,
+        patch("vvr_scraper.utils.httpx.AsyncClient") as mock_client_cls,
+    ):
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(side_effect=Exception("sitemap fail"))
+        mock_client_cls.return_value = mock_client
+
+        mock_registry.slug_candidates.return_value = [
+            (FakeSource, "https://newsite.test/truyen/my-novel")
+        ]
+        mock_registry.get.return_value = mock_source
+
+        from vvr_scraper.utils import resolve_story_url
+
+        result = await resolve_story_url("my-novel")
+
+    mock_registry.slug_candidates.assert_called_once()
+    assert result == "https://newsite.test/truyen/my-novel"
+
+
+@pytest.mark.asyncio
+async def test_resolve_story_url_skips_candidate_when_title_unknown(monkeypatch):
+    """resolve_story_url() phải bỏ qua candidate nếu source trả title='Unknown'."""
+    mock_source = AsyncMock()
+    mock_source.get_info = AsyncMock(
+        return_value=StoryInfo(
+            title="Unknown",
+            author="",
+            description="",
+            slug="my-novel",
+        )
+    )
+
+    class FakeSource:
+        pass
+
+    with (
+        patch("vvr_scraper.utils.REGISTRY") as mock_registry,
+        patch("vvr_scraper.utils.httpx.AsyncClient") as mock_client_cls,
+    ):
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(side_effect=Exception("sitemap fail"))
+        mock_client_cls.return_value = mock_client
+
+        mock_registry.slug_candidates.return_value = [
+            (FakeSource, "https://newsite.test/truyen/my-novel")
+        ]
+        mock_registry.get.return_value = mock_source
+
+        from vvr_scraper.utils import resolve_story_url
+
+        result = await resolve_story_url("my-novel")
+
+    assert result is None  # title="Unknown" → không accept

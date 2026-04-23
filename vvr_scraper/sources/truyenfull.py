@@ -70,6 +70,10 @@ async def _request_with_retry(client: httpx.AsyncClient, url: str, params: dict 
 class TruyenFullSource(BaseSource):
     base_urls = ["truyenfull.vision"]
 
+    @classmethod
+    def slug_to_url(cls, slug: str) -> str | None:
+        return f"https://truyenfull.vision/{slug}"
+
     def __init__(self, client: httpx.AsyncClient | None = None):
         self._owns_client = client is None
         self.client = client or httpx.AsyncClient(headers=HEADERS, timeout=30.0, follow_redirects=True)
