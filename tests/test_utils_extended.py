@@ -345,3 +345,38 @@ async def test_resolve_story_url_skips_candidate_when_title_unknown(monkeypatch)
         result = await resolve_story_url("my-novel")
 
     assert result is None  # title="Unknown" → không accept
+
+
+# --- Phase 3 Task 4: Integration tests for slug resolution ---
+
+
+@pytest.mark.asyncio
+async def test_slug_candidates_includes_both_truyenfull_and_lnhako():
+    """Sau Phase 3, REGISTRY.slug_candidates() phải trả cả TruyenFull và LnHako."""
+    from vvr_scraper.sources import REGISTRY
+    from vvr_scraper.sources.truyenfull import TruyenFullSource
+    from vvr_scraper.sources.lnhako import LnHakoSource
+
+    candidates = REGISTRY.slug_candidates("test-novel")
+
+    source_classes = [cls for cls, _ in candidates]
+    assert TruyenFullSource in source_classes, "TruyenFullSource phải có trong slug candidates"
+    assert LnHakoSource in source_classes, "LnHakoSource phải có trong slug candidates"
+
+
+@pytest.mark.asyncio
+async def test_truyenfull_slug_to_url_generates_correct_url():
+    """TruyenFullSource.slug_to_url() phải generate URL đúng."""
+    from vvr_scraper.sources.truyenfull import TruyenFullSource
+
+    url = TruyenFullSource.slug_to_url("my-test-novel")
+    assert url == "https://truyenfull.vision/my-test-novel"
+
+
+@pytest.mark.asyncio
+async def test_lnhako_slug_to_url_generates_correct_url():
+    """LnHakoSource.slug_to_url() phải generate URL đúng."""
+    from vvr_scraper.sources.lnhako import LnHakoSource
+
+    url = LnHakoSource.slug_to_url("my-test-novel")
+    assert url == "https://ln.hako.vn/truyen/my-test-novel"
