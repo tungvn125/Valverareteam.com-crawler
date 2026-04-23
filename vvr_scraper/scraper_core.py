@@ -243,7 +243,9 @@ async def scrape_chapters(
                     logger.debug(f"Fast-scrape failed for {url}. Falling back to Playwright (VVR only)...")
                     content = await lay_chuong_voi_hinh_anh(browser, url, session_state=session_state, verbose=verbose)
                 elif not content:
-                    logger.warning(f"Custom source returned no content for: {url} — no Playwright fallback for non-VVR URLs")
+                    logger.warning(
+                        f"Custom source returned no content for: {url} — no Playwright fallback for non-VVR URLs"
+                    )
 
                 if content:
                     scraped_content[url] = content

@@ -521,8 +521,8 @@ async def test_lnhako_search_still_works_after_downgrade():
 
 def test_minimal_source_without_search_still_valid():
     """Source không implement search() vẫn valid — dùng default return []."""
-    from vvr_scraper.sources import BaseSource, VolumeTreeItem
-    from vvr_scraper.models import ContentItem, StoryInfo
+    from vvr_scraper.models import StoryInfo
+    from vvr_scraper.sources import BaseSource
 
     class NoSearchSource(BaseSource):
         base_urls = ["nosearch.test"]
@@ -530,12 +530,20 @@ def test_minimal_source_without_search_still_valid():
         name = "no-search"
         requires_browser = False
 
-        async def get_info(self, url): return StoryInfo(title="NS", author="", description="", slug="ns")
-        async def get_chapter_list(self, url): return []
-        async def get_content(self, url): raise RuntimeError("not implemented")
-        async def aclose(self): pass
+        async def get_info(self, url):
+            return StoryInfo(title="NS", author="", description="", slug="ns")
+
+        async def get_chapter_list(self, url):
+            return []
+
+        async def get_content(self, url):
+            raise RuntimeError("not implemented")
+
+        async def aclose(self):
+            pass
 
     import asyncio
+
     source = NoSearchSource()
     result = asyncio.run(source.search("query"))
     assert result == []

@@ -1,4 +1,5 @@
 """Unit tests for ValvrareteamSource."""
+
 import os
 from unittest.mock import AsyncMock, MagicMock
 

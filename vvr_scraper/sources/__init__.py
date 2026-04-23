@@ -1,13 +1,12 @@
-from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
 import importlib.util
 import inspect
 import logging
 import os
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from typing import Any, ClassVar
 
 from ..models import ContentItem, StoryInfo
-
 
 logger = logging.getLogger(__name__)
 
@@ -199,9 +198,7 @@ class PluginRegistry:
                 continue
 
             try:
-                spec = importlib.util.spec_from_file_location(
-                    f"vvr_plugin_{plugin_file.stem}", plugin_file
-                )
+                spec = importlib.util.spec_from_file_location(f"vvr_plugin_{plugin_file.stem}", plugin_file)
                 if spec is None or spec.loader is None:
                     continue
 
@@ -210,11 +207,7 @@ class PluginRegistry:
 
                 for attr_name in dir(module):
                     attr = getattr(module, attr_name)
-                    if (
-                        isinstance(attr, type)
-                        and issubclass(attr, BaseSource)
-                        and attr is not BaseSource
-                    ):
+                    if isinstance(attr, type) and issubclass(attr, BaseSource) and attr is not BaseSource:
                         self.register(attr)
                         logger.info(f"Loaded plugin source: {attr.__name__} from {plugin_file}")
             except Exception as e:

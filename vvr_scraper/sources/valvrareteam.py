@@ -9,7 +9,7 @@ import asyncio
 import os
 import re
 import tempfile
-from typing import Any, ClassVar
+from typing import ClassVar
 from urllib.parse import urljoin
 
 import httpx
@@ -19,7 +19,7 @@ from playwright.async_api import Browser
 
 from ..models import ContentItem, StoryInfo
 from ..utils import BASE_URL, HEADERS
-from . import BaseSource, ChapterTreeItem, SearchResult, VolumeTreeItem
+from . import BaseSource, ChapterTreeItem, VolumeTreeItem
 
 
 class ValvrareteamSource(BaseSource):
@@ -189,7 +189,7 @@ class ValvrareteamSource(BaseSource):
 
             try:
                 await page.wait_for_selector(".module-container", timeout=10000)
-            except Exception:
+            except Exception:  # noqa: S110 — best-effort wait
                 pass
 
             html = await page.content()
@@ -233,7 +233,7 @@ class ValvrareteamSource(BaseSource):
 
             try:
                 await page.wait_for_selector(".vvr-chapter-content", timeout=10000)
-            except Exception:
+            except Exception:  # noqa: S110 — best-effort wait
                 pass
 
             html = await page.content()

@@ -474,10 +474,12 @@ async def test_scrape_chapters_does_call_playwright_for_vvr_url(monkeypatch):
 @pytest.mark.asyncio
 async def test_lay_thong_tin_truyen_downloads_cover_for_custom_source(monkeypatch):
     """Custom source trả cover_url nhưng không có cover_path → phải tự tải."""
-    from unittest.mock import AsyncMock, MagicMock, patch, call
+    from unittest.mock import AsyncMock, MagicMock, patch
+
     import httpx
-    from vvr_scraper.scraper_core import lay_thong_tin_truyen
+
     from vvr_scraper.models import StoryInfo
+    from vvr_scraper.scraper_core import lay_thong_tin_truyen
 
     mock_client = AsyncMock(spec=httpx.AsyncClient)
 
@@ -494,9 +496,10 @@ async def test_lay_thong_tin_truyen_downloads_cover_for_custom_source(monkeypatc
     )
     mock_source.fetch_cover = AsyncMock(return_value=b"fake_image_bytes")
 
-    with patch("vvr_scraper.scraper_core.REGISTRY") as mock_registry, patch(
-        "vvr_scraper.scraper_core.asyncio.to_thread", new_callable=AsyncMock
-    ) as mock_to_thread:
+    with (
+        patch("vvr_scraper.scraper_core.REGISTRY") as mock_registry,
+        patch("vvr_scraper.scraper_core.asyncio.to_thread", new_callable=AsyncMock),
+    ):
         mock_registry.get.return_value = mock_source
         result = await lay_thong_tin_truyen(
             mock_client,
@@ -513,9 +516,11 @@ async def test_lay_thong_tin_truyen_downloads_cover_for_custom_source(monkeypatc
 async def test_lay_thong_tin_truyen_skips_cover_if_already_has_cover_path(monkeypatch):
     """Nếu source đã trả cover_path, phải không tải lại."""
     from unittest.mock import AsyncMock, MagicMock, patch
+
     import httpx
-    from vvr_scraper.scraper_core import lay_thong_tin_truyen
+
     from vvr_scraper.models import StoryInfo
+    from vvr_scraper.scraper_core import lay_thong_tin_truyen
 
     mock_client = AsyncMock(spec=httpx.AsyncClient)
     mock_source = MagicMock()
@@ -533,7 +538,7 @@ async def test_lay_thong_tin_truyen_skips_cover_if_already_has_cover_path(monkey
 
     with patch("vvr_scraper.scraper_core.REGISTRY") as mock_registry:
         mock_registry.get.return_value = mock_source
-        result = await lay_thong_tin_truyen(
+        await lay_thong_tin_truyen(
             mock_client,
             "https://customsite.test/truyen/test-story",
         )
@@ -546,7 +551,6 @@ async def test_lay_thong_tin_truyen_skips_cover_if_already_has_cover_path(monkey
 async def test_lay_thong_tin_truyen_cleans_up_temp_cover_on_save_failure(tmp_path, monkeypatch):
     """Temp cover file phải bị xóa khi save thất bại (custom source path)."""
     import os
-    from pathlib import Path
     from unittest.mock import AsyncMock, MagicMock, patch
 
     import httpx
@@ -578,9 +582,11 @@ async def test_lay_thong_tin_truyen_cleans_up_temp_cover_on_save_failure(tmp_pat
         cover_path_holder.append(path)
         return fd, path
 
-    with patch("vvr_scraper.scraper_core.REGISTRY") as mock_registry, patch(
-        "vvr_scraper.scraper_core.tempfile.mkstemp", side_effect=fake_mkstemp
-    ), patch("vvr_scraper.scraper_core.asyncio.to_thread", side_effect=OSError("disk full")):
+    with (
+        patch("vvr_scraper.scraper_core.REGISTRY") as mock_registry,
+        patch("vvr_scraper.scraper_core.tempfile.mkstemp", side_effect=fake_mkstemp),
+        patch("vvr_scraper.scraper_core.asyncio.to_thread", side_effect=OSError("disk full")),
+    ):
         mock_registry.get.return_value = mock_source
         result = await lay_thong_tin_truyen(
             mock_client,
@@ -598,9 +604,11 @@ async def test_lay_thong_tin_truyen_cleans_up_temp_cover_on_save_failure(tmp_pat
 async def test_lay_thong_tin_truyen_routes_vvr_url_via_registry(monkeypatch):
     """lay_thong_tin_truyen() phải dùng REGISTRY.get() cho cả VVR URL."""
     from unittest.mock import AsyncMock, MagicMock, patch
+
     import httpx
-    from vvr_scraper.scraper_core import lay_thong_tin_truyen
+
     from vvr_scraper.models import StoryInfo
+    from vvr_scraper.scraper_core import lay_thong_tin_truyen
 
     mock_source = MagicMock()
     mock_source.get_info = AsyncMock(

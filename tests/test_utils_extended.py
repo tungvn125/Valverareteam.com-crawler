@@ -5,8 +5,12 @@ get_token_from_state, create_folders_from_tree, and configure_logger.
 
 import json
 import os
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 import vvr_scraper.utils as utils
+from vvr_scraper.models import StoryInfo
 from vvr_scraper.utils import (
     configure_logger,
     create_folders_from_tree,
@@ -264,10 +268,6 @@ class TestConfigureLogger:
 
 
 # --- Tests cho Fix #4: slug_candidates refactor ---
-import pytest
-from unittest.mock import AsyncMock, patch
-
-from vvr_scraper.models import StoryInfo
 
 
 @pytest.mark.asyncio
@@ -286,8 +286,14 @@ async def test_resolve_story_url_uses_registry_slug_candidates(monkeypatch):
     class FakeSource:
         pass
 
+    fake_registry = MagicMock()
+    fake_registry.slug_candidates.return_value = [(FakeSource, "https://newsite.test/truyen/my-novel")]
+    fake_registry.get.return_value = mock_source
+    # VVR direct URL fallback must fail (source returns None)
+    fake_registry.get.side_effect = lambda url, **kw: None if "valvrareteam" in str(url) else mock_source
+
     with (
-        patch("vvr_scraper.utils.REGISTRY") as mock_registry,
+        patch("vvr_scraper.utils._get_registry", return_value=fake_registry),
         patch("vvr_scraper.utils.httpx.AsyncClient") as mock_client_cls,
     ):
         mock_client = AsyncMock()
@@ -296,16 +302,11 @@ async def test_resolve_story_url_uses_registry_slug_candidates(monkeypatch):
         mock_client.get = AsyncMock(side_effect=Exception("sitemap fail"))
         mock_client_cls.return_value = mock_client
 
-        mock_registry.slug_candidates.return_value = [
-            (FakeSource, "https://newsite.test/truyen/my-novel")
-        ]
-        mock_registry.get.return_value = mock_source
-
         from vvr_scraper.utils import resolve_story_url
 
         result = await resolve_story_url("my-novel")
 
-    mock_registry.slug_candidates.assert_called_once()
+    fake_registry.slug_candidates.assert_called_once()
     assert result == "https://newsite.test/truyen/my-novel"
 
 
@@ -325,8 +326,14 @@ async def test_resolve_story_url_skips_candidate_when_title_unknown(monkeypatch)
     class FakeSource:
         pass
 
+    fake_registry = MagicMock()
+    fake_registry.slug_candidates.return_value = [(FakeSource, "https://newsite.test/truyen/my-novel")]
+    fake_registry.get.return_value = mock_source
+    # VVR direct URL fallback must fail (source returns None or Unknown title)
+    fake_registry.get.side_effect = lambda url, **kw: None if "valvrareteam" in str(url) else mock_source
+
     with (
-        patch("vvr_scraper.utils.REGISTRY") as mock_registry,
+        patch("vvr_scraper.utils._get_registry", return_value=fake_registry),
         patch("vvr_scraper.utils.httpx.AsyncClient") as mock_client_cls,
     ):
         mock_client = AsyncMock()
@@ -334,11 +341,6 @@ async def test_resolve_story_url_skips_candidate_when_title_unknown(monkeypatch)
         mock_client.__aexit__ = AsyncMock(return_value=False)
         mock_client.get = AsyncMock(side_effect=Exception("sitemap fail"))
         mock_client_cls.return_value = mock_client
-
-        mock_registry.slug_candidates.return_value = [
-            (FakeSource, "https://newsite.test/truyen/my-novel")
-        ]
-        mock_registry.get.return_value = mock_source
 
         from vvr_scraper.utils import resolve_story_url
 
@@ -354,8 +356,8 @@ async def test_resolve_story_url_skips_candidate_when_title_unknown(monkeypatch)
 async def test_slug_candidates_includes_both_truyenfull_and_lnhako():
     """Sau Phase 3, REGISTRY.slug_candidates() phải trả cả TruyenFull và LnHako."""
     from vvr_scraper.sources import REGISTRY
-    from vvr_scraper.sources.truyenfull import TruyenFullSource
     from vvr_scraper.sources.lnhako import LnHakoSource
+    from vvr_scraper.sources.truyenfull import TruyenFullSource
 
     candidates = REGISTRY.slug_candidates("test-novel")
 

@@ -1,7 +1,11 @@
+import textwrap
+from unittest.mock import MagicMock
+
+import httpx
 import pytest
 
 from vvr_scraper.models import ContentItem, StoryInfo
-from vvr_scraper.sources import BaseSource, ChapterTreeItem, VolumeTreeItem
+from vvr_scraper.sources import BaseSource, PluginRegistry, VolumeTreeItem
 
 
 class MinimalSource(BaseSource):
@@ -38,17 +42,13 @@ def test_basesource_priority_default_is_100():
         name = "no-priority"
         requires_browser = False
 
-        async def get_info(self, url):
-            ...
+        async def get_info(self, url): ...
 
-        async def get_chapter_list(self, url):
-            ...
+        async def get_chapter_list(self, url): ...
 
-        async def get_content(self, url):
-            ...
+        async def get_content(self, url): ...
 
-        async def aclose(self):
-            ...
+        async def aclose(self): ...
 
     assert NoPrioritySource.priority == 100
 
@@ -77,16 +77,7 @@ def test_basesource_matches_url():
     assert not source.matches("https://other.test/truyen/abc")
 
 
-import os
-import inspect
-import tempfile
-import textwrap
-from pathlib import Path
-from unittest.mock import MagicMock, AsyncMock, patch
-
-import httpx
-
-from vvr_scraper.sources import PluginRegistry, BaseSource, REGISTRY
+from vvr_scraper.sources import REGISTRY  # noqa: E402
 
 
 class HighPrioritySource(BaseSource):
@@ -94,10 +85,18 @@ class HighPrioritySource(BaseSource):
     priority = 10
     name = "high"
     requires_browser = False
-    async def get_info(self, url): return StoryInfo(title="High", author="", description="", slug="high")
-    async def get_chapter_list(self, url): return []
-    async def get_content(self, url): raise RuntimeError("not implemented")
-    async def aclose(self): pass
+
+    async def get_info(self, url):
+        return StoryInfo(title="High", author="", description="", slug="high")
+
+    async def get_chapter_list(self, url):
+        return []
+
+    async def get_content(self, url):
+        raise RuntimeError("not implemented")
+
+    async def aclose(self):
+        pass
 
 
 class LowPrioritySource(BaseSource):
@@ -105,10 +104,18 @@ class LowPrioritySource(BaseSource):
     priority = 90
     name = "low"
     requires_browser = False
-    async def get_info(self, url): return StoryInfo(title="Low", author="", description="", slug="low")
-    async def get_chapter_list(self, url): return []
-    async def get_content(self, url): raise RuntimeError("not implemented")
-    async def aclose(self): pass
+
+    async def get_info(self, url):
+        return StoryInfo(title="Low", author="", description="", slug="low")
+
+    async def get_chapter_list(self, url):
+        return []
+
+    async def get_content(self, url):
+        raise RuntimeError("not implemented")
+
+    async def aclose(self):
+        pass
 
 
 class ConflictHighSource(BaseSource):
@@ -116,10 +123,18 @@ class ConflictHighSource(BaseSource):
     priority = 10
     name = "conflict-high"
     requires_browser = False
-    async def get_info(self, url): return StoryInfo(title="ConflictHigh", author="", description="", slug="ch")
-    async def get_chapter_list(self, url): return []
-    async def get_content(self, url): raise RuntimeError("not implemented")
-    async def aclose(self): pass
+
+    async def get_info(self, url):
+        return StoryInfo(title="ConflictHigh", author="", description="", slug="ch")
+
+    async def get_chapter_list(self, url):
+        return []
+
+    async def get_content(self, url):
+        raise RuntimeError("not implemented")
+
+    async def aclose(self):
+        pass
 
 
 class ConflictLowSource(BaseSource):
@@ -127,10 +142,18 @@ class ConflictLowSource(BaseSource):
     priority = 90
     name = "conflict-low"
     requires_browser = False
-    async def get_info(self, url): return StoryInfo(title="ConflictLow", author="", description="", slug="cl")
-    async def get_chapter_list(self, url): return []
-    async def get_content(self, url): raise RuntimeError("not implemented")
-    async def aclose(self): pass
+
+    async def get_info(self, url):
+        return StoryInfo(title="ConflictLow", author="", description="", slug="cl")
+
+    async def get_chapter_list(self, url):
+        return []
+
+    async def get_content(self, url):
+        raise RuntimeError("not implemented")
+
+    async def aclose(self):
+        pass
 
 
 class ClientInjectSource(BaseSource):
@@ -138,12 +161,21 @@ class ClientInjectSource(BaseSource):
     priority = 50
     name = "client-inject"
     requires_browser = False
+
     def __init__(self, client=None):
         self.client = client
-    async def get_info(self, url): return StoryInfo(title="CI", author="", description="", slug="ci")
-    async def get_chapter_list(self, url): return []
-    async def get_content(self, url): raise RuntimeError("not implemented")
-    async def aclose(self): pass
+
+    async def get_info(self, url):
+        return StoryInfo(title="CI", author="", description="", slug="ci")
+
+    async def get_chapter_list(self, url):
+        return []
+
+    async def get_content(self, url):
+        raise RuntimeError("not implemented")
+
+    async def aclose(self):
+        pass
 
 
 class BrowserInjectSource(BaseSource):
@@ -151,13 +183,22 @@ class BrowserInjectSource(BaseSource):
     priority = 50
     name = "browser-inject"
     requires_browser = True
+
     def __init__(self, client=None, browser=None):
         self.client = client
         self.browser = browser
-    async def get_info(self, url): return StoryInfo(title="BI", author="", description="", slug="bi")
-    async def get_chapter_list(self, url): return []
-    async def get_content(self, url): raise RuntimeError("not implemented")
-    async def aclose(self): pass
+
+    async def get_info(self, url):
+        return StoryInfo(title="BI", author="", description="", slug="bi")
+
+    async def get_chapter_list(self, url):
+        return []
+
+    async def get_content(self, url):
+        raise RuntimeError("not implemented")
+
+    async def aclose(self):
+        pass
 
 
 class SlugSource(BaseSource):
@@ -165,13 +206,22 @@ class SlugSource(BaseSource):
     priority = 50
     name = "slug-site"
     requires_browser = False
+
     @classmethod
     def slug_to_url(cls, slug: str) -> str | None:
         return f"https://slugsite.test/truyen/{slug}"
-    async def get_info(self, url): return StoryInfo(title="Slug", author="", description="", slug="slug")
-    async def get_chapter_list(self, url): return []
-    async def get_content(self, url): raise RuntimeError("not implemented")
-    async def aclose(self): pass
+
+    async def get_info(self, url):
+        return StoryInfo(title="Slug", author="", description="", slug="slug")
+
+    async def get_chapter_list(self, url):
+        return []
+
+    async def get_content(self, url):
+        raise RuntimeError("not implemented")
+
+    async def aclose(self):
+        pass
 
 
 def test_registry_register_and_get_by_url():
@@ -291,17 +341,16 @@ def test_registry_discover_soft_fails_on_import_error(tmp_path):
 
 def test_registry_bootstrapped_with_valvrareteam():
     """Sau _bootstrap(), REGISTRY phải có ValvrareteamSource registered."""
-    from vvr_scraper.sources import REGISTRY
     from vvr_scraper.sources.valvrareteam import ValvrareteamSource
 
     registered_classes = [cls for cls in REGISTRY._classes]
-    assert ValvrareteamSource in registered_classes, \
+    assert ValvrareteamSource in registered_classes, (
         "ValvrareteamSource phải được register trong REGISTRY sau _bootstrap()"
+    )
 
 
 def test_registry_get_for_vvr_url_returns_valvrareteam_source():
     """REGISTRY.get() với VVR URL phải trả ValvrareteamSource instance."""
-    from vvr_scraper.sources import REGISTRY
     from vvr_scraper.sources.valvrareteam import ValvrareteamSource
 
     source = REGISTRY.get("https://valvrareteam.net/truyen/test-novel")
