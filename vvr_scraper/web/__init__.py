@@ -79,8 +79,7 @@ async def lifespan(app: FastAPI):
     jobs_routes.worker = state.worker
 
     # Start Auto-Sync Background Task
-
-    asyncio.create_task(auto_sync_background_task(app.state.db, state.worker))
+    _auto_sync_task = asyncio.create_task(auto_sync_background_task(app.state.db, state.worker))
 
     await download_queue.start_workers()
     logger.warning("OPDS Server active. Tránh di chuyển thư mục truyện thủ công để không làm hỏng liên kết thư viện.")
@@ -92,6 +91,12 @@ async def lifespan(app: FastAPI):
     await download_queue.stop_workers()
     if hasattr(app.state, "voice_bank_db") and app.state.voice_bank_db:
         await app.state.voice_bank_db.close()
+    # Cancel auto-sync background task to prevent process hang
+    _auto_sync_task.cancel()
+    try:
+        await _auto_sync_task
+    except (asyncio.CancelledError, Exception):  # noqa: S110 — expected during shutdown
+        pass
     if hasattr(app.state, "social_db") and app.state.social_db:
         await app.state.social_db.close()
     if hasattr(app.state, "db") and app.state.db:
