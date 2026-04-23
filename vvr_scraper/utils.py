@@ -11,8 +11,9 @@ import httpx
 from bs4 import BeautifulSoup
 from loguru import logger
 
+from .sources import REGISTRY
+
 BASE_URL = "https://valvrareteam.net"
-REGISTRY = None  # Lazy-loaded to avoid circular imports with sources
 
 
 def configure_logger(verbose: bool = False):
@@ -320,12 +321,6 @@ async def resolve_story_url(name_raw: str, cookies: dict | None = None) -> str |
             logger.debug(f"VVR sitemap lookup failed: {e}")
 
         # 2. Try custom sources via REGISTRY.slug_candidates()
-        global REGISTRY
-        if REGISTRY is None:
-            from .sources import REGISTRY as _REGISTRY
-
-            REGISTRY = _REGISTRY
-
         candidate_pairs = REGISTRY.slug_candidates(normalized)
         for _cls, candidate in candidate_pairs:
             source = REGISTRY.get(candidate, client=client)

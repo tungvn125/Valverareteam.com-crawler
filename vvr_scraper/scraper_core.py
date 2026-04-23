@@ -43,14 +43,22 @@ async def lay_thong_tin_truyen(client: httpx.AsyncClient, ten_truyen: str, verbo
                 if cover_bytes:
                     _fd, cover_path = tempfile.mkstemp(suffix=".jpg", prefix="vvr_cover_")
                     os.close(_fd)
+                    try:
 
-                    def _save(path: str, content: bytes) -> None:
-                        with open(path, "wb") as f:
-                            f.write(content)
+                        def _save(path: str, content: bytes) -> None:
+                            with open(path, "wb") as f:
+                                f.write(content)
 
-                    await asyncio.to_thread(_save, cover_path, cover_bytes)
-                    info.cover_path = cover_path
-                    logger.info(f"Đã tải ảnh bìa (custom source): {cover_path}")
+                        await asyncio.to_thread(_save, cover_path, cover_bytes)
+                        info.cover_path = cover_path
+                        logger.info(f"Đã tải ảnh bìa (custom source): {cover_path}")
+                    except Exception as e:
+                        logger.warning(f"Không thể lưu ảnh bìa (custom source): {e}")
+                        if cover_path and os.path.exists(cover_path):
+                            try:
+                                os.remove(cover_path)
+                            except OSError:
+                                pass
             return info
 
     # Standard VVR logic

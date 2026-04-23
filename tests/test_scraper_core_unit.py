@@ -4,6 +4,7 @@ All network calls are mocked.
 """
 
 import os
+import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -539,3 +540,55 @@ async def test_lay_thong_tin_truyen_skips_cover_if_already_has_cover_path(monkey
 
     # fetch_cover KHÔNG được gọi vì đã có cover_path
     mock_source.fetch_cover.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_lay_thong_tin_truyen_cleans_up_temp_cover_on_save_failure(tmp_path, monkeypatch):
+    """Temp cover file phải bị xóa khi save thất bại (custom source path)."""
+    import os
+    from pathlib import Path
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    import httpx
+
+    from vvr_scraper.models import StoryInfo
+    from vvr_scraper.scraper_core import lay_thong_tin_truyen
+
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_source = MagicMock()
+    mock_source.name = "custom-test"
+    mock_source.get_info = AsyncMock(
+        return_value=StoryInfo(
+            title="Test",
+            author="Author",
+            description="Desc",
+            slug="test",
+            cover_url="https://customsite.test/cover.jpg",
+            cover_path=None,
+        )
+    )
+    mock_source.fetch_cover = AsyncMock(return_value=b"fake_bytes")
+
+    cover_path_holder = []
+
+    original_mkstemp = tempfile.mkstemp
+
+    def fake_mkstemp(*args, **kwargs):
+        fd, path = original_mkstemp(*args, **kwargs)
+        cover_path_holder.append(path)
+        return fd, path
+
+    with patch("vvr_scraper.scraper_core.REGISTRY") as mock_registry, patch(
+        "vvr_scraper.scraper_core.tempfile.mkstemp", side_effect=fake_mkstemp
+    ), patch("vvr_scraper.scraper_core.asyncio.to_thread", side_effect=OSError("disk full")):
+        mock_registry.get.return_value = mock_source
+        result = await lay_thong_tin_truyen(
+            mock_client,
+            "https://customsite.test/truyen/test",
+        )
+
+    # Temp file phải đã bị xóa
+    if cover_path_holder:
+        assert not os.path.exists(cover_path_holder[0]), "Temp file phải bị xóa khi save fail"
+    # cover_path phải None
+    assert result.cover_path is None
