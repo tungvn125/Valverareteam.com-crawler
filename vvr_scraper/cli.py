@@ -326,6 +326,7 @@ class ValvrareScraperCLI:
 
         args = parser.parse_args(rest_args)
         args.ten_truyen = ten_truyen
+        args.command = None  # not a subcommand; only 'voice' path sets command
         return args
 
     async def setup_session(self):

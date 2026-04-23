@@ -329,7 +329,20 @@ async def resolve_story_url(name_raw: str, cookies: dict | None = None) -> str |
         except Exception as e:
             logger.debug(f"VVR sitemap lookup failed: {e}")
 
-        # 2. Try custom sources via REGISTRY.slug_candidates()
+        # 2. Try VVR direct URL fallback (when sitemap is unavailable)
+        # Slugs with UUID suffix (e.g. "name-9a1c3857") are VVR-specific
+        vvr_candidate = f"{BASE_URL}/truyen/{normalized}"
+        try:
+            source = _get_registry().get(vvr_candidate, client=client)
+            if source:
+                info = await source.get_info(vvr_candidate)
+                if info and info.title not in ("Unknown Title", "Unknown"):
+                    logger.info(f"Resolved via VVR direct URL: {vvr_candidate}")
+                    return vvr_candidate
+        except Exception as e:
+            logger.debug(f"VVR direct URL probe failed for {vvr_candidate}: {e}")
+
+        # 3. Try custom sources via REGISTRY.slug_candidates()
         registry = _get_registry()
         candidate_pairs = registry.slug_candidates(normalized)
         for _cls, candidate in candidate_pairs:
