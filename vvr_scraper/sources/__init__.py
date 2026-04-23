@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, ClassVar
 
 from ..models import ContentItem, StoryInfo
 
@@ -27,17 +27,16 @@ class VolumeTreeItem:
 
 
 class BaseSource(ABC):
-    base_urls: list[str] = []
-
-    @abstractmethod
-    async def search(self, query: str) -> list[SearchResult]:
-        """Search for novels by query."""
-        pass
+    # --- Class-level declarations ---
+    base_urls: ClassVar[list[str]] = []
+    priority: ClassVar[int] = 100
+    name: ClassVar[str] = ""
+    requires_browser: ClassVar[bool] = False
 
     @abstractmethod
     async def get_info(self, url: str) -> StoryInfo:
         """Get novel info (title, author, cover, etc)."""
-        pass
+        ...
 
     @abstractmethod
     async def get_chapter_list(self, url: str) -> list[VolumeTreeItem]:
@@ -47,17 +46,38 @@ class BaseSource(ABC):
         and list of ChapterTreeItem. For flat sources without volumes,
         return a single VolumeTreeItem with volume="Volume 1".
         """
-        pass
+        ...
 
     @abstractmethod
     async def get_content(self, chapter_url: str) -> list[ContentItem]:
         """Get chapter content."""
-        pass
+        ...
 
     @abstractmethod
     async def aclose(self) -> None:
         """Close owned resources (e.g. HTTP clients)."""
-        pass
+        ...
+
+    # --- Optional hooks: có default implementation ---
+    async def search(self, query: str) -> list[SearchResult]:
+        """Search for novels by query. Optional — default returns empty list."""
+        return []
+
+    async def fetch_cover(self, cover_url: str) -> bytes | None:
+        """Download cover image bytes. Default: GET via self.client if available."""
+        if not cover_url or not getattr(self, "client", None):
+            return None
+        try:
+            r = await self.client.get(cover_url, timeout=30.0)
+            r.raise_for_status()
+            return r.content
+        except Exception:
+            return None
+
+    @classmethod
+    def slug_to_url(cls, slug: str) -> str | None:
+        """Build candidate URL from slug. Default: None."""
+        return None
 
     def matches(self, url: str) -> bool:
         """Check if this source can handle the given URL."""
