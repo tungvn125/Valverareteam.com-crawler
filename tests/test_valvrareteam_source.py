@@ -225,3 +225,91 @@ class TestValvrareteamGetChapterList:
         source = ValvrareteamSource()
         with pytest.raises((RuntimeError, NotImplementedError)):
             await source.get_chapter_list("https://valvrareteam.net/truyen/test")
+
+
+class TestValvrareteamGetContent:
+    @pytest.mark.asyncio
+    async def test_get_content_extracts_paragraphs(self):
+        html = """<html><body>
+        <div class="vvr-chapter-content">
+            <p>Paragraph one.</p>
+            <p>Paragraph two.</p>
+        </div>
+        </body></html>"""
+
+        mock_context = AsyncMock()
+        mock_page = AsyncMock()
+        mock_page.content = AsyncMock(return_value=html)
+        mock_page.wait_for_selector = AsyncMock()
+        mock_page.wait_for_timeout = AsyncMock()
+        mock_page.goto = AsyncMock()
+        mock_page.close = AsyncMock()
+        mock_context.new_page = AsyncMock(return_value=mock_page)
+        mock_context.close = AsyncMock()
+
+        mock_browser = MagicMock()
+        mock_browser.new_context = AsyncMock(return_value=mock_context)
+
+        source = ValvrareteamSource(browser=mock_browser)
+        result = await source.get_content("https://valvrareteam.net/truyen/test/chuong-1")
+
+        assert len(result) == 2
+        texts = [item.data for item in result if item.type == "text"]
+        assert "Paragraph one." in texts
+        assert "Paragraph two." in texts
+
+    @pytest.mark.asyncio
+    async def test_get_content_extracts_images(self):
+        html = """<html><body>
+        <div class="vvr-chapter-content">
+            <p>Some text.</p>
+            <img src="https://cdn.example.com/image1.jpg" alt="illustration">
+        </div>
+        </body></html>"""
+
+        mock_context = AsyncMock()
+        mock_page = AsyncMock()
+        mock_page.content = AsyncMock(return_value=html)
+        mock_page.wait_for_selector = AsyncMock()
+        mock_page.wait_for_timeout = AsyncMock()
+        mock_page.goto = AsyncMock()
+        mock_page.close = AsyncMock()
+        mock_context.new_page = AsyncMock(return_value=mock_page)
+        mock_context.close = AsyncMock()
+
+        mock_browser = MagicMock()
+        mock_browser.new_context = AsyncMock(return_value=mock_context)
+
+        source = ValvrareteamSource(browser=mock_browser)
+        result = await source.get_content("https://valvrareteam.net/truyen/test/chuong-1")
+
+        image_items = [item for item in result if item.type == "image"]
+        assert len(image_items) >= 1
+        assert any(item.data == "https://cdn.example.com/image1.jpg" for item in image_items)
+
+    @pytest.mark.asyncio
+    async def test_get_content_raises_when_no_browser(self):
+        source = ValvrareteamSource()
+        with pytest.raises(RuntimeError, match="[Bb]rowser"):
+            await source.get_content("https://valvrareteam.net/truyen/test/chuong-1")
+
+    @pytest.mark.asyncio
+    async def test_get_content_raises_when_content_empty(self):
+        html = "<html><body><p>No chapter div here</p></body></html>"
+
+        mock_context = AsyncMock()
+        mock_page = AsyncMock()
+        mock_page.content = AsyncMock(return_value=html)
+        mock_page.wait_for_selector = AsyncMock(side_effect=Exception("timeout"))
+        mock_page.wait_for_timeout = AsyncMock()
+        mock_page.goto = AsyncMock()
+        mock_page.close = AsyncMock()
+        mock_context.new_page = AsyncMock(return_value=mock_page)
+        mock_context.close = AsyncMock()
+
+        mock_browser = MagicMock()
+        mock_browser.new_context = AsyncMock(return_value=mock_context)
+
+        source = ValvrareteamSource(browser=mock_browser)
+        with pytest.raises(RuntimeError):
+            await source.get_content("https://valvrareteam.net/truyen/test/chuong-1")

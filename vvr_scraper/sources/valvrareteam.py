@@ -221,5 +221,44 @@ class ValvrareteamSource(BaseSource):
         return volumes
 
     async def get_content(self, chapter_url: str) -> list[ContentItem]:
-        """Placeholder — implement trong Task 3."""
-        raise NotImplementedError("get_content() chưa implement — xem Task 3")
+        """Get chapter content using Playwright browser."""
+        if not self.browser:
+            raise RuntimeError("Browser instance required for get_content()")
+
+        context = await self.browser.new_context()
+        html = ""
+        try:
+            page = await context.new_page()
+            await page.goto(chapter_url, wait_until="networkidle", timeout=30000)
+
+            try:
+                await page.wait_for_selector(".vvr-chapter-content", timeout=10000)
+            except Exception:
+                pass
+
+            html = await page.content()
+            await page.close()
+        finally:
+            await context.close()
+
+        soup = BeautifulSoup(html, "html.parser")
+        content_div = soup.select_one(".vvr-chapter-content")
+        if not content_div:
+            raise RuntimeError(f"Không tìm thấy .vvr-chapter-content trong: {chapter_url}")
+
+        items: list[ContentItem] = []
+        for element in content_div.children:
+            tag = getattr(element, "name", None)
+            if tag in ("p", "div"):
+                text = element.get_text(strip=True)
+                if text:
+                    items.append(ContentItem(type="text", data=text))
+            elif tag == "img":
+                src = element.get("src", "")
+                if src:
+                    items.append(ContentItem(type="image", data=src))
+
+        if not items:
+            raise RuntimeError(f"Nội dung trống sau parse: {chapter_url}")
+
+        return items
