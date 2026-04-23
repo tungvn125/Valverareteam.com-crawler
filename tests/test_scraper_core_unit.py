@@ -410,3 +410,61 @@ class TestScrapeChapters:
             )
 
             assert len(result) == 1
+
+
+@pytest.mark.asyncio
+async def test_scrape_chapters_does_not_call_playwright_for_non_vvr_url(monkeypatch):
+    """Khi custom source fail, Playwright fallback KHÔNG được gọi cho non-VVR URL."""
+    from vvr_scraper.scraper_core import scrape_chapters
+
+    mock_browser = MagicMock()
+    playwright_fallback_called = []
+
+    async def fake_lay_chuong_httpx(client, url, **kwargs):
+        return None  # httpx fails
+
+    async def fake_playwright(browser, url, **kwargs):
+        playwright_fallback_called.append(url)
+        return [MagicMock()]
+
+    with (
+        patch("vvr_scraper.scraper_core.lay_chuong_httpx", side_effect=fake_lay_chuong_httpx),
+        patch("vvr_scraper.scraper_core.lay_chuong_voi_hinh_anh", side_effect=fake_playwright),
+    ):
+        await scrape_chapters(
+            browser=mock_browser,
+            urls=["https://customsite.test/chapter/1"],
+            concurrent_tasks=1,
+        )
+
+    # Playwright fallback KHÔNG được gọi cho non-VVR URL
+    assert "https://customsite.test/chapter/1" not in playwright_fallback_called
+
+
+@pytest.mark.asyncio
+async def test_scrape_chapters_does_call_playwright_for_vvr_url(monkeypatch):
+    """Khi VVR URL fail httpx, Playwright fallback phải được trigger."""
+    from vvr_scraper.scraper_core import scrape_chapters
+
+    mock_browser = MagicMock()
+    playwright_fallback_called = []
+
+    async def fake_lay_chuong_httpx(client, url, **kwargs):
+        return None  # httpx fails
+
+    async def fake_playwright(browser, url, **kwargs):
+        playwright_fallback_called.append(url)
+        return [MagicMock()]
+
+    with (
+        patch("vvr_scraper.scraper_core.lay_chuong_httpx", side_effect=fake_lay_chuong_httpx),
+        patch("vvr_scraper.scraper_core.lay_chuong_voi_hinh_anh", side_effect=fake_playwright),
+    ):
+        await scrape_chapters(
+            browser=mock_browser,
+            urls=["https://valvrareteam.net/truyen/abc/chuong-1"],
+            concurrent_tasks=1,
+        )
+
+    # Playwright fallback phải được gọi cho VVR URL
+    assert "https://valvrareteam.net/truyen/abc/chuong-1" in playwright_fallback_called

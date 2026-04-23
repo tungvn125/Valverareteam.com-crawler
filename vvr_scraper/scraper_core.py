@@ -192,7 +192,7 @@ async def lay_chuong_httpx(
                 return await source.get_content(url)
             except Exception as e:
                 logger.error(f"Custom source scrape failed for {url}: {e}")
-                return None
+                raise
 
     ssr_url = os.getenv("VVR_SSR_URL", "val-ssr-2kzit.ondigitalocean.app")
     fallback_url = url.replace("valvrareteam.net", ssr_url)
@@ -347,10 +347,13 @@ async def scrape_chapters(
                 # Now also supports custom sources which might need browser
                 content = await lay_chuong_httpx(client, url, verbose=verbose, token=token, browser=browser)
 
-                # 2. Try Reliable Mode (Playwright) if Fast Mode failed
-                if not content:
-                    logger.debug(f"Fast-scrape failed for {url}. Falling back to Playwright...")
+                # 2. Try Reliable Mode (Playwright) — only for VVR URLs
+                # Playwright fallback uses VVR-specific selectors, not suitable for custom sources
+                if not content and "valvrareteam.net" in url:
+                    logger.debug(f"Fast-scrape failed for {url}. Falling back to Playwright (VVR only)...")
                     content = await lay_chuong_voi_hinh_anh(browser, url, session_state=session_state, verbose=verbose)
+                elif not content:
+                    logger.warning(f"Custom source returned no content for: {url} — no Playwright fallback for non-VVR URLs")
 
                 if content:
                     scraped_content[url] = content
