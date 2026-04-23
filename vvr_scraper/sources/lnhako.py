@@ -189,6 +189,9 @@ class LnHakoSource(BaseSource):
                     if src:
                         extracted_content.append(ContentItem(type="image", data=src))
 
+                if not extracted_content:
+                    raise RuntimeError(f"Không extract được nội dung từ: {chapter_url}")
+
                 return extracted_content
             except (PlaywrightTimeoutError, TimeoutError):
                 if attempt == max_attempts - 1:

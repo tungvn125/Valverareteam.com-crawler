@@ -184,7 +184,7 @@ class TruyenFullSource(BaseSource):
 
         content_div = soup.find("div", id="chapter-c")
         if not content_div:
-            return []
+            raise RuntimeError(f"Không tìm thấy #chapter-c trong: {chapter_url}")
 
         for ad in content_div.find_all("div", class_=lambda x: x and "ads" in x.lower()):
             ad.decompose()
@@ -201,10 +201,6 @@ class TruyenFullSource(BaseSource):
                     extracted_content.append(ContentItem(type="text", data=text))
 
         if not extracted_content:
-            text_lines = content_div.get_text(separator="\n").split("\n")
-            for line in text_lines:
-                clean_line = line.strip()
-                if clean_line:
-                    extracted_content.append(ContentItem(type="text", data=clean_line))
+            raise RuntimeError(f"Không extract được nội dung từ: {chapter_url}")
 
         return extracted_content

@@ -410,3 +410,132 @@ def test_get_source_with_external_client_not_cached():
     source1 = get_source("https://truyenfull.vision/story-1", client=external_client)
     source2 = get_source("https://truyenfull.vision/story-2", client=external_client)
     assert source1 is not source2
+
+
+# --- Tests cho Phase 3: contract standardization ---
+
+
+@pytest.mark.asyncio
+async def test_truyenfull_get_content_raises_when_no_content_div():
+    """get_content() phải raise khi không tìm thấy #chapter-c div."""
+    html = "<html><body><p>No chapter content here</p></body></html>"
+
+    mock_resp = MagicMock()
+    mock_resp.text = html
+    mock_resp.status_code = 200
+
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_client.get.return_value = mock_resp
+
+    source = TruyenFullSource(client=mock_client)
+    with pytest.raises(RuntimeError, match="chapter"):
+        await source.get_content("https://truyenfull.vision/test-story/chuong-1/")
+
+
+@pytest.mark.asyncio
+async def test_truyenfull_get_content_raises_when_extracted_content_empty():
+    """get_content() phải raise khi div tồn tại nhưng parse ra rỗng."""
+    html = """<html><body>
+    <div id="chapter-c">
+        <div class="ads-banner">Quảng cáo</div>
+    </div>
+    </body></html>"""
+
+    mock_resp = MagicMock()
+    mock_resp.text = html
+    mock_resp.status_code = 200
+
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_client.get.return_value = mock_resp
+
+    source = TruyenFullSource(client=mock_client)
+    with pytest.raises(RuntimeError):
+        await source.get_content("https://truyenfull.vision/test-story/chuong-1/")
+
+
+def test_truyenfull_slug_to_url():
+    """slug_to_url() phải trả đúng URL pattern của TruyenFull."""
+    url = TruyenFullSource.slug_to_url("toi-nhap-xac-vao-nu-chinh")
+    assert url == "https://truyenfull.vision/toi-nhap-xac-vao-nu-chinh"
+
+
+def test_truyenfull_slug_to_url_returns_none_for_empty():
+    url = TruyenFullSource.slug_to_url("")
+    assert url is not None
+
+
+@pytest.mark.asyncio
+async def test_lnhako_get_content_raises_when_no_browser():
+    """get_content() phải raise RuntimeError ngay khi không có browser."""
+    source = LnHakoSource()
+    with pytest.raises(RuntimeError, match="[Bb]rowser"):
+        await source.get_content("https://ln.hako.vn/truyen/1-slug/c12345-chuong-1")
+
+
+def test_lnhako_slug_to_url():
+    """slug_to_url() phải trả đúng URL pattern của LnHako."""
+    url = LnHakoSource.slug_to_url("toi-nhap-xac-vao-nu-chinh")
+    assert url == "https://ln.hako.vn/truyen/toi-nhap-xac-vao-nu-chinh"
+
+
+def test_lnhako_slug_to_url_returns_string():
+    url = LnHakoSource.slug_to_url("some-novel")
+    assert isinstance(url, str)
+    assert "ln.hako.vn" in url
+
+
+@pytest.mark.asyncio
+async def test_truyenfull_search_still_works_after_downgrade():
+    """TruyenFull.search() vẫn hoạt động — phải trả list (không raise)."""
+    mock_resp = MagicMock()
+    mock_resp.text = '<a href="http://test.com/1" class="list-group-item" title="Title 1">Title 1</a>'
+    mock_resp.status_code = 200
+
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_client.get.return_value = mock_resp
+
+    source = TruyenFullSource(client=mock_client)
+    results = await source.search("query")
+
+    assert isinstance(results, list)
+    assert len(results) >= 1
+
+
+@pytest.mark.asyncio
+async def test_lnhako_search_still_works_after_downgrade():
+    """LnHako.search() vẫn hoạt động — phải trả list (không raise)."""
+    html = '<div class="thumb_attr series-title"><a href="/truyen/1-slug">Hako Story</a></div>'
+    mock_resp = MagicMock()
+    mock_resp.text = html
+    mock_resp.status_code = 200
+
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_client.get.return_value = mock_resp
+
+    source = LnHakoSource(client=mock_client)
+    results = await source.search("query")
+
+    assert isinstance(results, list)
+    assert len(results) >= 1
+
+
+def test_minimal_source_without_search_still_valid():
+    """Source không implement search() vẫn valid — dùng default return []."""
+    from vvr_scraper.sources import BaseSource, VolumeTreeItem
+    from vvr_scraper.models import ContentItem, StoryInfo
+
+    class NoSearchSource(BaseSource):
+        base_urls = ["nosearch.test"]
+        priority = 80
+        name = "no-search"
+        requires_browser = False
+
+        async def get_info(self, url): return StoryInfo(title="NS", author="", description="", slug="ns")
+        async def get_chapter_list(self, url): return []
+        async def get_content(self, url): raise RuntimeError("not implemented")
+        async def aclose(self): pass
+
+    import asyncio
+    source = NoSearchSource()
+    result = asyncio.run(source.search("query"))
+    assert result == []
