@@ -4,7 +4,6 @@ Core scraping functions for the web novel scraper.
 
 import asyncio
 import os
-import re
 import tempfile
 from typing import Any
 
@@ -15,12 +14,17 @@ from playwright.async_api import Browser
 
 from .models import ContentItem, StoryInfo
 from .sources import REGISTRY, get_source
-from .utils import BASE_URL, HEADERS
+from .utils import HEADERS
 
 MAX_RETRIES = 2
 
 
-async def lay_thong_tin_truyen(client: httpx.AsyncClient, ten_truyen: str, verbose: bool = False) -> StoryInfo:
+async def lay_thong_tin_truyen(
+    client: httpx.AsyncClient,
+    ten_truyen: str,
+    verbose: bool = False,
+    browser: Browser | None = None,
+) -> StoryInfo:
     """
     Scrapes basic information about the story from its main page.
     Supports multiple sources including valvrareteam.net and others in .sources module.
@@ -31,172 +35,35 @@ async def lay_thong_tin_truyen(client: httpx.AsyncClient, ten_truyen: str, verbo
     else:
         url = f"https://valvrareteam.net/{ten_truyen}"
 
-    # Try to find a custom source for non-VVR domains
-    if "valvrareteam.net" not in url:
-        source = REGISTRY.get(url, client=client)
-        if source:
-            logger.info(f"Using custom source for: {url}")
-            info = await source.get_info(url)
-            # Fix #2: Tải cover nếu source trả cover_url nhưng không có cover_path
-            if info.cover_url and not info.cover_path:
-                cover_bytes = await source.fetch_cover(info.cover_url)
-                if cover_bytes:
-                    _fd, cover_path = tempfile.mkstemp(suffix=".jpg", prefix="vvr_cover_")
-                    os.close(_fd)
-                    try:
-
-                        def _save(path: str, content: bytes) -> None:
-                            with open(path, "wb") as f:
-                                f.write(content)
-
-                        await asyncio.to_thread(_save, cover_path, cover_bytes)
-                        info.cover_path = cover_path
-                        logger.info(f"Đã tải ảnh bìa (custom source): {cover_path}")
-                    except Exception as e:
-                        logger.warning(f"Không thể lưu ảnh bìa (custom source): {e}")
-                        if cover_path and os.path.exists(cover_path):
-                            try:
-                                os.remove(cover_path)
-                            except OSError:
-                                pass
-            return info
-
-    # Standard VVR logic
-    ssr_url = os.getenv("VVR_SSR_URL", "val-ssr-2kzit.ondigitalocean.app")
-    ssr_target = url.replace("valvrareteam.net", ssr_url)
-    logger.debug(f"Fetching story info from: {ssr_target}")
-
-    response = await client.get(ssr_target, follow_redirects=True, timeout=30.0)
-    response.raise_for_status()
-    soup = BeautifulSoup(response.text, "html.parser")
-
-    title_element = soup.select_one("h1.rd-novel-title")
-    title = title_element.get_text(strip=True) if title_element else "Unknown Title"
-
-    # Clean up status suffixes from title
-    for status in ["+Đang tiến hành", "+Hoàn thành", "+Tạm ngưng"]:
-        if status in title:
-            title = title.replace(status, "").strip()
-
-    author_elements = soup.select("span.rd-author-name")
-    authors = [author.get_text(strip=True) for author in author_elements]
-    author = ", ".join(authors) if authors else "Unknown Author"
-
-    description_element = soup.select_one("div.rd-description-content")
-    description = description_element.get_text(strip=True) if description_element else "No Description"
-
-    genre_elements = soup.select(".rd-genre-tag")
-    genres = [genre.get_text(strip=True) for genre in genre_elements]
-
-    # Extract stats (Total Chapters, Word Count, Views)
-    total_chapters = "Unknown"
-    word_count = "Unknown"
-    views = "-"
-
-    # Try .rd-stat-item first (modern Next.js structure)
-    stat_items = soup.select(".rd-stat-item")
-    for item in stat_items:
-        val_elem = item.select_one(".rd-stat-value")
-        lab_elem = item.select_one(".rd-stat-label")
-        if val_elem and lab_elem:
-            val = val_elem.get_text(strip=True)
-            lab = lab_elem.get_text(strip=True)
-            if "Lượt xem" in lab:
-                views = val
-            elif "Từ" in lab or "Số chữ" in lab:
-                word_count = val
-            elif "Chương" in lab:
-                total_chapters = val
-
-    # Try .rd-stats-item (legacy fallback)
-    if total_chapters == "Unknown" or word_count == "Unknown" or views == "-":
-        legacy_stats = soup.select(".rd-stats-item")
-        for item in legacy_stats:
-            text = item.get_text(" ", strip=True)
-            if "Chương" in text:
-                match = re.search(r"(\d+[\d.,]*)", text)
-                if match:
-                    total_chapters = match.group(1)
-            elif "Số chữ" in text or "Từ" in text:
-                match = re.search(r"(\d+[\d.,]*)", text)
-                if match:
-                    word_count = match.group(1)
-            elif "Lượt xem" in text:
-                match = re.search(r"(\d+[\d.,]*)", text)
-                if match:
-                    views = match.group(1)
-
-    # Fallback to .rd-info-row
-    if total_chapters == "Unknown" or word_count == "Unknown":
-        for row in soup.select(".rd-info-row"):
-            label_elem = row.select_one(".rd-info-label")
-            value_elem = row.select_one(".rd-info-value")
-            if label_elem and value_elem:
-                label_text = label_elem.get_text(strip=True)
-                value_text = value_elem.get_text(strip=True)
-                if "Số chữ" in label_text or "Từ" in label_text:
-                    word_count = value_text
-                elif "Chương" in label_text:
-                    total_chapters = value_text
-                elif "Lượt xem" in label_text:
-                    views = value_text
-
-    # Fallback to .rd-chapter-count-overlay
-    if total_chapters == "Unknown":
-        chapter_count_overlay = soup.select_one(".rd-chapter-count-value")
-        if chapter_count_overlay:
-            total_chapters = chapter_count_overlay.get_text(strip=True)
-
-    cover_path = None
-    cover_url = None
-    image_url_element = soup.select_one("img.rd-cover-image")
-    if image_url_element:
-        if "src" in image_url_element.attrs:
-            cover_url = image_url_element["src"]
-        elif "srcset" in image_url_element.attrs:
-            # Fallback for dynamic images
-            cover_url = image_url_element["srcset"].split(",")[0].split(" ")[0]
-
-    if cover_url:
-        try:
-            # Prepend base URL if relative (though usually absolute with B-CDN)
-            if cover_url.startswith("/"):
-                cover_url = f"{BASE_URL}{cover_url}"
-
-            response = await client.get(cover_url, timeout=30.0)
-            response.raise_for_status()
-
-            # Use a unique temp file to avoid race conditions in multi-download
-            _fd, cover_path = tempfile.mkstemp(suffix=".jpg", prefix="vvr_cover_")
-            os.close(_fd)
-
-            def save_cover(path: str, content: bytes) -> None:
-                with open(path, "wb") as f:
-                    f.write(content)
-
-            await asyncio.to_thread(save_cover, cover_path, response.content)
-            logger.info(f"Đã tải ảnh bìa: {cover_path}")
-        except Exception as e:
-            logger.warning(f"Không thể tải ảnh bìa: {e}")
-            if cover_path and os.path.exists(cover_path):
+    source = REGISTRY.get(url, client=client, browser=browser)
+    if source:
+        info = await source.get_info(url)
+        # Tải cover nếu source trả cover_url nhưng chưa set cover_path
+        if info.cover_url and not info.cover_path:
+            cover_bytes = await source.fetch_cover(info.cover_url)
+            if cover_bytes:
+                _fd, cover_path = tempfile.mkstemp(suffix=".jpg", prefix="vvr_cover_")
+                os.close(_fd)
                 try:
-                    os.remove(cover_path)
-                except OSError:
-                    pass  # noqa: S110
-            cover_path = None
 
-    return StoryInfo(
-        title=title,
-        author=author,
-        description=description,
-        slug=ten_truyen,
-        genres=genres,
-        cover_path=cover_path,
-        cover_url=cover_url,
-        total_chapters=total_chapters,
-        word_count=word_count,
-        views=views,
-    )
+                    def _save(path: str, content: bytes) -> None:
+                        with open(path, "wb") as f:
+                            f.write(content)
+
+                    await asyncio.to_thread(_save, cover_path, cover_bytes)
+                    info.cover_path = cover_path
+                    logger.info(f"Đã tải ảnh bìa: {cover_path}")
+                except Exception as e:
+                    logger.warning(f"Không thể lưu ảnh bìa: {e}")
+                    if cover_path and os.path.exists(cover_path):
+                        try:
+                            os.remove(cover_path)
+                        except OSError:
+                            pass
+        return info
+
+    logger.warning(f"Không tìm thấy source cho: {url}")
+    raise ValueError(f"Không có source hỗ trợ URL: {url}")
 
 
 async def lay_chuong_httpx(

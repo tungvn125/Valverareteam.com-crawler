@@ -592,3 +592,37 @@ async def test_lay_thong_tin_truyen_cleans_up_temp_cover_on_save_failure(tmp_pat
         assert not os.path.exists(cover_path_holder[0]), "Temp file phải bị xóa khi save fail"
     # cover_path phải None
     assert result.cover_path is None
+
+
+@pytest.mark.asyncio
+async def test_lay_thong_tin_truyen_routes_vvr_url_via_registry(monkeypatch):
+    """lay_thong_tin_truyen() phải dùng REGISTRY.get() cho cả VVR URL."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+    import httpx
+    from vvr_scraper.scraper_core import lay_thong_tin_truyen
+    from vvr_scraper.models import StoryInfo
+
+    mock_source = MagicMock()
+    mock_source.get_info = AsyncMock(
+        return_value=StoryInfo(
+            title="VVR Story",
+            author="Author",
+            description="Desc",
+            slug="vvr-story",
+        )
+    )
+
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+
+    with patch("vvr_scraper.scraper_core.REGISTRY") as mock_registry:
+        mock_registry.get.return_value = mock_source
+        result = await lay_thong_tin_truyen(
+            mock_client,
+            "https://valvrareteam.net/truyen/vvr-story",
+        )
+
+    # REGISTRY.get() phải được gọi với VVR URL
+    mock_registry.get.assert_called_once()
+    call_url = mock_registry.get.call_args[0][0]
+    assert "valvrareteam.net" in call_url
+    assert result.title == "VVR Story"
