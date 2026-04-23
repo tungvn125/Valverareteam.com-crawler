@@ -14,7 +14,7 @@ from loguru import logger
 from playwright.async_api import Browser
 
 from .models import ContentItem, StoryInfo
-from .sources import get_source
+from .sources import REGISTRY, get_source
 from .utils import BASE_URL, HEADERS
 
 MAX_RETRIES = 2
@@ -33,10 +33,25 @@ async def lay_thong_tin_truyen(client: httpx.AsyncClient, ten_truyen: str, verbo
 
     # Try to find a custom source for non-VVR domains
     if "valvrareteam.net" not in url:
-        source = get_source(url, client=client)
+        source = REGISTRY.get(url, client=client)
         if source:
             logger.info(f"Using custom source for: {url}")
-            return await source.get_info(url)
+            info = await source.get_info(url)
+            # Fix #2: Tải cover nếu source trả cover_url nhưng không có cover_path
+            if info.cover_url and not info.cover_path:
+                cover_bytes = await source.fetch_cover(info.cover_url)
+                if cover_bytes:
+                    _fd, cover_path = tempfile.mkstemp(suffix=".jpg", prefix="vvr_cover_")
+                    os.close(_fd)
+
+                    def _save(path: str, content: bytes) -> None:
+                        with open(path, "wb") as f:
+                            f.write(content)
+
+                    await asyncio.to_thread(_save, cover_path, cover_bytes)
+                    info.cover_path = cover_path
+                    logger.info(f"Đã tải ảnh bìa (custom source): {cover_path}")
+            return info
 
     # Standard VVR logic
     ssr_url = os.getenv("VVR_SSR_URL", "val-ssr-2kzit.ondigitalocean.app")

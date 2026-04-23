@@ -468,3 +468,74 @@ async def test_scrape_chapters_does_call_playwright_for_vvr_url(monkeypatch):
 
     # Playwright fallback phải được gọi cho VVR URL
     assert "https://valvrareteam.net/truyen/abc/chuong-1" in playwright_fallback_called
+
+
+@pytest.mark.asyncio
+async def test_lay_thong_tin_truyen_downloads_cover_for_custom_source(monkeypatch):
+    """Custom source trả cover_url nhưng không có cover_path → phải tự tải."""
+    from unittest.mock import AsyncMock, MagicMock, patch, call
+    import httpx
+    from vvr_scraper.scraper_core import lay_thong_tin_truyen
+    from vvr_scraper.models import StoryInfo
+
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+
+    mock_source = MagicMock()
+    mock_source.get_info = AsyncMock(
+        return_value=StoryInfo(
+            title="Test Story",
+            author="Test Author",
+            description="Test Desc",
+            slug="test-story",
+            cover_url="https://customsite.test/cover.jpg",
+            cover_path=None,
+        )
+    )
+    mock_source.fetch_cover = AsyncMock(return_value=b"fake_image_bytes")
+
+    with patch("vvr_scraper.scraper_core.REGISTRY") as mock_registry, patch(
+        "vvr_scraper.scraper_core.asyncio.to_thread", new_callable=AsyncMock
+    ) as mock_to_thread:
+        mock_registry.get.return_value = mock_source
+        result = await lay_thong_tin_truyen(
+            mock_client,
+            "https://customsite.test/truyen/test-story",
+        )
+
+    # fetch_cover phải được gọi
+    mock_source.fetch_cover.assert_called_once_with("https://customsite.test/cover.jpg")
+    # cover_path phải được set
+    assert result.cover_path is not None
+
+
+@pytest.mark.asyncio
+async def test_lay_thong_tin_truyen_skips_cover_if_already_has_cover_path(monkeypatch):
+    """Nếu source đã trả cover_path, phải không tải lại."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+    import httpx
+    from vvr_scraper.scraper_core import lay_thong_tin_truyen
+    from vvr_scraper.models import StoryInfo
+
+    mock_client = AsyncMock(spec=httpx.AsyncClient)
+    mock_source = MagicMock()
+    mock_source.get_info = AsyncMock(
+        return_value=StoryInfo(
+            title="Test Story",
+            author="Test Author",
+            description="Test Desc",
+            slug="test-story",
+            cover_url="https://customsite.test/cover.jpg",
+            cover_path="/tmp/already_downloaded.jpg",
+        )
+    )
+    mock_source.fetch_cover = AsyncMock(return_value=b"bytes")
+
+    with patch("vvr_scraper.scraper_core.REGISTRY") as mock_registry:
+        mock_registry.get.return_value = mock_source
+        result = await lay_thong_tin_truyen(
+            mock_client,
+            "https://customsite.test/truyen/test-story",
+        )
+
+    # fetch_cover KHÔNG được gọi vì đã có cover_path
+    mock_source.fetch_cover.assert_not_called()
