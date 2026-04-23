@@ -10,6 +10,7 @@ import os
 import re
 import tempfile
 from typing import Any, ClassVar
+from urllib.parse import urljoin
 
 import httpx
 from bs4 import BeautifulSoup
@@ -176,8 +177,48 @@ class ValvrareteamSource(BaseSource):
         )
 
     async def get_chapter_list(self, url: str) -> list[VolumeTreeItem]:
-        """Placeholder — implement trong Task 2."""
-        raise NotImplementedError("get_chapter_list() chưa implement — xem Task 2")
+        """Get chapter list using Playwright browser."""
+        if not self.browser:
+            raise RuntimeError("Browser instance required for get_chapter_list()")
+
+        context = await self.browser.new_context()
+        html = ""
+        try:
+            page = await context.new_page()
+            await page.goto(url, wait_until="networkidle", timeout=30000)
+
+            try:
+                await page.wait_for_selector(".module-container", timeout=10000)
+            except Exception:
+                pass
+
+            html = await page.content()
+            await page.close()
+        finally:
+            await context.close()
+
+        soup = BeautifulSoup(html, "html.parser")
+        volumes: list[VolumeTreeItem] = []
+
+        for container in soup.select("div.module-container"):
+            volume_title_el = container.select_one("h3.module-title")
+            volume_name = volume_title_el.get_text(strip=True) if volume_title_el else "Volume 1"
+
+            chapters: list[ChapterTreeItem] = []
+            for item in container.select("div.module-chapter-item.chapter-mode-published"):
+                link = item.select_one("a.chapter-title-link")
+                if not link:
+                    continue
+
+                title = link.get_text(strip=True)
+                href = link.get("href", "")
+                chapter_url = urljoin(BASE_URL, href) if href else ""
+                chapters.append(ChapterTreeItem(title=title, url=chapter_url))
+
+            if chapters:
+                volumes.append(VolumeTreeItem(volume=volume_name, chapters=chapters))
+
+        return volumes
 
     async def get_content(self, chapter_url: str) -> list[ContentItem]:
         """Placeholder — implement trong Task 3."""

@@ -141,3 +141,87 @@ class TestValvrareteamGetInfo:
         assert info.cover_path is not None
         if info.cover_path and os.path.exists(info.cover_path):
             os.remove(info.cover_path)
+
+
+class TestValvrareteamGetChapterList:
+    def _make_mock_browser_with_html(self, html: str) -> MagicMock:
+        """Helper: tạo mock browser trả về HTML cho Playwright scraping."""
+        mock_browser = MagicMock()
+        mock_context = AsyncMock()
+        mock_page = AsyncMock()
+        mock_page.content = AsyncMock(return_value=html)
+        mock_page.wait_for_selector = AsyncMock()
+        mock_page.wait_for_timeout = AsyncMock()
+        mock_context.new_page = AsyncMock(return_value=mock_page)
+        mock_context.close = AsyncMock()
+        mock_browser.new_context = AsyncMock(return_value=mock_context)
+        return mock_browser
+
+    @pytest.mark.asyncio
+    async def test_get_chapter_list_returns_volumes_and_chapters(self):
+        html = """<html><body>
+        <div class="module-container">
+            <h3 class="module-title">Volume 1</h3>
+            <div class="module-chapter-item chapter-mode-published">
+                <a class="chapter-title-link" href="/truyen/test/chuong-1">Chương 1</a>
+            </div>
+            <div class="module-chapter-item chapter-mode-published">
+                <a class="chapter-title-link" href="/truyen/test/chuong-2">Chương 2</a>
+            </div>
+        </div>
+        </body></html>"""
+
+        mock_browser = self._make_mock_browser_with_html(html)
+        source = ValvrareteamSource(browser=mock_browser)
+        result = await source.get_chapter_list("https://valvrareteam.net/truyen/test")
+
+        assert len(result) >= 1
+        assert result[0].volume == "Volume 1"
+        assert len(result[0].chapters) == 2
+        assert result[0].chapters[0].title == "Chương 1"
+        assert "valvrareteam.net" in result[0].chapters[0].url
+
+    @pytest.mark.asyncio
+    async def test_get_chapter_list_skips_unpublished_chapters(self):
+        html = """<html><body>
+        <div class="module-container">
+            <h3 class="module-title">Volume 1</h3>
+            <div class="module-chapter-item chapter-mode-published">
+                <a class="chapter-title-link" href="/truyen/test/chuong-1">Chương 1</a>
+            </div>
+            <div class="module-chapter-item chapter-mode-draft">
+                <a class="chapter-title-link" href="/truyen/test/chuong-2">Chương 2 (nháp)</a>
+            </div>
+        </div>
+        </body></html>"""
+
+        mock_browser = self._make_mock_browser_with_html(html)
+        source = ValvrareteamSource(browser=mock_browser)
+        result = await source.get_chapter_list("https://valvrareteam.net/truyen/test")
+
+        published_chapters = [ch for v in result for ch in v.chapters]
+        chapter_titles = [ch.title for ch in published_chapters]
+        assert "Chương 2 (nháp)" not in chapter_titles
+
+    @pytest.mark.asyncio
+    async def test_get_chapter_list_makes_urls_absolute(self):
+        html = """<html><body>
+        <div class="module-container">
+            <h3 class="module-title">Vol 1</h3>
+            <div class="module-chapter-item chapter-mode-published">
+                <a class="chapter-title-link" href="/truyen/test/chuong-1">Ch 1</a>
+            </div>
+        </div>
+        </body></html>"""
+
+        mock_browser = self._make_mock_browser_with_html(html)
+        source = ValvrareteamSource(browser=mock_browser)
+        result = await source.get_chapter_list("https://valvrareteam.net/truyen/test")
+
+        assert result[0].chapters[0].url.startswith("https://valvrareteam.net")
+
+    @pytest.mark.asyncio
+    async def test_get_chapter_list_raises_when_no_browser(self):
+        source = ValvrareteamSource()
+        with pytest.raises((RuntimeError, NotImplementedError)):
+            await source.get_chapter_list("https://valvrareteam.net/truyen/test")
