@@ -1,4 +1,0 @@
-# file: /home/tung/Data/dev/backup/Valvrareteam.net-crawler/vvr_scraper/web/__init__.py
-# hypothesis_version: 6.152.1
-
-[8000, '*', '/api/admin', '/api/auth', '/api/social', '/favicon.ico', '/novels', '/static', '1.9.1', '127.0.0.1', 'DEBUG', 'Social', 'Social Admin', 'Social Auth', 'VVR_PLAYWRIGHT_MODE', 'db', 'favicon.ico', 'info', 'novels', 'social.db', 'social_db', 'static', 'vvr_library.db']

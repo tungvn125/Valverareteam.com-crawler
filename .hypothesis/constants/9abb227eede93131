@@ -1,4 +1,0 @@
-# file: /home/tung/Data/dev/backup/Valvrareteam.net-crawler/vvr_scraper/scraper_core.py
-# hypothesis_version: 6.152.1
-
-[30.0, 30000, 60000, '(\\d+[\\d.,]*)', '+Hoàn thành', '+Tạm ngưng', '+Đang tiến hành', ',', ', ', '-', '.chapter-content', '.jpg', '.rd-genre-tag', '.rd-info-label', '.rd-info-row', '.rd-info-value', '.rd-stat-item', '.rd-stat-label', '.rd-stat-value', '.rd-stats-item', '/', 'Authorization', 'Chương', 'IMG', 'Lượt xem', 'No Description', 'P', 'Số chữ', 'Từ', 'Unknown', 'Unknown Author', 'Unknown Title', 'VVR_SSR_URL', 'cookies', 'domcontentloaded', 'el => el.tagName', 'h1.rd-novel-title', 'html.parser', 'http', 'image', 'img', 'img.rd-cover-image', 'name', 'p', 'p, img', 'span.rd-author-name', 'src', 'srcset', 'text', 'value', 'valvrareteam.net', 'vvr_cover_', 'wb']

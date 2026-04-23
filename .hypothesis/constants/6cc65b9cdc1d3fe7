@@ -1,4 +1,0 @@
-# file: /home/tung/Data/dev/backup/Valvrareteam.net-crawler/vvr_scraper/audio_drama.py
-# hypothesis_version: 6.152.1
-
-[0.0, 0.35, 0.5, 0.75, 300.0, 128, 200, 1000, 30000, 44100, '(})\\s*({)', ', ', ',\\s*([}\\]])', 'A peaceful setting.', 'Content-Type', 'ELEVENLABS_API_KEY', 'None', 'POST', 'VVR_API_KEY', 'VVR_BASE_URL', 'VVR_MODEL', 'VoiceManager closed.', '\\1', '\\1, \\2', 'alignment', 'application/json', 'audio_base64', 'blocks', 'characters', 'choices', 'close', 'content', 'duration', 'eleven_v3', 'end', 'fade', 'gender', 'get_all_story_voices', 'gpt-4o-mini', 'intensity', 'json_object', 'model_id', 'mood', 'mood_info', 'mood_shift', 'mp3', 'name', 'narrator', 'peaceful', 'prompts', 'role', 'script', 'segments', 'similarity_boost', 'stability', 'start', 'style', 'system', 'tags', 'text', 'transition', 'type', 'unknown', 'use_speaker_boost', 'user', 'utf-8', 'vfx', 'visual_prompt', 'voice_settings', 'word', 'xi-api-key', 'ywBZEqUhld86Jeajq94o']

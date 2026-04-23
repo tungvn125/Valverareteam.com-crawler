@@ -1,4 +1,0 @@
-# file: /home/tung/Data/dev/backup/Valvrareteam.net-crawler/vvr_scraper/enums.py
-# hypothesis_version: 6.151.12
-
-['archived', 'author', 'cancelled', 'cover_url', 'description', 'error_log_path', 'error_summary', 'failed', 'formats', 'genres', 'has_updates', 'last_chapter_count', 'last_checked_at', 'last_downloaded_at', 'last_synced_count', 'output_folder', 'pending', 'progress', 'running', 'server_chapter_count', 'slug', 'status', 'success', 'synced', 'title', 'unavailable', 'updated_at', 'waiting']

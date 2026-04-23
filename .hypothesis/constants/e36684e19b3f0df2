@@ -1,4 +1,0 @@
-# file: /home/tung/Data/dev/backup/Valvrareteam.net-crawler/vvr_scraper/tts/omnivoice_provider.py
-# hypothesis_version: 6.152.1
-
-[1000, 'VVR_OMNIVOICE_DEVICE', 'WAV', 'cuda:0', 'float16', 'k2-fsa/OmniVoice']

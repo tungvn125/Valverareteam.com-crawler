@@ -1,4 +1,0 @@
-# file: /home/tung/Data/dev/backup/Valvrareteam.net-crawler/vvr_scraper/tts/openai_tts_provider.py
-# hypothesis_version: 6.152.1
-
-[60.0, 128, 200, 44100, '/', '/audio/speech', '/voices', 'Authorization', 'OPENAI_TTS_API_KEY', 'OPENAI_TTS_BASE_URL', 'OPENAI_TTS_MODEL', 'alloy', 'echo', 'fable', 'id', 'input', 'model', 'mp3', 'name', 'nova', 'onyx', 'response_format', 'shimmer', 'tts-1', 'voice', 'voice_id', 'voices']

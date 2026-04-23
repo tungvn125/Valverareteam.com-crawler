@@ -1,4 +1,0 @@
-# file: /home/tung/Data/dev/backup/Valvrareteam.net-crawler/vvr_scraper/web/deps.py
-# hypothesis_version: 6.152.1
-
-[401, 'Basic', 'VVR_OPDS_PASS', 'VVR_OPDS_USER', 'WWW-Authenticate']

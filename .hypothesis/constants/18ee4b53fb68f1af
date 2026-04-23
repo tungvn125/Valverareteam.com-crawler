@@ -1,4 +1,0 @@
-# file: /home/tung/Data/dev/backup/Valvrareteam.net-crawler/vvr_scraper/video_renderer.py
-# hypothesis_version: 6.152.1
-
-[0.1, 10.0, 80.0, 100, 200, 1000, 1080, 1920, '-', '-b:a', '-c:a', '-c:v', '-crf', '-f', '-i', '-map', '-pix_fmt', '-preset', '-r', '-shortest', '-vcodec', '-y', '..', '/novels', '/static', '0:v:0', '127.0.0.1', '18', '192k', '1:a:0', 'aac', 'copy', 'end', 'error', 'events', 'ffmpeg', 'height', 'image2pipe', 'landscape', 'libx264', 'novels', 'png', 'portrait', 'running', 'start', 'static', 'utf-8', 'veryfast', 'width', 'yuv420p']

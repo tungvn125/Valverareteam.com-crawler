@@ -1,4 +1,0 @@
-# file: /home/tung/Data/dev/backup/Valvrareteam.net-crawler/vvr_scraper/job_runner.py
-# hypothesis_version: 6.152.1
-
-[0.5, 5.0, 10.0, 90.0, 100.0, 200, ',', '.mp4', '.vvr_session.json', '/', 'CINEMA', 'EPUB', 'HTML', 'MD', 'MP3', 'MP4', 'PDF', 'TXT', 'VVR_OPDS_PASS', '_nosound.mp4', 'audio', 'audio_path', 'author', 'chapter_list.json', 'chapters', 'cinema', 'content', 'cookies', 'cover_path', 'cover_url', 'crawl', 'description', 'formats', 'from_chapter', 'genres', 'has_updates', 'head', 'headless', 'http', 'json', 'last_chapter_count', 'last_checked_at', 'last_downloaded_at', 'last_synced_count', 'mp4', 'name', 'output_folder', 'server_chapter_count', 'slug', 'title', 'to_chapter', 'url', 'utf-8', 'value', 'valvrareteam.net', 'volume', 'vvr_library.db']

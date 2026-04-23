@@ -1,4 +1,0 @@
-# file: /home/tung/Data/dev/backup/Valvrareteam.net-crawler/vvr_scraper/db.py
-# hypothesis_version: 6.152.1
-
-[',', ', ', '?', 'DROP TABLE library', 'INTEGER', 'INTEGER DEFAULT 0', 'REAL DEFAULT 0.0', 'TEXT', 'alias_id', 'aliases', 'author', 'batch_id', 'canonical_name', 'color', 'cover_url', 'depends_on', 'description', 'emotion_range', 'error_log_path', 'error_log_path = ?', 'error_summary', 'error_summary = ?', 'formats', 'from_chapter', 'gender', 'genres', 'has_updates', 'last_chapter_count', 'last_checked_at', 'last_downloaded_at', 'last_synced_count', 'output_folder', 'personality', 'priority', 'progress', 'progress = ?', 'server_chapter_count', 'slug', 'speaking_style', 'status', 'status = ?', 'story_id', 'to_chapter', 'updated_at', 'updated_at = ?', 'voice_id', 'vvr_library.db']

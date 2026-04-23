@@ -1,4 +1,0 @@
-# file: /home/tung/Data/dev/backup/Valvrareteam.net-crawler/vvr_scraper/sources/truyenfull.py
-# hypothesis_version: 6.152.1
-
-[0.5, 2.0, 30.0, 429, 503, '(\\d+)', '/', 'Chương', 'No description', 'Unknown', 'Volume 1', 'a', "a[itemprop='author']", 'ads', 'chap_list', 'chapter-c', 'data-src', 'div', 'div.book-thumb img', 'div.desc-text', 'div.info div', 'h3.title', 'href', 'html.parser', 'image', 'img', 'li', 'list-group-item', 'list_chapter', 'p', 'page', 'src', 'tascii', 'text', 'tid', 'title', 'tname', 'totalp', 'truyenfull.vision', 'type']

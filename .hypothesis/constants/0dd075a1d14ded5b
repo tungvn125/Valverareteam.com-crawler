@@ -1,4 +1,0 @@
-# file: /home/tung/Data/dev/backup/Valvrareteam.net-crawler/vvr_scraper/tts/elevenlabs_provider.py
-# hypothesis_version: 6.152.1
-
-[0.0, 0.35, 0.75, 300.0, 128, 200, 1000, 44100, 'Content-Type', 'ELEVENLABS_VOICE_ID', 'EXAVITQu4vr4xnSDxMaL', 'POST', 'alignment', 'application/json', 'audio_base64', 'characters', 'eleven_v3', 'gender', 'model_id', 'mp3', 'similarity_boost', 'stability', 'style', 'text', 'unknown', 'use_speaker_boost', 'voice_settings', 'xi-api-key']

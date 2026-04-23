@@ -1,4 +1,0 @@
-# file: /home/tung/Data/dev/backup/Valvrareteam.net-crawler/vvr_scraper/social/auth.py
-# hypothesis_version: 6.152.1
-
-[401, 403, 'Bearer ', 'HS256', 'Invalid token', 'Missing bearer token', 'Token expired', 'VVR_JWT_SECRET', 'admin', 'exp', 'iat', 'role', 'sub', 'username', 'utf-8']

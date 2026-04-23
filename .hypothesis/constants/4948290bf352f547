@@ -1,4 +1,0 @@
-# file: /home/tung/Data/dev/backup/Valvrareteam.net-crawler/vvr_scraper/web/routes/opds.py
-# hypothesis_version: 6.152.1
-
-[400, 404, '/', '/all', '/authors', '/genres', '/newest', '/opds/v1', '/root', '/search', 'Mới tải', 'OPDS', 'Theo Thể loại', 'Theo Tác giả', 'Tất cả truyện', 'Unsupported format', 'Valvrare Library', 'all', 'application/atom+xml', 'application/epub+zip', 'application/pdf', 'authors', 'azw3', 'epub', 'genres', 'mobi', 'newest', 'output_folder', 'pdf', 'search', 'subsection', 'title']

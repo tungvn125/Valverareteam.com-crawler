@@ -1,4 +1,0 @@
-# file: /home/tung/Data/dev/backup/Valvrareteam.net-crawler/vvr_scraper/web/routes/library.py
-# hypothesis_version: 6.151.12
-
-[20.0, 404, 3600, '(\\d+[\\d.,]*)', ',', '.', '.git', '.venv', '.vvr_checkpoint.json', '.vvr_session.json', '/', '/api', '/batch-import', '/library', '/library/check', '/library/scan', '/library/sync-all', '1', 'EPUB', 'Library', 'Unknown', 'VVR_AUTO_SYNC', '__pycache__', 'added', 'archived', 'bgm', 'build', 'chapters', 'cookies', 'count', 'cover_url', 'crawl', 'current', 'dist', 'epub,pdf', 'error', 'formats', 'has_updates', 'last_chapter_count', 'last_checked_at', 'last_synced_count', 'name', 'node_modules', 'ok', 'output_folder', 'queued', 'scraped', 'server_chapter_count', 'slug', 'started', 'status', 'synced', 'tests', 'title', 'total', 'type', 'updated', 'updates_found', 'url', 'utf-8', 'value']

@@ -43,3 +43,23 @@ verify/
 .hypothesis/
 error-logs/
 .playwright-*/
+
+# Test/coverage outputs
+.coverage
+.coverage.*
+htmlcov/
+
+# Temp/scratch files
+temp_sync_*.json
+pasted*.png
+"pasted file.png"
+
+# Scraped novel output dirs (numeric-prefixed slugs)
+[0-9]*-*/
+tue-tue-*/
+fatestrange-*/
+toi-nhap-*/
+
+# Misc data dirs
+backgrounds/
+novels/

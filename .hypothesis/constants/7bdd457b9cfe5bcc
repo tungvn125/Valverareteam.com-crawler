@@ -1,4 +1,0 @@
-# file: /home/tung/Data/dev/backup/Valvrareteam.net-crawler/vvr_scraper/mixing_engine.py
-# hypothesis_version: 6.152.1
-
-[-20.0, -18.0, 500, 1000, 2000, 10000, 300000, 'MixingEngine', 'TimelineConfig', 'battle', 'bgm_path', 'block_index', 'mood', 'peaceful', 'romance', 'tension', 'voice_block', 'voice_duration_ms']
