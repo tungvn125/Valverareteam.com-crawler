@@ -236,9 +236,11 @@ def _bootstrap() -> None:
     # 1. Built-in sources
     from .lnhako import LnHakoSource
     from .truyenfull import TruyenFullSource
+    from .valvrareteam import ValvrareteamSource
 
     REGISTRY.register(TruyenFullSource)  # priority=50
     REGISTRY.register(LnHakoSource)  # priority=50
+    REGISTRY.register(ValvrareteamSource)
 
     # 2. External plugins từ ~/.config/vvr-scraper/plugins/
     default_plugin_dir = Path.home() / ".config" / "vvr-scraper" / "plugins"

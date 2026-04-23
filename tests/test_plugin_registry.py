@@ -287,3 +287,23 @@ def test_registry_discover_soft_fails_on_import_error(tmp_path):
     plugin_file.write_text("import nonexistent_module_xyz_12345", encoding="utf-8")
     reg = PluginRegistry()
     reg.discover(tmp_path)  # phải không raise, chỉ log warning
+
+
+def test_registry_bootstrapped_with_valvrareteam():
+    """Sau _bootstrap(), REGISTRY phải có ValvrareteamSource registered."""
+    from vvr_scraper.sources import REGISTRY
+    from vvr_scraper.sources.valvrareteam import ValvrareteamSource
+
+    registered_classes = [cls for cls in REGISTRY._classes]
+    assert ValvrareteamSource in registered_classes, \
+        "ValvrareteamSource phải được register trong REGISTRY sau _bootstrap()"
+
+
+def test_registry_get_for_vvr_url_returns_valvrareteam_source():
+    """REGISTRY.get() với VVR URL phải trả ValvrareteamSource instance."""
+    from vvr_scraper.sources import REGISTRY
+    from vvr_scraper.sources.valvrareteam import ValvrareteamSource
+
+    source = REGISTRY.get("https://valvrareteam.net/truyen/test-novel")
+    assert source is not None
+    assert isinstance(source, ValvrareteamSource)
