@@ -61,6 +61,14 @@ class ScriptResult(list):
         return super().__getitem__(key)
 
 
+class _MissingScriptError(ValueError):
+    """Raised when step-1 returns reasoning but no 'script' key. Triggers escalation after retries."""
+
+    def __init__(self, reasoning: dict):
+        super().__init__("Response has 'reasoning' but missing 'script' key")
+        self.reasoning = reasoning
+
+
 class OpenAIParser:
     def __init__(self, api_key: str | None = None, base_url: str | None = None):
         self.api_key = api_key or os.getenv("VVR_API_KEY")
@@ -156,7 +164,10 @@ class OpenAIParser:
         return False
 
     async def _escalate_chunk(
-        self, chunk: str, known_characters: list[CharacterProfile] | None = None
+        self,
+        chunk: str,
+        known_characters: list[CharacterProfile] | None = None,
+        original_reasoning: dict | None = None,
     ) -> tuple[list[dict], dict, bool, str]:
         """
         Two-step escalation path.
@@ -164,7 +175,8 @@ class OpenAIParser:
         Step 2b: format-only call (audio_drama_format.md)
 
         Each step retries independently (MAX_RETRIES).
-        Returns (segments, {}, escalated=True, raw_prose).
+        Returns (segments, original_reasoning, escalated=True, raw_prose).
+        original_reasoning is preserved from step-1 for debugging purposes.
         """
         MAX_RETRIES = 3
 
@@ -271,7 +283,7 @@ class OpenAIParser:
                 if "duration" not in item:
                     item["duration"] = 1000
 
-        return segments, {}, True, raw_prose or ""
+        return segments, original_reasoning or {}, True, raw_prose or ""
 
     async def _parse_chunk(
         self,
@@ -387,11 +399,11 @@ class OpenAIParser:
         # ── Malformed: reasoning missing entirely ────────────────────────────────
         if reasoning is None:
             logger.warning("Step 1 response missing 'reasoning' field — escalating.")
-            return await self._escalate_chunk(chunk, known_characters)
+            return await self._escalate_chunk(chunk, known_characters, original_reasoning=None)
 
         # ── Script missing: raise so parse_chapter retry loop catches it ─────────
         if script_part is None:
-            raise ValueError("Response has 'reasoning' but missing 'script' key")
+            raise _MissingScriptError(reasoning)
 
         if not isinstance(script_part, list):
             raise ValueError(f"Expected list in 'script', got {type(script_part)}")
@@ -431,7 +443,7 @@ class OpenAIParser:
         # ── Ambiguity check ──────────────────────────────────────────────────────
         if self._check_ambiguity(reasoning):
             logger.info("Ambiguity detected — escalating chunk to 2-step path.")
-            return await self._escalate_chunk(chunk, known_characters)
+            return await self._escalate_chunk(chunk, known_characters, original_reasoning=reasoning)
 
         return script_part, reasoning, False, None
 
@@ -469,6 +481,18 @@ class OpenAIParser:
                     full_script.extend(segments)
                     chunk_results.append((i, escalated, reasoning, raw_prose))
                     break
+                except _MissingScriptError as e:
+                    logger.warning(f"Chunk {i + 1}: missing 'script' key (Attempt {retries}/{MAX_RETRIES})")
+                    if retries < MAX_RETRIES:
+                        await asyncio.sleep(2)
+                    else:
+                        logger.warning(f"Chunk {i + 1}: missing 'script' exhausted retries — escalating.")
+                        segments, reasoning, escalated, raw_prose = await self._escalate_chunk(
+                            chunk, known_characters, original_reasoning=e.reasoning
+                        )
+                        full_script.extend(segments)
+                        chunk_results.append((i, escalated, reasoning, raw_prose))
+                        break
                 except Exception as e:
                     logger.error(f"Error parsing chunk {i + 1} (Attempt {retries}/{MAX_RETRIES}): {e}")
                     if retries < MAX_RETRIES:
