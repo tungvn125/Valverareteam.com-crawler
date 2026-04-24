@@ -603,7 +603,7 @@ async def tao_file_audiodrama(
                     settings=merged_settings,
                 )
                 result = await voice_manager.synthesize(voice=voice_spec, text=text)
-                segment = AudioSegment.from_file(io.BytesIO(result.audio_bytes), format="mp3")
+                segment = AudioSegment.from_file(io.BytesIO(result.audio_bytes), format=result.format)
                 alignments = (
                     [{"word": w.word, "start": w.start, "end": w.end} for w in result.word_alignments]
                     if result.word_alignments
@@ -808,6 +808,7 @@ async def tao_file_audiodrama(
         import traceback
 
         logger.error(traceback.format_exc())
+        raise  # Re-raise so callers (execute_job) can mark job as FAILED, not SUCCESS
     finally:
         # Cleanup temp BGM files (Issue #6)
         for temp_bgm_path in temp_bgm_files:
@@ -856,8 +857,10 @@ async def tao_file_mp4(
     # Check if manifest.json was created
     manifest_path = os.path.join(os.path.dirname(filename), "manifest.json")
     if not os.path.exists(manifest_path):
-        logger.error(f"Manifest file not found at {manifest_path}. MP4 render aborted.")
-        return
+        raise RuntimeError(
+            f"Manifest file not found at {manifest_path}. "
+            "Audio drama generation likely failed — check logs above."
+        )
 
     # 2. Render the video (no sound)
     temp_video_nosound = filename.replace(".mp4", "_nosound.mp4")
@@ -872,7 +875,12 @@ async def tao_file_mp4(
         if os.path.exists(temp_video_nosound) and os.path.exists(temp_mp3):
             await renderer.mux_audio(temp_video_nosound, temp_mp3, filename)
         else:
-            logger.error("Failed to generate MP4: Missing temporary video or audio file.")
+            missing = []
+            if not os.path.exists(temp_video_nosound):
+                missing.append(f"video ({temp_video_nosound})")
+            if not os.path.exists(temp_mp3):
+                missing.append(f"audio ({temp_mp3})")
+            raise RuntimeError(f"Failed to generate MP4: missing {', '.join(missing)}")
     finally:
         # Cleanup temporary files
         try:

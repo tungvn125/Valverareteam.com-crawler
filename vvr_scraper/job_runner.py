@@ -236,28 +236,31 @@ async def execute_render_job(payload: RenderPayload, job_id: str, db: DatabaseMa
         await renderer.render()
 
         # Try to mux if manifest has audio
-        try:
-            with open(payload.manifest_path, encoding="utf-8") as f:
-                manifest = json.load(f)
+        with open(payload.manifest_path, encoding="utf-8") as f:
+            manifest = json.load(f)
 
-            audio_path = manifest.get("audio_path") or manifest.get("audio")
-            if audio_path:
-                # Resolve audio_path relative to manifest or absolute
-                if not os.path.isabs(audio_path):
-                    audio_path = os.path.join(os.path.dirname(payload.manifest_path), audio_path)
+        audio_path = manifest.get("audio_path") or manifest.get("audio")
+        if audio_path:
+            # Resolve audio_path relative to manifest or absolute
+            if not os.path.isabs(audio_path):
+                audio_path = os.path.join(os.path.dirname(payload.manifest_path), audio_path)
 
-                if os.path.exists(audio_path):
-                    final_output = payload.output_path
-                    temp_video = payload.output_path.replace(".mp4", "_nosound.mp4")
+            if os.path.exists(audio_path):
+                final_output = payload.output_path
+                temp_video = payload.output_path.replace(".mp4", "_nosound.mp4")
 
-                    # Check if output exists from render
-                    if os.path.exists(final_output):
-                        os.rename(final_output, temp_video)
+                # Check if output exists from render
+                if os.path.exists(final_output):
+                    os.rename(final_output, temp_video)
+                    try:
                         await renderer.mux_audio(temp_video, audio_path, final_output)
-                        if os.path.exists(temp_video):
-                            os.remove(temp_video)
-        except Exception as e:
-            logger.warning(f"Could not mux audio: {e}")
+                    except Exception as mux_err:
+                        # Restore original file so the job failure is recoverable
+                        if os.path.exists(temp_video) and not os.path.exists(final_output):
+                            os.rename(temp_video, final_output)
+                        raise RuntimeError(f"Audio mux failed: {mux_err}") from mux_err
+                    if os.path.exists(temp_video):
+                        os.remove(temp_video)
 
         if db:
             await db.update_job_status(job_id, JobStatus.SUCCESS, progress=100.0)
@@ -381,14 +384,9 @@ async def _run_job_directly(manifest: JobManifest):
         # otherwise the process exits and the worker dies.
         if created_worker:
             logger.info("Đang chờ các tác vụ hoàn thành...")
-            # We wait until the queue is empty AND all tasks are processed
-            while not worker.queue.empty():
-                await asyncio.sleep(1)
-
-            # Since worker_loop runs jobs in background tasks,
-            # we need to be careful. For simplicity in CLI,
-            # let's just wait a bit more or check a condition.
-            await asyncio.sleep(5)  # Final buffer
+            # Wait until queue is drained AND all background tasks have finished.
+            # This is correct even for long-running audio drama jobs (minutes/hours).
+            await worker.wait_until_idle()
     finally:
         if created_worker:
             await worker.stop()

@@ -14,18 +14,40 @@ class OmniVoiceProvider:
 
     def __init__(self, model_name: str = "k2-fsa/OmniVoice", device: str | None = None):
         try:
-            from omnivoice import OmniVoice
+            import omnivoice  # noqa: F401 — validate install early
         except ImportError as e:
             raise ImportError("OmniVoice is required for OmniVoiceProvider. Install with: pip install omnivoice") from e
 
-        device = device or os.getenv("VVR_OMNIVOICE_DEVICE", "cuda:0")
-        self._model = OmniVoice.from_pretrained(model_name, device_map=device, dtype="float16")
-        self._model.load_asr_model()
-        self._sampling_rate = self._model.sampling_rate
+        self._model_name = model_name
+        self._device = device or os.getenv("VVR_OMNIVOICE_DEVICE", "cuda:0")
+        self._model = None  # lazy-loaded on first synthesize
+        self._sampling_rate = None
+        self._load_lock = asyncio.Lock()
+
+    async def _ensure_model(self) -> None:
+        """Load model on first use (thread-safe lazy init)."""
+        if self._model is not None:
+            return
+        async with self._load_lock:
+            if self._model is not None:
+                return
+            logger.info(f"Loading OmniVoice model '{self._model_name}' on {self._device}...")
+
+            def _load():
+                from omnivoice import OmniVoice
+                m = OmniVoice.from_pretrained(self._model_name, device_map=self._device, dtype="float16")
+                m.load_asr_model()
+                return m
+
+            self._model = await asyncio.to_thread(_load)
+            self._sampling_rate = self._model.sampling_rate
+            logger.info("OmniVoice model loaded.")
 
     async def synthesize(self, text: str, voice: VoiceSpec) -> SynthesisResult:
         """Synthesize using OmniVoice local model."""
         import functools
+
+        await self._ensure_model()
 
         if voice.ref_audio_path:
             gen_fn = functools.partial(
@@ -53,6 +75,7 @@ class OmniVoiceProvider:
             sample_rate=self._sampling_rate,
             duration_ms=duration_ms,
             word_alignments=None,
+            format="wav",
         )
 
     async def discover_voices(self) -> list[VoiceInfo]:

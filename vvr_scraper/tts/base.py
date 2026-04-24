@@ -46,6 +46,7 @@ class SynthesisResult:
     sample_rate: int
     duration_ms: int
     word_alignments: list[WordAlignment] | None = None
+    format: str = "mp3"  # Audio container format: "mp3", "wav", etc.
 
 
 @dataclass

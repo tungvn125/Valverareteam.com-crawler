@@ -3,9 +3,11 @@ Module for rendering cinematic novels into MP4 videos using Playwright and FFmpe
 """
 
 import asyncio
+import io
 import json
 import os
 import subprocess
+import threading
 from typing import Any
 
 import httpx
@@ -87,6 +89,18 @@ class VideoRenderer:
         ]
 
         process = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+
+        # Drain FFmpeg stderr in a background thread to prevent pipe buffer deadlock.
+        # Without this, on long renders FFmpeg's stderr pipe fills up, blocking FFmpeg,
+        # which in turn blocks stdin.write() in the render loop — a classic deadlock.
+        stderr_chunks: list[bytes] = []
+
+        def _drain_stderr():
+            for chunk in iter(lambda: process.stderr.read(4096), b""):
+                stderr_chunks.append(chunk)
+
+        stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
+        stderr_thread.start()
 
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=resolve_playwright_headless())
@@ -171,9 +185,10 @@ class VideoRenderer:
                     for frame_idx in range(total_frames):
                         # Check if FFmpeg is still alive
                         if process.poll() is not None:
-                            stdout, stderr = process.communicate()
+                            stderr_thread.join(timeout=2)
+                            ffmpeg_err = b"".join(stderr_chunks).decode(errors="replace")
                             raise RuntimeError(
-                                f"FFmpeg exited unexpectedly with code {process.returncode}. Error: {stderr.decode()}"
+                                f"FFmpeg exited unexpectedly with code {process.returncode}. Error: {ffmpeg_err}"
                             )
 
                         current_time_ms = (frame_idx / self.fps) * 1000
@@ -188,8 +203,9 @@ class VideoRenderer:
                         try:
                             process.stdin.write(screenshot)
                         except (BrokenPipeError, OSError) as e:
-                            stdout, stderr = process.communicate()
-                            raise RuntimeError(f"FFmpeg pipe broken. Error: {stderr.decode()}") from e
+                            stderr_thread.join(timeout=2)
+                            ffmpeg_err = b"".join(stderr_chunks).decode(errors="replace")
+                            raise RuntimeError(f"FFmpeg pipe broken. Error: {ffmpeg_err}") from e
 
                         progress.update(task, advance=1)
 
@@ -217,6 +233,9 @@ class VideoRenderer:
                     process.wait(timeout=10)
                 except subprocess.TimeoutExpired:
                     process.kill()
+
+                # Join stderr drain thread after process exits
+                stderr_thread.join(timeout=2)
 
                 # Stop server
                 server.should_exit = True

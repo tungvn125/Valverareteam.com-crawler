@@ -19,6 +19,7 @@ class JobWorker:
         self._loop_task = None
         self.crawl_semaphore = asyncio.Semaphore(3)
         self.heavy_semaphore = asyncio.Semaphore(1)
+        self._active_tasks: set[asyncio.Task] = set()  # Track background tasks for graceful shutdown
 
     async def enqueue_job(self, job_id: str, job: JobManifest):
         # Access priority from the root job object
@@ -77,24 +78,29 @@ class JobWorker:
                     job_id = row_dict["id"]
                     try:
                         payload_dict = json.loads(row_dict["payload"])
+
+                        # Always restore depends_on from DB column (UUIDs), NOT from payload
+                        # (payload stores original alias_ids which are unresolvable at runtime)
+                        depends_on_raw = row_dict.get("depends_on")
+                        resolved_depends_on = depends_on_raw.split(",") if depends_on_raw else None
+
                         # Use JobManifest to validate full job object (backward compatible)
                         if "task" not in payload_dict and "root" not in payload_dict:
                             from vvr_scraper.job_models import ScrapeJob, ScrapePayload
-
-                            # Restore depends_on from DB (comma-separated string → list)
-                            depends_on_raw = row_dict.get("depends_on")
-                            depends_on_list = depends_on_raw.split(",") if depends_on_raw else None
 
                             job_data = ScrapeJob(
                                 payload=ScrapePayload.model_validate(payload_dict),
                                 priority=row_dict.get("priority") or 3,
                                 alias_id=row_dict.get("alias_id"),
                                 batch_id=row_dict.get("batch_id"),
-                                depends_on=depends_on_list,
+                                depends_on=resolved_depends_on,
                             )
                             job_obj = JobManifest(root=job_data)
                         else:
                             job_obj = JobManifest.model_validate(payload_dict)
+                            # Override depends_on in the recovered job object with DB UUIDs
+                            if resolved_depends_on is not None:
+                                job_obj.root.depends_on = resolved_depends_on
 
                         await self.enqueue_job(job_id, job_obj)
                     except Exception as e:
@@ -111,6 +117,14 @@ class JobWorker:
                 pass
             self._loop_task = None
             logger.info("JobWorker stopped.")
+
+    async def wait_until_idle(self):
+        """Wait until both the queue is empty AND all background tasks have completed."""
+        # First wait for the queue to be drained
+        await self.queue.join()
+        # Then wait for any remaining active background tasks
+        if self._active_tasks:
+            await asyncio.gather(*self._active_tasks, return_exceptions=True)
 
     async def worker_loop(self):
         while True:
@@ -143,7 +157,9 @@ class JobWorker:
                         continue
 
                 # Run job with semaphore in a background task to allow concurrency
-                asyncio.create_task(self.run_job_with_resource_control(job_id, job))
+                task = asyncio.create_task(self.run_job_with_resource_control(job_id, job))
+                self._active_tasks.add(task)
+                task.add_done_callback(self._active_tasks.discard)
             except asyncio.CancelledError:
                 break
             except Exception as e:
