@@ -396,9 +396,9 @@ class OpenAIParser:
         reasoning = data.get("reasoning")
         script_part = data.get("script")
 
-        # ── Malformed: reasoning missing entirely ────────────────────────────────
-        if reasoning is None:
-            logger.warning("Step 1 response missing 'reasoning' field — escalating.")
+        # ── Malformed: reasoning missing or not a dict ──────────────────────────
+        if not isinstance(reasoning, dict):
+            logger.warning("Step 1 'reasoning' is missing or not a dict — escalating.")
             return await self._escalate_chunk(chunk, known_characters, original_reasoning=None)
 
         # ── Script missing: raise so parse_chapter retry loop catches it ─────────

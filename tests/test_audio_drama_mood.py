@@ -18,12 +18,19 @@ async def test_openai_parser_mood_shift():
             message=MagicMock(
                 content=json.dumps(
                     {
+                        "reasoning": {
+                            "speaker_map": "Narrator and Hero.",
+                            "ambiguous_lines": "",
+                            "mood_analysis": "Action then peaceful.",
+                            "confidence": "high",
+                            "needs_escalation": False,
+                        },
                         "script": [
                             {"type": "mood_shift", "mood": "action"},
                             {"type": "segment", "role": "narrator", "text": "The battle begins.", "gender": "unknown"},
                             {"type": "mood_shift", "mood": "peaceful"},
                             {"type": "segment", "role": "Hero", "text": "It's over.", "gender": "male"},
-                        ]
+                        ],
                     }
                 )
             )
@@ -55,7 +62,24 @@ async def test_openai_parser_mood_shift_prompt():
     parser.model = "gpt-4-turbo"
 
     mock_response = MagicMock()
-    mock_response.choices = [MagicMock(message=MagicMock(content=json.dumps({"script": []})))]
+    mock_response.choices = [
+        MagicMock(
+            message=MagicMock(
+                content=json.dumps(
+                    {
+                        "reasoning": {
+                            "speaker_map": "No characters.",
+                            "ambiguous_lines": "",
+                            "mood_analysis": "Neutral.",
+                            "confidence": "high",
+                            "needs_escalation": False,
+                        },
+                        "script": [],
+                    }
+                )
+            )
+        )
+    ]
 
     with patch.object(parser.client.chat.completions, "create", new_callable=AsyncMock) as mock_create:
         mock_create.return_value = mock_response
@@ -63,7 +87,7 @@ async def test_openai_parser_mood_shift_prompt():
         # Execute
         await parser.parse_chapter("Some text")
 
-        # Assert
+        # Assert — check the Step 1 (scratchpad) prompt was used
         args, kwargs = mock_create.call_args
         system_instruction = kwargs["messages"][0]["content"]
 
@@ -75,3 +99,4 @@ async def test_openai_parser_mood_shift_prompt():
         assert "romantic" in system_instruction
         assert "sad" in system_instruction
         assert "suspense" in system_instruction
+
