@@ -500,7 +500,7 @@ async def tao_file_audiodrama(
         if not script:
             logger.info(f"Generating audio drama script for {title}...")
             parser = OpenAIParser()
-            script = await parser.parse_chapter(full_text, known_characters=known_chars)
+            script = await parser.parse_chapter(full_text, known_characters=known_chars, output_prefix=filename)
             if not script:
                 logger.error("OpenAI failed to generate script. Aborting Audio Drama generation.")
                 return
