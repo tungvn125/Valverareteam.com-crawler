@@ -44,30 +44,9 @@ Use these tags to direct the AI voice delivery. Insert them naturally at the sta
 
 ## Output Format
 
-The output **MUST** be a valid JSON object. You MUST emit the `"reasoning"` object **first**, then `"script"`. Think in `reasoning` — it is your scratchpad.
+The output **MUST** be a valid JSON object with a single key `"script"` mapping to a list of objects.
 
-### Top-level structure:
-
-```json
-{
-  "reasoning": {
-    "speaker_map": "Free prose: who are the characters in this chunk, what do they say.",
-    "ambiguous_lines": "Free prose: any lines where speaker is unclear, and how you resolved them. Write an empty string \"\" if nothing is ambiguous — never write null, \"none\", or \"n/a\".",
-    "mood_analysis": "Free prose: how the mood evolves across this chunk.",
-    "confidence": "high",
-    "needs_escalation": false
-  },
-  "script": [...]
-}
-```
-
-- `speaker_map`: Always fill this. List all characters and their roles.
-- `ambiguous_lines`: Write `""` (empty string) if nothing is ambiguous. Never write null, "none", "n/a", or similar.
-- `mood_analysis`: Describe the mood arc across this chunk.
-- `confidence`: `"high"`, `"medium"`, or `"low"` — your honest self-assessment of speaker attribution accuracy.
-- `needs_escalation`: `true` if you are unsure about speaker attribution and want a second pass; `false` otherwise.
-
-### Object Types inside `script`:
+### Object Types:
 
 1.  **Segment:**
     *   `type`: `"segment"`
