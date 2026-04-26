@@ -48,6 +48,7 @@ error-logs/
 .coverage
 .coverage.*
 htmlcov/
+.ruff_cache/
 
 # Temp/scratch files
 temp_sync_*.json
@@ -59,7 +60,10 @@ pasted*.png
 tue-tue-*/
 fatestrange-*/
 toi-nhap-*/
+toi-thue-co-gai-minh-thich-lam-hau-gai-gio-co-ay-len-lut-lam-gi-do-trong-phong-toi-9a1c3857/
+bi-mat-cua-phu-thuy-tinh-lang-4b74a318/
 
 # Misc data dirs
 backgrounds/
 novels/
+bgm/

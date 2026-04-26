@@ -69,6 +69,38 @@ async def _maybe_await(value):
     return value
 
 
+async def _invoke_select_voices_callback(callback, characters: list[dict], story_id: str, provider_name: str):
+    """Invoke voice-selection callbacks with backward-compatible arity."""
+    try:
+        signature = inspect.signature(callback)
+        positional_params = [
+            p
+            for p in signature.parameters.values()
+            if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
+        ]
+        accepts_varargs = any(p.kind == p.VAR_POSITIONAL for p in signature.parameters.values())
+        if accepts_varargs or len(positional_params) >= 3:
+            return await _maybe_await(callback(characters, story_id, provider_name))
+    except (TypeError, ValueError):
+        # Some callables do not expose inspectable signatures; preserve legacy behavior.
+        pass
+    return await _maybe_await(callback(characters, story_id))
+
+
+def _get_synthesis_concurrency(provider_name: str) -> int:
+    """Return safe TTS synthesis concurrency for the active provider."""
+    env_value = os.getenv("VVR_TTS_CONCURRENCY")
+    if env_value:
+        try:
+            return max(1, int(env_value))
+        except ValueError:
+            logger.warning(f"Invalid VVR_TTS_CONCURRENCY={env_value!r}; using provider default")
+
+    if provider_name == "elevenlabs":
+        return 3
+    return 5
+
+
 async def _download_images_bulk(urls: list[str], max_concurrent: int = 10) -> dict[str, bytes]:
     """Downloads multiple images concurrently with a limit on parallelism and a progress bar."""
     if not urls:
@@ -439,7 +471,7 @@ async def tao_file_audiodrama(
     title: str = "Chương truyện",
     timeline_config: TimelineConfig | None = None,
     tts_provider_name: str | None = None,
-    fail_on_synth_error: bool = False,
+    fail_on_synth_error: bool = True,
     select_voices_callback: Any = None,
 ) -> list[dict] | None:
     """
@@ -531,7 +563,13 @@ async def tao_file_audiodrama(
         # 5c. Invoke voice selection callback if provided
         if select_voices_callback and detected_characters:
             try:
-                await select_voices_callback(detected_characters, story_id)
+                await _invoke_select_voices_callback(
+                    select_voices_callback,
+                    detected_characters,
+                    story_id,
+                    provider_name,
+                )
+                await voice_manager.reload_cache()
             except Exception as e:
                 logger.warning(f"Voice selection callback failed (non-fatal): {e}")
 
@@ -572,7 +610,10 @@ async def tao_file_audiodrama(
     os.makedirs(backgrounds_dir, exist_ok=True)
     image_gen = ImageGenerator(cache_dir=backgrounds_dir)
 
-    semaphore = asyncio.Semaphore(5)
+    synthesis_concurrency = _get_synthesis_concurrency(provider_name)
+    logger.info(f"TTS synthesis concurrency: {synthesis_concurrency}")
+    semaphore = asyncio.Semaphore(synthesis_concurrency)
+    voice_locks: dict[str, asyncio.Lock] = {}
 
     # Audio timing — from TimelineConfig (or defaults)
     cfg = timeline_config or TimelineConfig()
@@ -602,7 +643,10 @@ async def tao_file_audiodrama(
                     instruct=voice_spec.instruct,
                     settings=merged_settings,
                 )
-                result = await voice_manager.synthesize(voice=voice_spec, text=text)
+                voice_lock_key = voice_spec.voice_id or voice_spec.ref_audio_path or voice_spec.instruct or role.lower()
+                voice_lock = voice_locks.setdefault(voice_lock_key, asyncio.Lock())
+                async with voice_lock:
+                    result = await voice_manager.synthesize(voice=voice_spec, text=text)
                 segment = AudioSegment.from_file(io.BytesIO(result.audio_bytes), format=result.format)
                 alignments = (
                     [{"word": w.word, "start": w.start, "end": w.end} for w in result.word_alignments]
@@ -661,8 +705,11 @@ async def tao_file_audiodrama(
                     fs_results = await freesound_manager.search_bgm(tags, limit=5)
                     if fs_results:
                         sound = fs_results[0]
-                        bgm_track_path = f"temp_bgm_{uuid.uuid4().hex[:8]}_{sound.id}.wav"
-                        await freesound_manager.download_and_convert(sound.id, bgm_track_path)
+                        sound_id = sound.get("id") if isinstance(sound, dict) else getattr(sound, "id", None)
+                        if sound_id is None:
+                            raise ValueError(f"Freesound result missing id: {sound!r}")
+                        bgm_track_path = f"temp_bgm_{uuid.uuid4().hex[:8]}_{sound_id}.wav"
+                        await freesound_manager.download_and_convert(sound_id, bgm_track_path)
                         temp_bgm_files.append(bgm_track_path)
                         logger.debug(f"Downloaded Freesound BGM: {bgm_track_path}")
                 except Exception as e:

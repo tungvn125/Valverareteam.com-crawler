@@ -61,6 +61,11 @@ class TestElevenLabsProvider:
 
             assert isinstance(result, SynthesisResult)
             assert result.audio_bytes == b"audio1audio2"
+            stream_args = mock_client.stream.call_args.args
+            stream_kwargs = mock_client.stream.call_args.kwargs
+            assert stream_args[0] == "POST"
+            assert stream_args[1] == "https://api.elevenlabs.io/v1/text-to-speech/test_voice/stream/with-timestamps"
+            assert stream_kwargs["json"]["output_format"] == "mp3_44100_128"
             assert result.word_alignments is not None
             assert len(result.word_alignments) == 2
             assert result.word_alignments[0].word == "Hello"
@@ -89,6 +94,44 @@ class TestElevenLabsProvider:
             assert voices[0].voice_id == "abc123"
             assert voices[0].name == "Rachel"
             assert voices[0].gender == "female"
+
+    @pytest.mark.asyncio
+    async def test_synthesize_ignores_null_alignment_chunks(self):
+        from vvr_scraper.tts.elevenlabs_provider import ElevenLabsProvider
+
+        chunk_with_audio_only = {
+            "audio_base64": base64.b64encode(b"audio").decode(),
+            "alignment": None,
+        }
+
+        class MockResponse:
+            status_code = 200
+
+            async def aiter_lines(self):
+                yield json.dumps(chunk_with_audio_only)
+
+            async def aread(self):
+                return b""
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                pass
+
+        mock_stream_ctx = MagicMock()
+        mock_stream_ctx.__aenter__ = AsyncMock(return_value=MockResponse())
+        mock_stream_ctx.__aexit__ = AsyncMock()
+
+        mock_client = MagicMock()
+        mock_client.stream.return_value = mock_stream_ctx
+
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            provider = ElevenLabsProvider(api_key="test_key")
+            result = await provider.synthesize("Hello", VoiceSpec(voice_id="test_voice"))
+
+        assert result.audio_bytes == b"audio"
+        assert result.word_alignments == []
 
     @pytest.mark.asyncio
     async def test_preview_voice(self):

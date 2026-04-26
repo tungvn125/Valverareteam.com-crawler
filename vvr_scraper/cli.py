@@ -796,12 +796,17 @@ class ValvrareScraperCLI:
                         "VVR_API_KEY or VVR_BASE_URL not found. Audio Drama generation might fail or fallback."
                     )
 
-                # Check if --select-voices is set and provider is omnivoice (or auto-detect)
+                # Check if --select-voices is set and provider supports interactive assignment
                 select_voices = getattr(self.args, "select_voices", False)
                 tts_provider = self.args.tts_provider
-                is_omnivoice = tts_provider is None or tts_provider == "omnivoice"
+                resolved_tts_provider = tts_provider
+                if select_voices and resolved_tts_provider is None:
+                    from vvr_scraper import tts
 
-                if select_voices and is_omnivoice:
+                    resolved_tts_provider = tts.auto_detect_provider()
+                supports_interactive_voice_selection = resolved_tts_provider in {"elevenlabs", "omnivoice"}
+
+                if select_voices and supports_interactive_voice_selection:
                     # Run voice selection after script parsing but before synthesis
                     await tao_file_audiodrama(
                         content_list=content,
@@ -809,8 +814,10 @@ class ValvrareScraperCLI:
                         story_id=info.slug,
                         db_manager=self.db_manager,
                         title=title,
-                        tts_provider_name=tts_provider,
-                        select_voices_callback=lambda chars, sid: self._select_voices_interactive(chars, sid),
+                        tts_provider_name=resolved_tts_provider,
+                        select_voices_callback=lambda chars, sid, provider_name=None: self._select_voices_interactive(
+                            chars, sid, provider_name=provider_name
+                        ),
                     )
                 else:
                     await tao_file_audiodrama(
@@ -972,7 +979,9 @@ class ValvrareScraperCLI:
         finally:
             await db_manager.close()
 
-    async def _select_voices_interactive(self, characters: list[dict], story_id: str):
+    async def _select_voices_interactive(
+        self, characters: list[dict], story_id: str, provider_name: str | None = None
+    ):
         """Interactively select voices for characters.
 
         Args:
@@ -984,6 +993,109 @@ class ValvrareScraperCLI:
             return
 
         console.print(f"\n[bold cyan]Voice Selection for {len(characters)} character(s)[/bold cyan]")
+
+        if provider_name == "elevenlabs":
+            source_idx = InteractiveUI.show_menu(
+                ["ElevenLabs voices", "Enter custom voice ID", "Auto-assign (skip)"],
+                "Choose voice source",
+                multi_select=False,
+            )
+            if source_idx is None or source_idx == 2:
+                console.print("[yellow]Skipping voice selection (auto-assign mode).[/yellow]")
+                return
+
+            if source_idx == 1:
+                session = PromptSession()
+                for char in characters:
+                    char_name = char.get("name", "Unknown")
+                    char_gender = char.get("gender", "unknown")
+                    console.print(f"\n[bold cyan]Character:[/bold cyan] {char_name} (gender: {char_gender})")
+                    custom_voice_id = await session.prompt_async(
+                        f"  Custom ElevenLabs voice ID for {char_name} (blank to skip): "
+                    )
+                    custom_voice_id = custom_voice_id.strip()
+                    if not custom_voice_id:
+                        console.print(f"  [dim]Skipped {char_name}[/dim]")
+                        continue
+
+                    profile = CharacterProfile(
+                        name=char_name,
+                        story_id=story_id,
+                        gender=char_gender,
+                        voice_id=custom_voice_id,
+                        ref_audio_path=None,
+                        ref_text=None,
+                    )
+                    await self.db_manager.save_character_profile(profile)
+                    console.print(f"  [green]✓ Assigned custom voice ID to {char_name}[/green]")
+                return
+
+            from vvr_scraper import tts
+
+            provider = tts.get_provider("elevenlabs", api_key=os.getenv("ELEVENLABS_API_KEY"))
+            try:
+                voices = await provider.discover_voices()
+            finally:
+                await provider.close()
+
+            if not voices:
+                console.print("[yellow]No ElevenLabs voices found.[/yellow]")
+                return
+
+            for char in characters:
+                char_name = char.get("name", "Unknown")
+                char_gender = char.get("gender", "unknown")
+                console.print(f"\n[bold cyan]Character:[/bold cyan] {char_name} (gender: {char_gender})")
+
+                voice_menu = [
+                    f"{v.name or v.voice_id} ({v.gender or 'unknown'})"
+                    for v in voices
+                ] + ["Enter custom voice ID", "Auto-assign", "Skip"]
+                selected_idx = InteractiveUI.show_menu(
+                    voice_menu,
+                    f"Select ElevenLabs voice for {char_name}",
+                    multi_select=False,
+                )
+                if selected_idx is None:
+                    continue
+
+                if selected_idx == len(voices):
+                    session = PromptSession()
+                    custom_voice_id = await session.prompt_async(
+                        f"  Custom ElevenLabs voice ID for {char_name} (blank to skip): "
+                    )
+                    custom_voice_id = custom_voice_id.strip()
+                    if not custom_voice_id:
+                        console.print(f"  [dim]Skipped {char_name}[/dim]")
+                        continue
+
+                    profile = CharacterProfile(
+                        name=char_name,
+                        story_id=story_id,
+                        gender=char_gender,
+                        voice_id=custom_voice_id,
+                        ref_audio_path=None,
+                        ref_text=None,
+                    )
+                    await self.db_manager.save_character_profile(profile)
+                    console.print(f"  [green]✓ Assigned custom voice ID to {char_name}[/green]")
+                    continue
+
+                if selected_idx > len(voices):
+                    continue
+
+                selected_voice = voices[selected_idx]
+                profile = CharacterProfile(
+                    name=char_name,
+                    story_id=story_id,
+                    gender=char_gender,
+                    voice_id=selected_voice.voice_id,
+                    ref_audio_path=None,
+                    ref_text=None,
+                )
+                await self.db_manager.save_character_profile(profile)
+                console.print(f"  [green]✓ Assigned {selected_voice.name} to {char_name}[/green]")
+            return
 
         # Ask for voice source
         source_idx = InteractiveUI.show_menu(

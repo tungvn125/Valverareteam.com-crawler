@@ -687,6 +687,14 @@ class VoiceManager:
         await self._init_cache()
         return list(self._profile_cache.values())
 
+    async def reload_cache(self) -> None:
+        """Reload DB-backed story voice/profile caches for this manager instance."""
+        async with self._instance_lock:
+            self._voice_cache.clear()
+            self._profile_cache.clear()
+            self._initialized = False
+            await self._init_cache()
+
     async def get_voice(self, character_name: str | None, gender: str = "unknown") -> VoiceSpec:
         """Resolve character -> VoiceSpec."""
         if not character_name:

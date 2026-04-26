@@ -32,7 +32,7 @@ class ElevenLabsProvider:
         voice_id = voice.voice_id or os.getenv("ELEVENLABS_VOICE_ID", DEFAULT_ELEVENLABS_VOICE_ID)
         stability = voice.settings.get("stability", 0.35)
 
-        url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream-with-timestamps"
+        url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream/with-timestamps"
         headers = {
             "xi-api-key": self._api_key,
             "Content-Type": "application/json",
@@ -40,6 +40,7 @@ class ElevenLabsProvider:
         data = {
             "text": text,
             "model_id": "eleven_v3",
+            "output_format": "mp3_44100_128",
             "voice_settings": {
                 "stability": stability,
                 "similarity_boost": 0.75,
@@ -63,8 +64,9 @@ class ElevenLabsProvider:
                     chunk = json.loads(line)
                     if "audio_base64" in chunk:
                         audio_buffer.write(base64.b64decode(chunk["audio_base64"]))
-                    if "alignment" in chunk:
-                        all_alignments.append(chunk["alignment"])
+                    alignment = chunk.get("alignment")
+                    if isinstance(alignment, dict):
+                        all_alignments.append(alignment)
                 except Exception as e:
                     logger.warning(f"Error parsing alignment chunk: {e}")
 
@@ -122,6 +124,8 @@ def _parse_word_alignments(all_alignments: list[dict]) -> list[WordAlignment]:
     last_end = 0.0
 
     for alignment in all_alignments:
+        if not isinstance(alignment, dict):
+            continue
         chars = alignment.get("characters", [])
         starts = alignment.get("character_start_times_seconds", [])
         ends = alignment.get("character_end_times_seconds", [])
