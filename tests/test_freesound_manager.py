@@ -68,9 +68,9 @@ async def test_freesound_manager_search_bgm(mock_freesound_client):
     # Check if text_search was called with correct parameters
     manager.client.text_search.assert_called_once()
     args, kwargs = manager.client.text_search.call_args
-    assert "loop" in kwargs["query"]
-    assert "music" in kwargs["query"]
+    assert kwargs["query"] == "loop music music background"
     assert "type:(wav OR flac)" in kwargs["filter"]
+    assert "duration:[30 TO *]" in kwargs["filter"]
 
 
 @pytest.mark.asyncio

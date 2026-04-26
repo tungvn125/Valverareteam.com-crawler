@@ -93,9 +93,9 @@ class FreesoundManager:
         Searches for BGM based on tags (Synchronous).
         Prioritizes loop, music, ambient tags and lossless formats (wav/flac).
         """
-        query = " ".join(tags)
-        # Filter for original high-quality files (wav/flac)
-        filter_str = "type:(wav OR flac)"
+        query = f"{' '.join(tags)} music background".strip()
+        # Filter for original high-quality files (wav/flac) and long-form background tracks.
+        filter_str = "type:(wav OR flac) duration:[30 TO *]"
 
         results = self.client.text_search(
             query=query, filter=filter_str, fields="id,name,tags,type,previews,url", page_size=limit
