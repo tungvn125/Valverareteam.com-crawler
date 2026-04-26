@@ -100,3 +100,81 @@ async def test_openai_parser_mood_shift_prompt():
         assert "sad" in system_instruction
         assert "suspense" in system_instruction
 
+
+@pytest.mark.asyncio
+async def test_openai_parser_injects_available_bgm_moods_into_scratchpad_prompt():
+    parser = OpenAIParser(api_key="test_key", base_url="https://api.test.com")
+    parser.model = "gpt-4-turbo"
+
+    mock_response = MagicMock()
+    mock_response.choices = [
+        MagicMock(
+            message=MagicMock(
+                content=json.dumps(
+                    {
+                        "reasoning": {
+                            "speaker_map": "No characters.",
+                            "ambiguous_lines": "",
+                            "mood_analysis": "Calm.",
+                            "confidence": "high",
+                            "needs_escalation": False,
+                        },
+                        "script": [],
+                    }
+                )
+            )
+        )
+    ]
+
+    with patch.object(parser.client.chat.completions, "create", new_callable=AsyncMock) as mock_create:
+        mock_create.return_value = mock_response
+
+        await parser.parse_chapter("Some text", bgm_moods=["calm", "sad", "tense"])
+
+    _, kwargs = mock_create.call_args
+    system_instruction = kwargs["messages"][0]["content"]
+    assert "## Available BGM Moods" in system_instruction
+    assert 'Choose mood_shift.tags strictly from: ["calm", "sad", "tense"]' in system_instruction
+
+
+@pytest.mark.asyncio
+async def test_openai_parser_defaults_missing_overlap_with_previous_to_false():
+    parser = OpenAIParser(api_key="test_key", base_url="https://api.test.com")
+    parser.model = "gpt-4-turbo"
+
+    mock_response = MagicMock()
+    mock_response.choices = [
+        MagicMock(
+            message=MagicMock(
+                content=json.dumps(
+                    {
+                        "reasoning": {
+                            "speaker_map": "Narrator and Hero.",
+                            "ambiguous_lines": "",
+                            "mood_analysis": "Neutral.",
+                            "confidence": "high",
+                            "needs_escalation": False,
+                        },
+                        "script": [
+                            {"type": "segment", "role": "narrator", "text": "Line one.", "gender": "unknown"},
+                            {
+                                "type": "segment",
+                                "role": "Hero",
+                                "text": "Line two.",
+                                "gender": "male",
+                                "overlap_with_previous": True,
+                            },
+                        ],
+                    }
+                )
+            )
+        )
+    ]
+
+    with patch.object(parser.client.chat.completions, "create", new_callable=AsyncMock) as mock_create:
+        mock_create.return_value = mock_response
+
+        result = await parser.parse_chapter("Some text")
+
+    assert result[0]["overlap_with_previous"] is False
+    assert result[1]["overlap_with_previous"] is True

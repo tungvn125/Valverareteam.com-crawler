@@ -97,6 +97,61 @@ class OpenAIParser:
         # Fallback in case of error
         return "You are an expert scriptwriter for audio dramas. Convert web novel text to JSON script format."
 
+    def _append_parser_context(
+        self,
+        prompt: str,
+        known_characters: list[CharacterProfile] | None = None,
+        bgm_moods: list[str] | None = None,
+    ) -> str:
+        """Append optional parser context shared by all prompt paths."""
+        if known_characters:
+            prompt += "\n## Known Characters (Context)\n"
+            for p in known_characters:
+                aliases_str = ", ".join(p.aliases) if p.aliases else "None"
+                prompt += f"- **{p.name}** (Gender: {p.gender}): Aliases: {aliases_str}\n"
+
+        if bgm_moods:
+            normalized_moods = [str(mood).strip() for mood in bgm_moods if str(mood).strip()]
+            if normalized_moods:
+                prompt += "\n## Available BGM Moods\n"
+                prompt += f"Choose mood_shift.tags strictly from: {json.dumps(normalized_moods, ensure_ascii=False)}\n"
+
+        return prompt
+
+    def _normalize_script_items(self, items: list[dict]) -> list[dict]:
+        """Normalize parsed script items for backward-compatible downstream consumption."""
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            if item.get("type") == "mood_shift":
+                tags = item.get("tags")
+                if tags is None:
+                    tags = []
+                elif not isinstance(tags, list):
+                    tags = [str(tags)]
+                mood = item.get("mood")
+                if not mood and tags:
+                    mood = str(tags[0])
+                elif mood and not tags:
+                    tags = [str(mood)]
+                item["tags"] = tags
+                item["mood"] = mood
+                if "visual_prompt" not in item:
+                    item["visual_prompt"] = ""
+                if "vfx" not in item:
+                    item["vfx"] = []
+                elif isinstance(item["vfx"], str):
+                    item["vfx"] = [item["vfx"]]
+                if "transition" not in item:
+                    item["transition"] = "fade"
+                if "intensity" not in item:
+                    item["intensity"] = 0.5
+                if "duration" not in item:
+                    item["duration"] = 1000
+            elif item.get("type") == "segment":
+                item["overlap_with_previous"] = bool(item.get("overlap_with_previous", False))
+        return items
+
     def _chunk_text(self, text: str, max_chunk_size: int = 30000) -> list[str]:
         """Split text into chunks of at most max_chunk_size characters."""
         chunks: list[str] = []
@@ -168,6 +223,7 @@ class OpenAIParser:
         chunk: str,
         known_characters: list[CharacterProfile] | None = None,
         original_reasoning: dict | None = None,
+        bgm_moods: list[str] | None = None,
     ) -> tuple[list[dict], dict, bool, str]:
         """
         Two-step escalation path.
@@ -181,11 +237,7 @@ class OpenAIParser:
         MAX_RETRIES = 3
 
         think_prompt = self._load_prompt("audio_drama_think.md")
-        if known_characters:
-            think_prompt += "\n## Known Characters (Context)\n"
-            for p in known_characters:
-                aliases_str = ", ".join(p.aliases) if p.aliases else "None"
-                think_prompt += f"- **{p.name}** (Gender: {p.gender}): Aliases: {aliases_str}\n"
+        think_prompt = self._append_parser_context(think_prompt, known_characters, bgm_moods)
 
         # ── Step 2a: free-prose reasoning ──────────────────────────────────────
         raw_prose: str | None = None
@@ -213,11 +265,7 @@ class OpenAIParser:
 
         # ── Step 2b: format only ────────────────────────────────────────────────
         format_prompt = self._load_prompt("audio_drama_format.md")
-        if known_characters:
-            format_prompt += "\n## Known Characters (Context)\n"
-            for p in known_characters:
-                aliases_str = ", ".join(p.aliases) if p.aliases else "None"
-                format_prompt += f"- **{p.name}** (Gender: {p.gender}): Aliases: {aliases_str}\n"
+        format_prompt = self._append_parser_context(format_prompt, known_characters, bgm_moods)
 
         segments: list[dict] = []
         for attempt in range(1, MAX_RETRIES + 1):
@@ -255,33 +303,7 @@ class OpenAIParser:
                 else:
                     raise RuntimeError(f"Step 2b exhausted {MAX_RETRIES} retries") from e
 
-        # Normalize mood_shift objects
-        for item in segments:
-            if isinstance(item, dict) and item.get("type") == "mood_shift":
-                tags = item.get("tags")
-                if tags is None:
-                    tags = []
-                elif not isinstance(tags, list):
-                    tags = [str(tags)]
-                mood = item.get("mood")
-                if not mood and tags:
-                    mood = str(tags[0])
-                elif mood and not tags:
-                    tags = [str(mood)]
-                item["tags"] = tags
-                item["mood"] = mood
-                if "visual_prompt" not in item:
-                    item["visual_prompt"] = ""
-                if "vfx" not in item:
-                    item["vfx"] = []
-                elif isinstance(item["vfx"], str):
-                    item["vfx"] = [item["vfx"]]
-                if "transition" not in item:
-                    item["transition"] = "fade"
-                if "intensity" not in item:
-                    item["intensity"] = 0.5
-                if "duration" not in item:
-                    item["duration"] = 1000
+        self._normalize_script_items(segments)
 
         return segments, original_reasoning or {}, True, raw_prose or ""
 
@@ -289,6 +311,7 @@ class OpenAIParser:
         self,
         chunk: str,
         known_characters: list[CharacterProfile] | None = None,
+        bgm_moods: list[str] | None = None,
     ) -> tuple[list[dict], dict, bool, str | None]:
         """
         Parse a single chunk via scratchpad call (Step 1).
@@ -301,11 +324,7 @@ class OpenAIParser:
         # ── Kill switch ──────────────────────────────────────────────────────────
         if os.getenv("VVR_DISABLE_SCRATCHPAD") == "1":
             system_instruction = self._load_prompt("audio_drama_script_legacy.md")
-            if known_characters:
-                system_instruction += "\n## Known Characters (Context)\n"
-                for p in known_characters:
-                    aliases_str = ", ".join(p.aliases) if p.aliases else "None"
-                    system_instruction += f"- **{p.name}** (Gender: {p.gender}): Aliases: {aliases_str}\n"
+            system_instruction = self._append_parser_context(system_instruction, known_characters, bgm_moods)
 
             response = await self.client.chat.completions.create(
                 model=self.model or "gpt-4o-mini",
@@ -331,43 +350,13 @@ class OpenAIParser:
             if not isinstance(script_part, list):
                 raise ValueError(f"Expected list, got {type(script_part)}")
 
-            # Normalize mood_shift objects
-            for item in script_part:
-                if isinstance(item, dict) and item.get("type") == "mood_shift":
-                    tags = item.get("tags")
-                    if tags is None:
-                        tags = []
-                    elif not isinstance(tags, list):
-                        tags = [str(tags)]
-                    mood = item.get("mood")
-                    if not mood and tags:
-                        mood = str(tags[0])
-                    elif mood and not tags:
-                        tags = [str(mood)]
-                    item["tags"] = tags
-                    item["mood"] = mood
-                    if "visual_prompt" not in item:
-                        item["visual_prompt"] = ""
-                    if "vfx" not in item:
-                        item["vfx"] = []
-                    elif isinstance(item["vfx"], str):
-                        item["vfx"] = [item["vfx"]]
-                    if "transition" not in item:
-                        item["transition"] = "fade"
-                    if "intensity" not in item:
-                        item["intensity"] = 0.5
-                    if "duration" not in item:
-                        item["duration"] = 1000
+            self._normalize_script_items(script_part)
 
             return script_part, {}, False, None
 
         # ── Scratchpad path ──────────────────────────────────────────────────────
         system_instruction = self._load_prompt("audio_drama_script.md")
-        if known_characters:
-            system_instruction += "\n## Known Characters (Context)\n"
-            for p in known_characters:
-                aliases_str = ", ".join(p.aliases) if p.aliases else "None"
-                system_instruction += f"- **{p.name}** (Gender: {p.gender}): Aliases: {aliases_str}\n"
+        system_instruction = self._append_parser_context(system_instruction, known_characters, bgm_moods)
 
         response = await self.client.chat.completions.create(
             model=self.model or "gpt-4o-mini",
@@ -399,7 +388,12 @@ class OpenAIParser:
         # ── Malformed: reasoning missing or not a dict ──────────────────────────
         if not isinstance(reasoning, dict):
             logger.warning("Step 1 'reasoning' is missing or not a dict — escalating.")
-            return await self._escalate_chunk(chunk, known_characters, original_reasoning=None)
+            return await self._escalate_chunk(
+                chunk,
+                known_characters,
+                original_reasoning=None,
+                bgm_moods=bgm_moods,
+            )
 
         # ── Script missing: raise so parse_chapter retry loop catches it ─────────
         if script_part is None:
@@ -412,38 +406,17 @@ class OpenAIParser:
         if len(script_part) == 0:
             return [], reasoning, False, None
 
-        # ── Normalize mood_shift objects ────────────────────────────────────────
-        for item in script_part:
-            if isinstance(item, dict) and item.get("type") == "mood_shift":
-                tags = item.get("tags")
-                if tags is None:
-                    tags = []
-                elif not isinstance(tags, list):
-                    tags = [str(tags)]
-                mood = item.get("mood")
-                if not mood and tags:
-                    mood = str(tags[0])
-                elif mood and not tags:
-                    tags = [str(mood)]
-                item["tags"] = tags
-                item["mood"] = mood
-                if "visual_prompt" not in item:
-                    item["visual_prompt"] = ""
-                if "vfx" not in item:
-                    item["vfx"] = []
-                elif isinstance(item["vfx"], str):
-                    item["vfx"] = [item["vfx"]]
-                if "transition" not in item:
-                    item["transition"] = "fade"
-                if "intensity" not in item:
-                    item["intensity"] = 0.5
-                if "duration" not in item:
-                    item["duration"] = 1000
+        self._normalize_script_items(script_part)
 
         # ── Ambiguity check ──────────────────────────────────────────────────────
         if self._check_ambiguity(reasoning):
             logger.info("Ambiguity detected — escalating chunk to 2-step path.")
-            return await self._escalate_chunk(chunk, known_characters, original_reasoning=reasoning)
+            return await self._escalate_chunk(
+                chunk,
+                known_characters,
+                original_reasoning=reasoning,
+                bgm_moods=bgm_moods,
+            )
 
         return script_part, reasoning, False, None
 
@@ -452,6 +425,7 @@ class OpenAIParser:
         text: str,
         known_characters: list[CharacterProfile] | None = None,
         output_prefix: str | None = None,
+        bgm_moods: list[str] | None = None,
     ) -> ScriptResult:
         """
         Parses chapter text into a ScriptResult using the scratchpad pipeline.
@@ -476,7 +450,9 @@ class OpenAIParser:
                 try:
                     logger.info(f"Parsing chunk {i + 1}/{len(chunks)} (Attempt {retries}/{MAX_RETRIES})...")
                     segments, reasoning, escalated, raw_prose = await self._parse_chunk(
-                        chunk, known_characters=known_characters
+                        chunk,
+                        known_characters=known_characters,
+                        bgm_moods=bgm_moods,
                     )
                     full_script.extend(segments)
                     chunk_results.append((i, escalated, reasoning, raw_prose))
@@ -488,7 +464,10 @@ class OpenAIParser:
                     else:
                         logger.warning(f"Chunk {i + 1}: missing 'script' exhausted retries — escalating.")
                         segments, reasoning, escalated, raw_prose = await self._escalate_chunk(
-                            chunk, known_characters, original_reasoning=e.reasoning
+                            chunk,
+                            known_characters,
+                            original_reasoning=e.reasoning,
+                            bgm_moods=bgm_moods,
                         )
                         full_script.extend(segments)
                         chunk_results.append((i, escalated, reasoning, raw_prose))

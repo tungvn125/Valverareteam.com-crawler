@@ -306,3 +306,43 @@ async def test_empty_script_chunk_no_escalation(tmp_path):
     # Reasoning sidecar still written
     reasoning_file = output_prefix + ".script.reasoning.json"
     assert os.path.exists(reasoning_file)
+
+
+@pytest.mark.asyncio
+async def test_bgm_moods_are_injected_into_escalation_format_prompt(tmp_path):
+    step1_content = json.dumps({
+        "reasoning": {
+            "speaker_map": "Unclear speaker.",
+            "ambiguous_lines": "This line is intentionally long enough to trigger escalation because the speaker is unclear.",
+            "mood_analysis": "Tense.",
+            "confidence": "low",
+            "needs_escalation": True,
+        },
+        "script": [{"type": "segment", "role": "unknown", "gender": "unknown", "text": "Ai đó nói."}],
+    })
+    step2a_prose = "Nam says the line. The mood should use known local BGM vocabulary."
+    step2b_content = json.dumps({
+        "script": [{"type": "segment", "role": "Nam", "gender": "male", "text": "Ai đó nói."}],
+    })
+
+    with patch("vvr_scraper.audio_drama.AsyncOpenAI") as MockOpenAI:
+        mock_client = MockOpenAI.return_value
+        mock_client.chat.completions.create = AsyncMock(side_effect=[
+            _make_mock_response(step1_content),
+            _make_mock_response(step2a_prose),
+            _make_mock_response(step2b_content),
+        ])
+
+        parser = OpenAIParser(api_key="fake", base_url="fake")
+        output_prefix = str(tmp_path / "chapter001.ad.mp3")
+        result = await parser.parse_chapter(
+            "Ai đó nói.",
+            output_prefix=output_prefix,
+            bgm_moods=["calm", "sad", "tense"],
+        )
+
+    assert result[0]["role"] == "Nam"
+    calls = mock_client.chat.completions.create.call_args_list
+    format_prompt = calls[2].kwargs["messages"][0]["content"]
+    assert "## Available BGM Moods" in format_prompt
+    assert 'Choose mood_shift.tags strictly from: ["calm", "sad", "tense"]' in format_prompt
