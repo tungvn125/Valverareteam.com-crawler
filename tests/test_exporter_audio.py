@@ -931,3 +931,61 @@ async def test_tao_file_audiodrama_manifest_uses_overlap_offsets(tmp_path):
     assert [event["start"] for event in dialogue_events] == [1000, 1500, 2800]
     assert [event["end"] for event in dialogue_events] == [2000, 2500, 3800]
     assert dialogue_events[1]["alignment"][0]["start"] == 1500
+
+
+@pytest.mark.asyncio
+async def test_tao_file_audiodrama_handles_string_overlap_in_cached_script(tmp_path):
+    """Loading cached script with string 'false' overlap should not misinterpret it as True."""
+    filename = str(tmp_path / "cached_overlap.mp3")
+    story_id = "test_story"
+    content_list = [ContentItem(type="text", data="Some text")]
+
+    # Pre-populate cached script with string overlap values
+    script_file = f"{filename}.script.json"
+    cached_data = [
+        {"type": "segment", "role": "Alice", "gender": "female", "text": "A", "overlap_with_previous": "false"},
+        {"type": "segment", "role": "Bob", "gender": "male", "text": "B", "overlap_with_previous": "true"},
+    ]
+    with open(script_file, "w", encoding="utf-8") as f:
+        json.dump(cached_data, f, ensure_ascii=False)
+
+    mock_db = MagicMock()
+    mock_db.get_all_story_voices = AsyncMock(return_value={})
+    mock_db.get_character_profiles = AsyncMock(return_value=[])
+
+    with (
+        patch("vvr_scraper.exporter.OpenAIParser") as MockParser,
+        patch("vvr_scraper.exporter.VoiceManager") as MockVoiceManager,
+        patch("pydub.AudioSegment.from_file", return_value=MockAudio(500)),
+        patch("pydub.AudioSegment.silent", side_effect=lambda duration=0, **kwargs: MockAudio(duration)),
+        patch("vvr_scraper.exporter.BGMManager") as MockBGM,
+        patch("vvr_scraper.exporter.MixingEngine") as MockMixing,
+        patch("vvr_scraper.exporter.FreesoundManager") as MockFreesound,
+        patch("vvr_scraper.exporter.ImageGenerator") as MockImageGenerator,
+    ):
+        MockBGM.return_value.get_random_track.return_value = None
+        MockBGM.return_value.available_moods = []
+        MockFreesound.return_value.search_bgm = AsyncMock(return_value=[])
+        MockImageGenerator.return_value.generate = AsyncMock(return_value="fake_bg.webp")
+        MockMixing.return_value.create_looped_background.return_value = MockAudio(1000)
+        MockMixing.return_value.overlay_voice_on_background.return_value = MockAudio(1000)
+
+        vm_instance = MockVoiceManager.return_value
+        vm_instance.get_known_characters = AsyncMock(return_value=[])
+        vm_instance.resolve_aliases = MagicMock(side_effect=lambda x: x)
+        vm_instance.get_voice = AsyncMock(return_value=VoiceSpec(voice_id="voice"))
+        vm_instance.synthesize = AsyncMock(
+            return_value=SynthesisResult(audio_bytes=b"audio", sample_rate=44100, duration_ms=500)
+        )
+        vm_instance.close = AsyncMock()
+
+        await tao_file_audiodrama(content_list, filename, story_id, mock_db, tts_provider_name="elevenlabs")
+
+    # Verify that the cached script was loaded (parser should NOT have been called)
+    MockParser.return_value.parse_chapter.assert_not_called()
+
+    # Re-read the saved script to verify overlap values were normalized
+    with open(script_file, encoding="utf-8") as f:
+        saved_script = json.load(f)
+    assert saved_script[0].get("overlap_with_previous") in (False, None)
+    assert saved_script[1].get("overlap_with_previous") in (True,)

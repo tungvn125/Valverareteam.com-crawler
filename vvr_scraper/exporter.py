@@ -101,6 +101,17 @@ def _get_synthesis_concurrency(provider_name: str) -> int:
     return 5
 
 
+def _normalize_overlap_flag(value) -> bool:
+    """Coerce overlap_with_previous to bool, handling strings from cached scripts."""
+    if isinstance(value, str):
+        return value.strip().lower() in ("true", "1", "yes")
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    return False
+
+
 def _combine_voice_segments_with_overlap(
     voice_segments: list[Any], segments: list[dict], cfg: TimelineConfig
 ) -> tuple[Any, list[int]]:
@@ -111,8 +122,13 @@ def _combine_voice_segments_with_overlap(
     combined_position_ms = 0
     segment_start_offsets_ms: list[int] = []
 
+    if len(voice_segments) != len(segments):
+        raise ValueError(
+            f"Mismatched lengths: {len(voice_segments)} voice segments vs {len(segments)} script segments"
+        )
+
     for j, vs in enumerate(voice_segments):
-        should_overlap = bool(segments[j].get("overlap_with_previous")) and j > 0
+        should_overlap = _normalize_overlap_flag(segments[j].get("overlap_with_previous")) and j > 0
         if should_overlap:
             overlap_start = segment_start_offsets_ms[j - 1] + len(voice_segments[j - 1]) // 2
             required_duration = overlap_start + len(vs)
@@ -554,9 +570,6 @@ async def tao_file_audiodrama(
         known_chars_raw = await _maybe_await(voice_manager.get_known_characters())
         known_chars = known_chars_raw if isinstance(known_chars_raw, list) else []
 
-        bgm_manager = BGMManager()
-        bgm_manager.refresh()
-
         # 2. Load cached script if exists
         if os.path.exists(script_file):
             try:
@@ -570,6 +583,7 @@ async def tao_file_audiodrama(
         # 3. Parse if needed
         if not script:
             logger.info(f"Generating audio drama script for {title}...")
+            bgm_manager = BGMManager()
             parser = OpenAIParser()
             script = await parser.parse_chapter(
                 full_text,
@@ -585,6 +599,11 @@ async def tao_file_audiodrama(
         resolved_script = await _maybe_await(voice_manager.resolve_aliases(script))
         if isinstance(resolved_script, list):
             script = resolved_script
+
+        # Normalize overlap flags from parser/cache before checkpointing.
+        for item in script:
+            if isinstance(item, dict) and item.get("type") != "mood_shift":
+                item["overlap_with_previous"] = _normalize_overlap_flag(item.get("overlap_with_previous"))
 
         # 5. Save script checkpoint (after alias resolution)
         try:
@@ -635,7 +654,7 @@ async def tao_file_audiodrama(
                         "role": char_name,
                         "voice": voice_name,
                         "text": text,
-                        "overlap_with_previous": bool(item.get("overlap_with_previous", False)),
+                        "overlap_with_previous": _normalize_overlap_flag(item.get("overlap_with_previous")),
                     }
                 )
     except Exception as e:
@@ -650,6 +669,9 @@ async def tao_file_audiodrama(
         return
 
     logger.info(f"Synthesizing audio drama v2.5 (Parallel & Block-based): {filename}...")
+
+    if bgm_manager is None:
+        bgm_manager = BGMManager()
 
     freesound_manager = FreesoundManager()
     mixing_engine = MixingEngine()
