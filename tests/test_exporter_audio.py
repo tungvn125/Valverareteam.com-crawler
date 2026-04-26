@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -610,3 +611,264 @@ async def test_cli_write_to_formats_passes_voice_selector_for_explicit_elevenlab
 
     callback = mock_audio_drama.call_args.kwargs.get("select_voices_callback")
     assert callback is not None
+
+
+@pytest.mark.asyncio
+async def test_tao_file_audiodrama_passes_available_bgm_moods_to_parser(tmp_path):
+    from vvr_scraper.audio_drama import ScriptResult
+
+    filename = str(tmp_path / "bgm_moods.mp3")
+    story_id = "test_story"
+    content_list = [ContentItem(type="text", data="Some text")]
+
+    mock_db = MagicMock()
+    mock_db.get_all_story_voices = AsyncMock(return_value={})
+    mock_db.get_character_profiles = AsyncMock(return_value=[])
+
+    mock_script = ScriptResult([{"type": "segment", "role": "narrator", "text": "Hello."}])
+
+    with (
+        patch("vvr_scraper.exporter.OpenAIParser") as MockParser,
+        patch("vvr_scraper.exporter.VoiceManager") as MockVoiceManager,
+        patch("pydub.AudioSegment.from_file", return_value=MockAudio(1000)),
+        patch("pydub.AudioSegment.silent", side_effect=lambda duration: MockAudio(duration)),
+        patch("vvr_scraper.exporter.BGMManager") as MockBGM,
+        patch("vvr_scraper.exporter.MixingEngine") as MockMixing,
+        patch("vvr_scraper.exporter.FreesoundManager") as MockFreesound,
+        patch("vvr_scraper.exporter.ImageGenerator") as MockImageGenerator,
+    ):
+        parser_instance = MockParser.return_value
+        parser_instance.parse_chapter = AsyncMock(return_value=mock_script)
+
+        bgm_instance = MockBGM.return_value
+        bgm_instance.available_moods = ["calm", "sad", "tense"]
+        bgm_instance.get_random_track.return_value = None
+
+        vm_instance = MockVoiceManager.return_value
+        vm_instance.get_known_characters = AsyncMock(return_value=[])
+        vm_instance.resolve_aliases = MagicMock(side_effect=lambda x: x)
+        vm_instance.get_voice = AsyncMock(return_value=VoiceSpec(voice_id="voice"))
+        vm_instance.synthesize = AsyncMock(
+            return_value=SynthesisResult(audio_bytes=b"audio", sample_rate=44100, duration_ms=500)
+        )
+        vm_instance.close = AsyncMock()
+
+        MockFreesound.return_value.search_bgm = AsyncMock(return_value=[])
+        MockImageGenerator.return_value.generate = AsyncMock(return_value="fake_bg.webp")
+        MockMixing.return_value.create_looped_background.return_value = MockAudio(1000)
+        MockMixing.return_value.overlay_voice_on_background.return_value = MockAudio(1000)
+
+        await tao_file_audiodrama(content_list, filename, story_id, mock_db, tts_provider_name="elevenlabs")
+
+    parser_instance.parse_chapter.assert_awaited_once()
+    assert parser_instance.parse_chapter.await_args.kwargs["bgm_moods"] == ["calm", "sad", "tense"]
+
+
+@pytest.mark.asyncio
+async def test_tao_file_audiodrama_preserves_overlap_metadata_during_enrichment(tmp_path):
+    from vvr_scraper.audio_drama import ScriptResult
+
+    filename = str(tmp_path / "overlap_metadata.mp3")
+    story_id = "test_story"
+    content_list = [ContentItem(type="text", data="A! B!")]
+    captured_blocks = []
+
+    mock_db = MagicMock()
+    mock_db.get_all_story_voices = AsyncMock(return_value={})
+    mock_db.get_character_profiles = AsyncMock(return_value=[])
+
+    mock_script = ScriptResult(
+        [
+            {"type": "segment", "role": "Alice", "gender": "female", "text": "[shouting] A!"},
+            {
+                "type": "segment",
+                "role": "Bob",
+                "gender": "male",
+                "text": "[shouting] B!",
+                "overlap_with_previous": True,
+            },
+        ]
+    )
+
+    class CapturingTimeline:
+        def __init__(self, cfg):
+            self.cfg = cfg
+
+        def add_block(self, index, voice_audio, mood, bgm_track_path):
+            captured_blocks.append((index, voice_audio, mood, bgm_track_path))
+
+        def render(self, filename, mixing_engine):
+            return MockAudio(2000), [{"start_ms": 0, "end_ms": 2000}]
+
+    with (
+        patch("vvr_scraper.exporter.OpenAIParser") as MockParser,
+        patch("vvr_scraper.exporter.VoiceManager") as MockVoiceManager,
+        patch("vvr_scraper.exporter.AudioTimeline", CapturingTimeline),
+        patch("pydub.AudioSegment.from_file", return_value=MockAudio(1000)),
+        patch("pydub.AudioSegment.silent", side_effect=lambda duration: MockAudio(duration)),
+        patch("vvr_scraper.exporter.BGMManager") as MockBGM,
+        patch("vvr_scraper.exporter.MixingEngine") as MockMixing,
+        patch("vvr_scraper.exporter.FreesoundManager") as MockFreesound,
+        patch("vvr_scraper.exporter.ImageGenerator") as MockImageGenerator,
+    ):
+        MockParser.return_value.parse_chapter = AsyncMock(return_value=mock_script)
+        MockBGM.return_value.available_moods = []
+        MockBGM.return_value.get_random_track.return_value = None
+        MockFreesound.return_value.search_bgm = AsyncMock(return_value=[])
+        MockImageGenerator.return_value.generate = AsyncMock(return_value="fake_bg.webp")
+        MockMixing.return_value.create_looped_background.return_value = MockAudio(1000)
+        MockMixing.return_value.overlay_voice_on_background.return_value = MockAudio(1000)
+
+        vm_instance = MockVoiceManager.return_value
+        vm_instance.get_known_characters = AsyncMock(return_value=[])
+        vm_instance.resolve_aliases = MagicMock(side_effect=lambda x: x)
+        vm_instance.get_voice = AsyncMock(return_value=VoiceSpec(voice_id="voice"))
+        vm_instance.synthesize = AsyncMock(
+            return_value=SynthesisResult(audio_bytes=b"audio", sample_rate=44100, duration_ms=500)
+        )
+        vm_instance.close = AsyncMock()
+
+        await tao_file_audiodrama(content_list, filename, story_id, mock_db, tts_provider_name="elevenlabs")
+
+    assert captured_blocks, "the enriched script should still create a block"
+    # The second segment should have overlapped, making the combined voice shorter than 2 voices + 1 gap.
+    assert len(captured_blocks[0][1]) == 1500
+
+
+def test_combine_voice_segments_with_overlap_uses_half_previous_duration(monkeypatch):
+    from vvr_scraper.exporter import _combine_voice_segments_with_overlap
+    from vvr_scraper.mixing_engine import TimelineConfig
+
+    class RealisticMockAudio(MockAudio):
+        def overlay(self, other, position=0):
+            return RealisticMockAudio(max(self.length, position + len(other)))
+
+    monkeypatch.setattr(
+        "pydub.AudioSegment.silent",
+        lambda duration=0, **kwargs: RealisticMockAudio(duration),
+    )
+    voice_segments = [RealisticMockAudio(1000), RealisticMockAudio(800), RealisticMockAudio(600)]
+    segments = [
+        {"type": "segment", "role": "Alice", "text": "A"},
+        {"type": "segment", "role": "Bob", "text": "B", "overlap_with_previous": True},
+        {"type": "segment", "role": "Cara", "text": "C"},
+    ]
+    cfg = TimelineConfig(gap_between_segments_ms=300)
+
+    combined_voice, offsets = _combine_voice_segments_with_overlap(voice_segments, segments, cfg)
+
+    assert offsets == [0, 500, 1600]
+    assert len(combined_voice) == 2200
+
+
+def test_combine_voice_segments_with_overlap_supports_chained_overlaps(monkeypatch):
+    from vvr_scraper.exporter import _combine_voice_segments_with_overlap
+    from vvr_scraper.mixing_engine import TimelineConfig
+
+    class RealisticMockAudio(MockAudio):
+        def overlay(self, other, position=0):
+            return RealisticMockAudio(max(self.length, position + len(other)))
+
+    monkeypatch.setattr(
+        "pydub.AudioSegment.silent",
+        lambda duration=0, **kwargs: RealisticMockAudio(duration),
+    )
+    voice_segments = [RealisticMockAudio(1000), RealisticMockAudio(800), RealisticMockAudio(600)]
+    segments = [
+        {"type": "segment", "role": "Alice", "text": "A"},
+        {"type": "segment", "role": "Bob", "text": "B", "overlap_with_previous": True},
+        {"type": "segment", "role": "Cara", "text": "C", "overlap_with_previous": True},
+    ]
+    cfg = TimelineConfig(gap_between_segments_ms=300)
+
+    combined_voice, offsets = _combine_voice_segments_with_overlap(voice_segments, segments, cfg)
+
+    assert offsets == [0, 500, 900]
+    assert len(combined_voice) == 1500
+
+
+@pytest.mark.asyncio
+async def test_tao_file_audiodrama_manifest_uses_overlap_offsets(tmp_path):
+    from vvr_scraper.audio_drama import ScriptResult
+    from vvr_scraper.mixing_engine import TimelineConfig
+
+    filename = str(tmp_path / "overlap_manifest.mp3")
+    story_id = "test_story"
+    content_list = [ContentItem(type="text", data="A! B! C!")]
+
+    mock_db = MagicMock()
+    mock_db.get_all_story_voices = AsyncMock(return_value={})
+    mock_db.get_character_profiles = AsyncMock(return_value=[])
+
+    mock_script = ScriptResult(
+        [
+            {"type": "segment", "role": "Alice", "gender": "female", "text": "A!"},
+            {"type": "segment", "role": "Bob", "gender": "male", "text": "B!", "overlap_with_previous": True},
+            {"type": "segment", "role": "Cara", "gender": "female", "text": "C!"},
+        ]
+    )
+
+    class RealisticMockAudio(MockAudio):
+        def overlay(self, other, position=0):
+            return RealisticMockAudio(max(self.length, position + len(other)))
+
+    class FixedTimeline:
+        def __init__(self, cfg):
+            self.cfg = cfg
+
+        def add_block(self, index, voice_audio, mood, bgm_track_path):
+            assert len(voice_audio) == 2600
+
+        def render(self, filename, mixing_engine):
+            return RealisticMockAudio(3200), [{"start_ms": 0, "end_ms": 3200}]
+
+    with (
+        patch("vvr_scraper.exporter.OpenAIParser") as MockParser,
+        patch("vvr_scraper.exporter.VoiceManager") as MockVoiceManager,
+        patch("vvr_scraper.exporter.AudioTimeline", FixedTimeline),
+        patch("pydub.AudioSegment.from_file", return_value=RealisticMockAudio(1000)),
+        patch("pydub.AudioSegment.silent", side_effect=lambda duration=0, **kwargs: RealisticMockAudio(duration)),
+        patch("vvr_scraper.exporter.BGMManager") as MockBGM,
+        patch("vvr_scraper.exporter.MixingEngine") as MockMixing,
+        patch("vvr_scraper.exporter.FreesoundManager") as MockFreesound,
+        patch("vvr_scraper.exporter.ImageGenerator") as MockImageGenerator,
+    ):
+        MockParser.return_value.parse_chapter = AsyncMock(return_value=mock_script)
+        MockBGM.return_value.available_moods = []
+        MockBGM.return_value.get_random_track.return_value = None
+        MockFreesound.return_value.search_bgm = AsyncMock(return_value=[])
+        MockImageGenerator.return_value.generate = AsyncMock(return_value="fake_bg.webp")
+        MockMixing.return_value.create_looped_background.return_value = RealisticMockAudio(1000)
+        MockMixing.return_value.overlay_voice_on_background.return_value = RealisticMockAudio(1000)
+
+        vm_instance = MockVoiceManager.return_value
+        vm_instance.get_known_characters = AsyncMock(return_value=[])
+        vm_instance.resolve_aliases = MagicMock(side_effect=lambda x: x)
+        vm_instance.get_voice = AsyncMock(return_value=VoiceSpec(voice_id="voice"))
+        vm_instance.synthesize = AsyncMock(
+            return_value=SynthesisResult(
+                audio_bytes=b"audio",
+                sample_rate=44100,
+                duration_ms=1000,
+                word_alignments=[WordAlignment(word="x", start=0, end=1000)],
+            )
+        )
+        vm_instance.close = AsyncMock()
+
+        await tao_file_audiodrama(
+            content_list,
+            filename,
+            story_id,
+            mock_db,
+            timeline_config=TimelineConfig(gap_between_segments_ms=300),
+            tts_provider_name="elevenlabs",
+        )
+
+    manifest_file = os.path.join(os.path.dirname(filename), "manifest.json")
+    with open(manifest_file, encoding="utf-8") as f:
+        manifest = json.load(f)
+
+    dialogue_events = [e for e in manifest["events"] if e["type"] == "dialogue"]
+    assert [event["start"] for event in dialogue_events] == [1000, 1500, 2600]
+    assert [event["end"] for event in dialogue_events] == [2000, 2500, 3600]
+    assert dialogue_events[1]["alignment"][0]["start"] == 1500

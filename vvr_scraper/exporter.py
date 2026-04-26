@@ -101,6 +101,41 @@ def _get_synthesis_concurrency(provider_name: str) -> int:
     return 5
 
 
+def _combine_voice_segments_with_overlap(
+    voice_segments: list[Any], segments: list[dict], cfg: TimelineConfig
+) -> tuple[Any, list[int]]:
+    """Combine voice segments and return per-segment start offsets within the voice block."""
+    from pydub import AudioSegment
+
+    combined_voice = AudioSegment.silent(duration=0)
+    combined_position_ms = 0
+    segment_start_offsets_ms: list[int] = []
+
+    for j, vs in enumerate(voice_segments):
+        should_overlap = bool(segments[j].get("overlap_with_previous")) and j > 0
+        if should_overlap:
+            overlap_start = segment_start_offsets_ms[j - 1] + len(voice_segments[j - 1]) // 2
+            required_duration = overlap_start + len(vs)
+            if required_duration > len(combined_voice):
+                combined_voice += AudioSegment.silent(duration=required_duration - len(combined_voice))
+            combined_voice = combined_voice.overlay(vs, position=overlap_start)
+            segment_start_offsets_ms.append(overlap_start)
+            if j < len(voice_segments) - 1:
+                combined_position_ms += cfg.gap_between_segments_ms
+            continue
+
+        if combined_position_ms > len(combined_voice):
+            combined_voice += AudioSegment.silent(duration=combined_position_ms - len(combined_voice))
+        segment_start_offsets_ms.append(combined_position_ms)
+        combined_voice += vs
+        combined_position_ms += len(vs)
+        if j < len(voice_segments) - 1:
+            combined_voice += AudioSegment.silent(duration=cfg.gap_between_segments_ms)
+            combined_position_ms += cfg.gap_between_segments_ms
+
+    return combined_voice, segment_start_offsets_ms
+
+
 async def _download_images_bulk(urls: list[str], max_concurrent: int = 10) -> dict[str, bytes]:
     """Downloads multiple images concurrently with a limit on parallelism and a progress bar."""
     if not urls:
@@ -518,6 +553,9 @@ async def tao_file_audiodrama(
         known_chars_raw = await _maybe_await(voice_manager.get_known_characters())
         known_chars = known_chars_raw if isinstance(known_chars_raw, list) else []
 
+        bgm_manager = BGMManager()
+        bgm_manager.refresh()
+
         # 2. Load cached script if exists
         if os.path.exists(script_file):
             try:
@@ -532,7 +570,12 @@ async def tao_file_audiodrama(
         if not script:
             logger.info(f"Generating audio drama script for {title}...")
             parser = OpenAIParser()
-            script = await parser.parse_chapter(full_text, known_characters=known_chars, output_prefix=filename)
+            script = await parser.parse_chapter(
+                full_text,
+                known_characters=known_chars,
+                output_prefix=filename,
+                bgm_moods=bgm_manager.available_moods,
+            )
             if not script:
                 logger.error("OpenAI failed to generate script. Aborting Audio Drama generation.")
                 return
@@ -585,7 +628,15 @@ async def tao_file_audiodrama(
                 if not text:
                     continue
                 voice_name = await voice_manager.get_voice(char_name, gender)
-                enriched_script.append({"type": "segment", "role": char_name, "voice": voice_name, "text": text})
+                enriched_script.append(
+                    {
+                        "type": "segment",
+                        "role": char_name,
+                        "voice": voice_name,
+                        "text": text,
+                        "overlap_with_previous": bool(item.get("overlap_with_previous", False)),
+                    }
+                )
     except Exception as e:
         logger.error(f"Error preparing audio drama script: {e}")
         raise
@@ -599,8 +650,6 @@ async def tao_file_audiodrama(
 
     logger.info(f"Synthesizing audio drama v2.5 (Parallel & Block-based): {filename}...")
 
-    bgm_manager = BGMManager()
-    bgm_manager.refresh()
     freesound_manager = FreesoundManager()
     mixing_engine = MixingEngine()
 
@@ -717,11 +766,11 @@ async def tao_file_audiodrama(
                     bgm_track_path = None
 
             # 4. Mix block using AudioTimeline (Issue #7 - use render() instead of closure)
-            combined_voice = AudioSegment.silent(duration=0)
-            for j, vs in enumerate(voice_segments):
-                combined_voice += vs
-                if j < len(voice_segments) - 1:
-                    combined_voice += AudioSegment.silent(duration=cfg.gap_between_segments_ms)
+            combined_voice, segment_start_offsets_ms = _combine_voice_segments_with_overlap(
+                voice_segments,
+                segments,
+                cfg,
+            )
 
             # Do NOT apply fade here — AudioTimeline.render() handles it
 
@@ -733,6 +782,7 @@ async def tao_file_audiodrama(
                     "bg_rel_path": bg_rel_path,
                     "voice_segments": voice_segments,
                     "raw_block_alignments": raw_block_alignments,
+                    "segment_start_offsets_ms": segment_start_offsets_ms,
                     "bgm_track_path": bgm_track_path,
                     "combined_voice_duration": len(combined_voice),
                 }
@@ -756,6 +806,7 @@ async def tao_file_audiodrama(
             bg_rel_path = metadata["bg_rel_path"]
             voice_segments = metadata["voice_segments"]
             raw_block_alignments = metadata["raw_block_alignments"]
+            segment_start_offsets_ms = metadata["segment_start_offsets_ms"]
 
             # Use block timing from render() for accurate positions
             block_start_ms = block_timings[i]["start_ms"] if i < len(block_timings) else current_block_start_ms
@@ -787,12 +838,11 @@ async def tao_file_audiodrama(
                 )
 
             # Dialogue events
-            segment_offset_in_block_ms = cfg.voice_overlay_offset_ms
             for j, segment_alignments in enumerate(raw_block_alignments):
                 role = segments[j].get("role", "narrator")
                 text = segments[j].get("text", "")
 
-                seg_start_ms = block_start_ms + segment_offset_in_block_ms
+                seg_start_ms = block_start_ms + cfg.voice_overlay_offset_ms + segment_start_offsets_ms[j]
                 seg_duration_ms = len(voice_segments[j])
                 seg_end_ms = seg_start_ms + seg_duration_ms
 
@@ -814,7 +864,6 @@ async def tao_file_audiodrama(
                     dialogue_event["alignment"].append(w)
 
                 all_events.append(dialogue_event)
-                segment_offset_in_block_ms += seg_duration_ms + cfg.gap_between_segments_ms
 
             # Update current_block_start_ms for next iteration (based on render output)
             if i < len(block_timings):
