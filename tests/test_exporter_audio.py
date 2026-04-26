@@ -787,6 +787,65 @@ def test_combine_voice_segments_with_overlap_supports_chained_overlaps(monkeypat
     assert len(combined_voice) == 1500
 
 
+def test_combine_voice_segments_with_overlap_handles_long_overlap_then_normal(monkeypatch):
+    from vvr_scraper.exporter import _combine_voice_segments_with_overlap
+    from vvr_scraper.mixing_engine import TimelineConfig
+
+    class RealisticMockAudio(MockAudio):
+        def overlay(self, other, position=0):
+            return RealisticMockAudio(max(self.length, position + len(other)))
+
+    monkeypatch.setattr(
+        "pydub.AudioSegment.silent",
+        lambda duration=0, **kwargs: RealisticMockAudio(duration),
+    )
+    # Overlap segment (2000ms) is much longer than previous segment (1000ms)
+    voice_segments = [RealisticMockAudio(1000), RealisticMockAudio(2000), RealisticMockAudio(600)]
+    segments = [
+        {"type": "segment", "role": "Alice", "text": "A"},
+        {"type": "segment", "role": "Bob", "text": "B", "overlap_with_previous": True},
+        {"type": "segment", "role": "Cara", "text": "C"},
+    ]
+    cfg = TimelineConfig(gap_between_segments_ms=300)
+
+    combined_voice, offsets = _combine_voice_segments_with_overlap(voice_segments, segments, cfg)
+
+    assert offsets == [0, 500, 2800]
+    assert len(combined_voice) == 3400
+
+
+def test_combine_voice_segments_with_overlap_empty_input():
+    from vvr_scraper.exporter import _combine_voice_segments_with_overlap
+    from vvr_scraper.mixing_engine import TimelineConfig
+
+    cfg = TimelineConfig()
+    combined, offsets = _combine_voice_segments_with_overlap([], [], cfg)
+    assert offsets == []
+    assert len(combined) == 0
+
+
+def test_combine_voice_segments_with_overlap_single_segment(monkeypatch):
+    from vvr_scraper.exporter import _combine_voice_segments_with_overlap
+    from vvr_scraper.mixing_engine import TimelineConfig
+
+    class RealisticMockAudio(MockAudio):
+        def overlay(self, other, position=0):
+            return RealisticMockAudio(max(self.length, position + len(other)))
+
+    monkeypatch.setattr(
+        "pydub.AudioSegment.silent",
+        lambda duration=0, **kwargs: RealisticMockAudio(duration),
+    )
+
+    vs = RealisticMockAudio(1000)
+    segments = [{"type": "segment", "role": "Alice", "text": "A"}]
+    cfg = TimelineConfig()
+
+    combined, offsets = _combine_voice_segments_with_overlap([vs], segments, cfg)
+    assert offsets == [0]
+    assert len(combined) == 1000
+
+
 @pytest.mark.asyncio
 async def test_tao_file_audiodrama_manifest_uses_overlap_offsets(tmp_path):
     from vvr_scraper.audio_drama import ScriptResult
@@ -817,7 +876,7 @@ async def test_tao_file_audiodrama_manifest_uses_overlap_offsets(tmp_path):
             self.cfg = cfg
 
         def add_block(self, index, voice_audio, mood, bgm_track_path):
-            assert len(voice_audio) == 2600
+            assert len(voice_audio) == 2800
 
         def render(self, filename, mixing_engine):
             return RealisticMockAudio(3200), [{"start_ms": 0, "end_ms": 3200}]
@@ -869,6 +928,6 @@ async def test_tao_file_audiodrama_manifest_uses_overlap_offsets(tmp_path):
         manifest = json.load(f)
 
     dialogue_events = [e for e in manifest["events"] if e["type"] == "dialogue"]
-    assert [event["start"] for event in dialogue_events] == [1000, 1500, 2600]
-    assert [event["end"] for event in dialogue_events] == [2000, 2500, 3600]
+    assert [event["start"] for event in dialogue_events] == [1000, 1500, 2800]
+    assert [event["end"] for event in dialogue_events] == [2000, 2500, 3800]
     assert dialogue_events[1]["alignment"][0]["start"] == 1500

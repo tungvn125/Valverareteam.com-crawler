@@ -120,6 +120,7 @@ def _combine_voice_segments_with_overlap(
                 combined_voice += AudioSegment.silent(duration=required_duration - len(combined_voice))
             combined_voice = combined_voice.overlay(vs, position=overlap_start)
             segment_start_offsets_ms.append(overlap_start)
+            combined_position_ms = max(combined_position_ms, overlap_start + len(vs))
             if j < len(voice_segments) - 1:
                 combined_position_ms += cfg.gap_between_segments_ms
             continue
