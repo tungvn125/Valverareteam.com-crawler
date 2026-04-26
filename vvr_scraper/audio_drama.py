@@ -149,7 +149,15 @@ class OpenAIParser:
                 if "duration" not in item:
                     item["duration"] = 1000
             elif item.get("type") == "segment":
-                item["overlap_with_previous"] = bool(item.get("overlap_with_previous", False))
+                raw = item.get("overlap_with_previous")
+                if isinstance(raw, str):
+                    item["overlap_with_previous"] = raw.lower() in ("true", "1", "yes")
+                elif isinstance(raw, bool):
+                    item["overlap_with_previous"] = raw
+                elif isinstance(raw, (int, float)):
+                    item["overlap_with_previous"] = bool(raw)
+                else:
+                    item["overlap_with_previous"] = False
         return items
 
     def _chunk_text(self, text: str, max_chunk_size: int = 30000) -> list[str]:

@@ -164,6 +164,41 @@ async def test_openai_parser_defaults_missing_overlap_with_previous_to_false():
                                 "gender": "male",
                                 "overlap_with_previous": True,
                             },
+                            {
+                                "type": "segment",
+                                "role": "Friend",
+                                "text": "Line three.",
+                                "gender": "female",
+                                "overlap_with_previous": "false",
+                            },
+                            {
+                                "type": "segment",
+                                "role": "Friend",
+                                "text": "Line four.",
+                                "gender": "female",
+                                "overlap_with_previous": "true",
+                            },
+                            {
+                                "type": "segment",
+                                "role": "Friend",
+                                "text": "Line five.",
+                                "gender": "female",
+                                "overlap_with_previous": "0",
+                            },
+                            {
+                                "type": "segment",
+                                "role": "Friend",
+                                "text": "Line six.",
+                                "gender": "female",
+                                "overlap_with_previous": 0,
+                            },
+                            {
+                                "type": "segment",
+                                "role": "Friend",
+                                "text": "Line seven.",
+                                "gender": "female",
+                                "overlap_with_previous": 1,
+                            },
                         ],
                     }
                 )
@@ -178,3 +213,8 @@ async def test_openai_parser_defaults_missing_overlap_with_previous_to_false():
 
     assert result[0]["overlap_with_previous"] is False
     assert result[1]["overlap_with_previous"] is True
+    assert result[2]["overlap_with_previous"] is False
+    assert result[3]["overlap_with_previous"] is True
+    assert result[4]["overlap_with_previous"] is False
+    assert result[5]["overlap_with_previous"] is False
+    assert result[6]["overlap_with_previous"] is True
