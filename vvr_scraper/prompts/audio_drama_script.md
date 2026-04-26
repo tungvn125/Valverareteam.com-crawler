@@ -74,6 +74,7 @@ The output **MUST** be a valid JSON object. You MUST emit the `"reasoning"` obje
     *   `role`: Character name or `"narrator"`
     *   `gender`: `"male"`, `"female"`, or `"unknown"`
     *   `text`: The spoken/narrated text, enriched with performance tags.
+    *   `overlap_with_previous`: Optional boolean. Use `true` only when this segment should begin before the previous segment finishes.
 
 2.  **Mood Shift:**
     *   `type`: `"mood_shift"`
@@ -90,6 +91,7 @@ The output **MUST** be a valid JSON object. You MUST emit the `"reasoning"` obje
 *   Every script MUST end with a `mood_shift` to signal the scene's conclusion (use `"transition": "fade"`, low intensity).
 *   Insert a `mood_shift` whenever the location, time, or intense visual action changes.
 *   Combine consecutive segments by the same character only if they are truly uninterrupted (no other character speaks or acts between them).
+*   When two or more characters speak simultaneously (overlapping dialogue, simultaneous exclamations, or one character cutting in), output them as separate consecutive `segment` objects and the second/later segment MUST set `"overlap_with_previous": true`.
 *   Ensure ALL fields and objects are correctly separated by commas.
 *   Do not add any text or explanation outside the JSON object.
 *   The script should feel immersive and "alive".

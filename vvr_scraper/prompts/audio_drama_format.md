@@ -29,6 +29,7 @@ Do NOT include a `"reasoning"` field — this step is format-only.
    - `role`: Character name or `"narrator"` (use speaker attribution from the prose analysis)
    - `gender`: `"male"`, `"female"`, or `"unknown"`
    - `text`: The spoken/narrated text, enriched with performance tags.
+   - `overlap_with_previous`: Optional boolean. Use `true` only when this segment should begin before the previous segment finishes.
 
 2. **Mood Shift:**
    - `type`: `"mood_shift"`
@@ -56,4 +57,5 @@ Use these tags to direct AI voice delivery:
 
 - Every script MUST start with a `mood_shift`.
 - Every script MUST end with a `mood_shift` (use `"transition": "fade"`, low intensity).
+- When two or more characters speak simultaneously (overlapping dialogue, simultaneous exclamations, or one character cutting in), output them as separate consecutive `segment` objects and the second/later segment MUST set `"overlap_with_previous": true`.
 - Do not add any text outside the JSON object.

@@ -218,3 +218,17 @@ async def test_openai_parser_defaults_missing_overlap_with_previous_to_false():
     assert result[4]["overlap_with_previous"] is False
     assert result[5]["overlap_with_previous"] is False
     assert result[6]["overlap_with_previous"] is True
+
+
+def test_audio_drama_prompts_document_overlap_with_previous():
+    prompt_names = [
+        "audio_drama_script.md",
+        "audio_drama_format.md",
+        "audio_drama_script_legacy.md",
+    ]
+    parser = OpenAIParser(api_key="test_key", base_url="https://api.test.com")
+
+    for prompt_name in prompt_names:
+        prompt = parser._load_prompt(prompt_name)
+        assert "overlap_with_previous" in prompt
+        assert "simultaneously" in prompt
