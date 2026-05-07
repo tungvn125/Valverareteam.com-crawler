@@ -5,26 +5,9 @@
         "payload": {
             "slug": "amamori-junna-vo-cung-am-uot-b901d672",
             "formats": ["EPUB"],
-            "grouping": 1,
-            "skip_illustrations": true
-        }
-    },
-    {
-        "alias_id": "truyenfull_crawl",
-        "task": "crawl",
-        "payload": {
-            "slug": "https://truyenfull.vision/thong-thien-chi-lo/",
-            "formats": ["EPUB"],
-            "grouping": 1
-        }
-    },
-    {
-        "alias_id": "hako_crawl",
-        "task": "crawl",
-        "payload": {
-            "slug": "https://ln.hako.vn/truyen/25956-ban-gai-doi-xu-voi-toi-qua-tot",
-            "formats": ["EPUB"],
-            "grouping": 1
+            "grouping": "1",
+            "skip_illustrations": false,
+            "output_folder": "/home/tung/Data/novels"
         }
     }
 ]
