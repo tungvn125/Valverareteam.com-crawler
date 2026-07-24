@@ -1,5 +1,7 @@
 # VVR-Scraper
 
+> This repo have gone wrong, and it is so slopy.
+
 ## Overview
 
 VVR-Scraper is a Python 3.12+ command-line and web tool for downloading and exporting stories from Valvrare Team into multiple output formats. The package exposes `vvrt` as its CLI entry point and also includes a FastAPI-based Web UI for managing downloads, job execution, and library sync, alongside separate OPDS feed endpoints for reader clients.
